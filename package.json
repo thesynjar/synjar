@@ -9,6 +9,8 @@
     "dev:web": "pnpm --filter @synjar/web dev",
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:all": "pnpm --filter api test:all",
+    "test:e2e": "pnpm --filter api test:e2e:full",
     "lint": "turbo run lint",
     "db:generate": "pnpm --filter api db:generate",
     "db:migrate": "pnpm --filter api db:migrate",

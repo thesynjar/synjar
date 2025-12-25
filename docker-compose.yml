@@ -18,6 +18,16 @@ services:
       timeout: 5s
       retries: 5
 
+  mailpit:
+    image: axllent/mailpit
+    container_name: synjar-mailpit
+    ports:
+      - "6202:1025"  # SMTP
+      - "6203:8025"  # Web UI / API
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
   api:
     build:
       context: .
@@ -35,11 +45,18 @@ services:
       B2_ENDPOINT: ${B2_ENDPOINT}
       PORT: 6200
       NODE_ENV: production
+      # Email configuration (Mailpit in docker)
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      EMAIL_VERIFICATION_URL: http://localhost:5173/auth/verify
     ports:
       - "6200:6200"
     depends_on:
       postgres:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

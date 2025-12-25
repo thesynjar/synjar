@@ -14,6 +14,11 @@ export class RegisterDto {
   })
   password!: string;
 
+  @ApiProperty({ example: 'My Knowledge Base' })
+  @IsString()
+  @MinLength(2, { message: 'Workspace name must be at least 2 characters' })
+  workspaceName!: string;
+
   @ApiPropertyOptional({ example: 'John Doe' })
   @IsOptional()
   @IsString()
@@ -56,4 +61,29 @@ export class RefreshTokenDto {
   @ApiProperty({ description: 'Refresh token' })
   @IsString()
   refresh_token!: string;
+}
+
+export class VerifyEmailDto {
+  @ApiProperty({ description: 'Email verification token' })
+  @IsString()
+  token!: string;
+}
+
+export class ResendVerificationDto {
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  email!: string;
+}
+
+export class MessageResponseDto {
+  @ApiProperty()
+  message!: string;
+}
+
+export class RegisterResponseDto {
+  @ApiProperty()
+  message!: string;
+
+  @ApiProperty()
+  userId!: string;
 }

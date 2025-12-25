@@ -412,14 +412,14 @@ describe('Registration Flow (E2E)', () => {
 ## 9. Definition of Done
 
 ### Backend
-- [ ] Migracja Prisma (email verification fields)
-- [ ] EmailModule z nodemailer
-- [ ] POST /auth/register
-- [ ] POST /auth/verify-email
-- [ ] POST /auth/resend-verification
-- [ ] Email template (Handlebars)
-- [ ] Unit tests dla use cases
-- [ ] E2E test registration flow
+- [x] Migracja Prisma (email verification fields) ✅ 2025-12-25
+- [x] EmailModule z nodemailer ✅ 2025-12-25
+- [x] POST /auth/register ✅ 2025-12-25
+- [x] POST /auth/verify-email ✅ 2025-12-25
+- [x] POST /auth/resend-verification ✅ 2025-12-25
+- [x] Email template (Handlebars) ✅ 2025-12-25
+- [x] Unit tests dla use cases (28 tests passing) ✅ 2025-12-25
+- [x] E2E test registration flow (with Mailpit) ✅ 2025-12-25
 
 ### Frontend
 - [ ] Register.tsx z password strength
@@ -453,12 +453,12 @@ describe('Registration Flow (E2E)', () => {
 
 ## 11. Następne kroki
 
-1. Migracja Prisma
-2. Email Module (NestJS)
-3. Register endpoint
+1. ~~Migracja Prisma~~ ✅
+2. ~~Email Module (NestJS)~~ ✅
+3. ~~Register endpoint~~ ✅
 4. Frontend Register form
-5. Verify email flow
-6. Tests
+5. Verify email flow (frontend)
+6. E2E tests
 7. Integration test całego flow
 
 ---

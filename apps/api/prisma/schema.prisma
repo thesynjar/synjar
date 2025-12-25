@@ -17,11 +17,19 @@ model User {
   passwordHash String
   name         String?
 
+  // Email verification
+  isEmailVerified         Boolean   @default(false)
+  emailVerificationToken  String?   @unique
+  emailVerificationSentAt DateTime? @db.Timestamptz
+  emailVerifiedAt         DateTime? @db.Timestamptz
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   workspaces        WorkspaceMember[]
   createdWorkspaces Workspace[]
+
+  @@index([emailVerificationToken])
 }
 
 // ============ WORKSPACE ============
@@ -44,10 +52,11 @@ model Workspace {
 }
 
 model WorkspaceMember {
-  id          String @id @default(uuid())
+  id          String   @id @default(uuid())
   workspaceId String
   userId      String
-  role        Role   @default(MEMBER)
+  role        Role     @default(MEMBER)
+  permissions String[] // workspace:create, document:create, document:read, user:invite
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
