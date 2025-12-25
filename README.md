@@ -82,8 +82,8 @@ cd synjar
 pnpm install
 
 # Configure
-cp .env.example .env
-# Edit .env: add OPENAI_API_KEY, B2 credentials
+cp apps/api/.env.example apps/api/.env
+# Edit apps/api/.env: add OPENAI_API_KEY, B2 credentials
 
 # Start
 pnpm docker:up      # PostgreSQL + pgvector
