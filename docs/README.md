@@ -32,6 +32,12 @@ Synjar is a self-hosted RAG backend - a knowledge base service with Retrieval Au
 | [ARCHITECTURE_DECISION.md](ARCHITECTURE_DECISION.md) | Decision: standalone vs monolith |
 | [adr/ADR-2025-12-25-signed-urls-for-public-files.md](adr/ADR-2025-12-25-signed-urls-for-public-files.md) | Signed URLs for Public API files |
 
+## Deployment
+
+| File | Description |
+|------|-------------|
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment guide (CapRover, Docker Compose) |
+
 ## Security
 
 **Comprehensive documentation for multi-tenant architecture security.**

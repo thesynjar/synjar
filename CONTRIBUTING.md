@@ -61,8 +61,8 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
    ```
 
 5. **Verify setup**
-   - API: http://localhost:3000/api
-   - Swagger: http://localhost:3000/api/docs
+   - API: http://localhost:6200/api
+   - Swagger: http://localhost:6200/api/docs
    - Web: http://localhost:5173
 
 ## Making Contributions
@@ -120,6 +120,31 @@ git commit -s -m "docs: update API documentation"
 ```
 
 **Important:** Use the `-s` flag to sign-off your commits (DCO requirement).
+
+### Automated Commit Validation
+
+The project uses Husky to enforce code quality automatically:
+
+#### Pre-commit Hook
+Runs `pnpm test` before allowing commit:
+- If tests fail, commit is rejected
+- Fix failing tests, then retry commit
+
+#### Commit-msg Hook
+Validates commit message format:
+- Must follow Conventional Commits format
+- Examples: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`
+- If format is invalid, commit is rejected
+
+#### Bypassing Hooks (use sparingly)
+```bash
+git commit --no-verify -m "your message"
+```
+
+#### Troubleshooting
+- **"husky command not found"**: Run `pnpm install` to set up hooks
+- **Tests fail on commit**: Fix tests before committing
+- **Invalid commit message**: Check format matches conventional commits
 
 ### 4. Push and Create PR
 

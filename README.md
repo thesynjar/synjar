@@ -16,7 +16,7 @@ You're building AI apps. You need retrieval. You don't want:
 Synjar gives you a **production-ready RAG backend** you deploy once and own forever.
 
 ```bash
-docker compose up -d && curl http://localhost:3000/health
+docker compose up -d && curl http://localhost:6200/health
 # Done. You have RAG.
 ```
 
@@ -88,17 +88,17 @@ cp apps/api/.env.example apps/api/.env
 # Start
 pnpm docker:up      # PostgreSQL + pgvector
 pnpm db:migrate     # Run migrations
-pnpm dev            # API at localhost:3000
+pnpm dev            # API at localhost:6200
 ```
 
 ### Verify It Works
 
 ```bash
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:6200/health
 
 # Swagger UI
-open http://localhost:3000/api/docs
+open http://localhost:6200/api/docs
 ```
 
 ---
@@ -108,7 +108,7 @@ open http://localhost:3000/api/docs
 ### Create Workspace
 
 ```bash
-curl -X POST http://localhost:3000/api/workspaces \
+curl -X POST http://localhost:6200/api/workspaces \
   -H "Content-Type: application/json" \
   -d '{"name": "My Project"}'
 ```
@@ -116,7 +116,7 @@ curl -X POST http://localhost:3000/api/workspaces \
 ### Upload Document
 
 ```bash
-curl -X POST http://localhost:3000/api/documents \
+curl -X POST http://localhost:6200/api/documents \
   -F "file=@./docs/architecture.md" \
   -F "workspaceId=ws_123"
 ```
@@ -124,13 +124,13 @@ curl -X POST http://localhost:3000/api/documents \
 ### Semantic Search
 
 ```bash
-curl "http://localhost:3000/api/search?q=how%20to%20deploy&workspaceId=ws_123"
+curl "http://localhost:6200/api/search?q=how%20to%20deploy&workspaceId=ws_123"
 ```
 
 ### Create Public Link
 
 ```bash
-curl -X POST http://localhost:3000/api/public-links \
+curl -X POST http://localhost:6200/api/public-links \
   -H "Content-Type: application/json" \
   -d '{"workspaceId": "ws_123", "expiresAt": "2025-12-31"}'
 ```

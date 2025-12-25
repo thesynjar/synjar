@@ -14,6 +14,7 @@ import { StorageModule } from './infrastructure/storage/storage.module';
 import { LLMModule } from './infrastructure/llm/llm.module';
 import { EventsModule } from './infrastructure/events/events.module';
 import { RlsMiddleware } from './infrastructure/persistence/rls/rls.middleware';
+import { HealthController } from './interfaces/http/health.controller';
 
 const logger = new Logger('AppModule');
 
@@ -108,6 +109,7 @@ export class AppModule implements NestModule {
     return {
       module: AppModule,
       imports: [...CORE_MODULES, ...enterpriseModules],
+      controllers: [HealthController],
       providers: [
         RlsMiddleware,
         {
