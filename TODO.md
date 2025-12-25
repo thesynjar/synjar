@@ -1,5 +1,85 @@
 # TODO - Synjar Community
 
+## Code Review Findings (2025-12-25)
+
+Critical issues from frontend code review. Full details: `docs/specifications/2025-12-25-frontend-review-findings.md`
+
+### CRITICAL (Before Production)
+
+#### Security
+
+- [x] **JWT token storage** - Access token w pamięci, refresh w localStorage, API client z Authorization header
+  - Files: `apps/web/src/features/auth/model/authStore.ts`, `apps/web/src/shared/api/client.ts`
+
+- [x] **Protected routes** - Dashboard wymaga autoryzacji, redirect na /login dla niezalogowanych
+  - Files: `apps/web/src/app/router/ProtectedRoute.tsx`, `apps/web/src/App.tsx`
+
+- [ ] **HTTPS enforcement** - Credentials przesyłane plain text, JWT może być przechwycony (MITM)
+  - Config: nginx.conf, vite.config.ts (plugin-basic-ssl dla dev)
+
+#### Testing
+
+- [ ] **Zero testów** - Naruszenie TDD z CLAUDE.md. Dodaj vitest.config.ts + testy dla Login, Dashboard, Layout
+  - Add: `apps/web/vitest.config.ts`, `apps/web/src/**/*.test.tsx`
+
+#### Architecture
+
+- [ ] **Anemic Architecture** - Logika biznesowa w komponentach. Dodać warstwę application/ (use cases)
+  - Add: `apps/web/src/application/auth/`, `apps/web/src/application/workspace/`
+
+#### UX / Accessibility
+
+- [ ] **Brak ARIA labels** - Formularze i przyciski bez labels (WCAG 2.1 Level A failure)
+  - Files: `apps/web/src/features/auth/Login.tsx`, `apps/web/src/features/dashboard/Dashboard.tsx`
+
+### HIGH (Before Merge)
+
+#### Security
+
+- [ ] **CSP headers** - Brak Content Security Policy, podatność na XSS
+  - Add: CSP meta tag w `apps/web/index.html` lub header w nginx.conf
+
+- [ ] **Client-side validation** - Tylko HTML5 required. Dodać React Hook Form + Zod
+  - File: `apps/web/src/features/auth/Login.tsx`
+
+- [ ] **Console.error leaks** - Może ujawnić wrażliwe info. Zamień na proper logger
+  - Files: `apps/web/src/shared/Layout.tsx`, `apps/web/src/features/dashboard/Dashboard.tsx`
+
+#### Architecture
+
+- [ ] **Layout SRP violation** - Miesza routing, prezentację i logikę API. Wydzielić Navigation
+  - File: `apps/web/src/shared/Layout.tsx`
+
+- [ ] **Brak domain interfaces** - Plain interfaces zamiast Value Objects, brak IWorkspaceRepository
+  - Add: `apps/web/src/domain/workspace/`
+
+#### UX
+
+- [ ] **Dashboard error state** - Błędy API nie są pokazywane użytkownikowi
+  - File: `apps/web/src/features/dashboard/Dashboard.tsx`
+
+- [ ] **Focus indicators** - Brak focus:ring dla keyboard navigation (WCAG 2.1 Level AA)
+  - Files: All interactive elements
+
+- [ ] **WorkspaceCard keyboard** - Brak onClick/onKeyDown, niedostępny przez TAB
+  - File: `apps/web/src/features/dashboard/Dashboard.tsx`
+
+#### Documentation
+
+- [ ] **README.md** - Brak dokumentacji dla apps/web
+  - Add: `apps/web/README.md`
+
+### MEDIUM (Next Sprint)
+
+- [ ] **Sourcemaps w production** - Wyłączyć w vite.config.ts
+- [ ] **Security headers** - X-Frame-Options, X-Content-Type-Options w nginx
+- [ ] **Hardcoded endpoints** - Magic strings, utworzyć src/config/api.ts
+- [ ] **Duplikacja stylów** - Utworzyć shared Button component
+- [ ] **ADR dla stack** - Udokumentować wybór React 19, Vite 6, Tailwind 4
+- [ ] **Active state w nav** - Brak wizualnego wskaźnika aktywnego linku
+
+---
+
 ## How to Use This File
 
 This file is the **single source of truth** for what we're doing and in what order.
@@ -31,12 +111,14 @@ This file is the **single source of truth** for what we're doing and in what ord
 
 ### Frontend
 
-- [ ] **Authentication** - [SPEC-011](docs/specifications/SPEC-011-frontend-auth.md)
-  - Login, registration, session
+- [x] **Authentication** - [SPEC-011](docs/specifications/SPEC-011-frontend-auth.md)
+  - Login, session, protected routes
+  - **Status:** Done (JWT storage, AuthProvider, ProtectedRoute)
   - **Blocks:** Dashboard, Documents
 
-- [ ] **Dashboard** - [SPEC-012](docs/specifications/SPEC-012-frontend-dashboard.md)
+- [~] **Dashboard** - [SPEC-012](docs/specifications/SPEC-012-frontend-dashboard.md)
   - Workspace list, navigation
+  - **Status:** Basic UI done, needs error handling + tests
   - **Requires:** Auth
   - **Blocks:** Documents
 
