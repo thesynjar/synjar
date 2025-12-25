@@ -1,0 +1,193 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ============ AUTH ============
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  workspaces        WorkspaceMember[]
+  createdWorkspaces Workspace[]
+}
+
+// ============ WORKSPACE ============
+
+model Workspace {
+  id          String @id @default(uuid())
+  name        String
+  createdById String
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdBy         User                     @relation(fields: [createdById], references: [id])
+  members           WorkspaceMember[]
+  documents         Document[]
+  publicLinks       PublicLink[]
+  userLookups UserWorkspaceLookup[]
+
+  @@index([createdById])
+}
+
+model WorkspaceMember {
+  id          String @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        Role   @default(MEMBER)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+// ============ USER WORKSPACE LOOKUP ============
+// Maps email hashes to workspaces for workspace resolution before auth context
+// NO RLS - this is a public lookup table (emails are hashed for security)
+
+model UserWorkspaceLookup {
+  id          String @id @default(uuid())
+  emailHash   String
+  workspaceId String
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([emailHash, workspaceId])
+  @@index([emailHash])
+  @@map("UserWorkspaceLookup")
+}
+
+// ============ DOCUMENTS ============
+
+model Document {
+  id          String @id @default(uuid())
+  workspaceId String
+
+  title       String
+  content     String @db.Text
+  contentType ContentType @default(TEXT)
+
+  // File storage
+  originalFilename String?
+  fileUrl          String?
+  mimeType         String?
+  fileSize         Int?
+
+  // Metadata
+  sourceDescription  String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  processingStatus   ProcessingStatus   @default(PENDING)
+  processingError    String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tags      DocumentTag[]
+  chunks    Chunk[]
+
+  @@index([workspaceId])
+  @@index([verificationStatus])
+  @@index([processingStatus])
+}
+
+model Chunk {
+  id         String @id @default(uuid())
+  documentId String
+
+  content   String                      @db.Text
+  embedding Unsupported("vector(1536)")
+
+  chunkIndex  Int
+  startOffset Int?
+  endOffset   Int?
+  chunkType   String?
+  metadata    Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+model Tag {
+  id   String @id @default(uuid())
+  name String @unique
+
+  documents DocumentTag[]
+}
+
+model DocumentTag {
+  documentId String
+  tagId      String
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, tagId])
+  @@index([tagId])
+}
+
+enum ContentType {
+  TEXT
+  FILE
+}
+
+enum VerificationStatus {
+  VERIFIED
+  UNVERIFIED
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ============ PUBLIC ACCESS ============
+
+model PublicLink {
+  id          String @id @default(uuid())
+  token       String @unique
+  workspaceId String
+
+  name        String?
+  allowedTags String[]
+  expiresAt   DateTime? @db.Timestamptz
+  isActive    Boolean   @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([workspaceId])
+}

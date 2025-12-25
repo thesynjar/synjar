@@ -1,0 +1,25 @@
+{
+  "name": "@synjar/community",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "pnpm --filter api dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "db:generate": "pnpm --filter api db:generate",
+    "db:migrate": "pnpm --filter api db:migrate",
+    "db:push": "pnpm --filter api db:push",
+    "db:studio": "pnpm --filter api db:studio",
+    "db:seed": "pnpm --filter api prisma:seed",
+    "docker:up": "docker-compose up -d postgres",
+    "docker:down": "docker-compose down",
+    "setup": "pnpm docker:up && sleep 3 && pnpm db:migrate && pnpm db:seed",
+    "start:local": "pnpm docker:up && pnpm dev:api"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3"
+  }
+}
