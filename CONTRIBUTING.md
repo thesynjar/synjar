@@ -35,7 +35,7 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 
    ```bash
    git clone https://github.com/thesynjar/synjar.git
-   cd synjar/community
+   cd synjar
    ```
 
 2. **Install dependencies**

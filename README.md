@@ -76,7 +76,7 @@ docker compose up -d && curl http://localhost:3000/health
 ```bash
 # Clone
 git clone https://github.com/thesynjar/synjar.git
-cd synjar/community
+cd synjar
 
 # Install
 pnpm install
@@ -140,7 +140,7 @@ curl -X POST http://localhost:3000/api/public-links \
 ## Project Structure
 
 ```
-synjar/community/
+synjar/
 ├── apps/
 │   ├── api/                 # NestJS Backend
 │   │   └── src/
