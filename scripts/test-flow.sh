@@ -80,10 +80,11 @@ log_step "1. Registering user"
 
 REGISTER_RESPONSE=$(curl -s -X POST "${API_URL}/auth/register" \
     -H "Content-Type: application/json" \
+    -c "${COOKIES_FILE}" \
     -d "{\"email\": \"${TEST_EMAIL}\", \"password\": \"${TEST_PASSWORD}\", \"name\": \"${TEST_NAME}\"}")
 
-if echo "${REGISTER_RESPONSE}" | grep -q "id"; then
-    USER_ID=$(echo "${REGISTER_RESPONSE}" | jq -r '.id')
+if echo "${REGISTER_RESPONSE}" | grep -q "Registration successful"; then
+    USER_ID=$(echo "${REGISTER_RESPONSE}" | jq -r '.user.id')
     log_success "User registered: ${USER_ID}"
 else
     log_error "Registration failed: ${REGISTER_RESPONSE}"
@@ -94,22 +95,20 @@ log_step "2. Logging in"
 
 LOGIN_RESPONSE=$(curl -s -X POST "${API_URL}/auth/login" \
     -H "Content-Type: application/json" \
+    -c "${COOKIES_FILE}" \
     -d "{\"email\": \"${TEST_EMAIL}\", \"password\": \"${TEST_PASSWORD}\"}")
 
-if echo "${LOGIN_RESPONSE}" | grep -q "access_token"; then
-    ACCESS_TOKEN=$(echo "${LOGIN_RESPONSE}" | jq -r '.access_token')
-    log_success "Logged in, token received"
+if echo "${LOGIN_RESPONSE}" | grep -q "Login successful"; then
+    log_success "Logged in, cookies saved"
 else
     log_error "Login failed: ${LOGIN_RESPONSE}"
 fi
-
-AUTH_HEADER="Authorization: Bearer ${ACCESS_TOKEN}"
 
 # Step 3: Create workspace
 log_step "3. Creating workspace"
 
 WORKSPACE_RESPONSE=$(curl -s -X POST "${API_URL}/workspaces" \
-    -H "${AUTH_HEADER}" \
+    -b "${COOKIES_FILE}" \
     -H "Content-Type: application/json" \
     -d '{"name": "Synjar Documentation Demo"}')
 
@@ -134,7 +133,7 @@ if [ -d "${FIXTURES_DIR}" ]; then
             content=$(cat "$file" | jq -Rs .)
 
             DOC_RESPONSE=$(curl -s -X POST "${API_URL}/workspaces/${WORKSPACE_ID}/documents" \
-                -H "${AUTH_HEADER}" \
+                -b "${COOKIES_FILE}" \
                 -H "Content-Type: application/json" \
                 -d "{\"title\": \"${title}\", \"content\": ${content}, \"tags\": ${tags}, \"verificationStatus\": \"${status}\"}")
 
@@ -170,7 +169,7 @@ SEARCH_QUERIES=(
 
 for query in "${SEARCH_QUERIES[@]}"; do
     SEARCH_RESPONSE=$(curl -s -X POST "${API_URL}/workspaces/${WORKSPACE_ID}/search" \
-        -H "${AUTH_HEADER}" \
+        -b "${COOKIES_FILE}" \
         -H "Content-Type: application/json" \
         -d "{\"query\": \"${query}\", \"limit\": 3}")
 
@@ -187,7 +186,7 @@ done
 log_step "7. Creating public link"
 
 PUBLIC_LINK_RESPONSE=$(curl -s -X POST "${API_URL}/workspaces/${WORKSPACE_ID}/public-links" \
-    -H "${AUTH_HEADER}" \
+    -b "${COOKIES_FILE}" \
     -H "Content-Type: application/json" \
     -d '{"name": "Test Public Link", "allowedTags": ["faq", "getting-started"]}')
 
@@ -217,3 +216,13 @@ echo "  - Public token: ${PUBLIC_TOKEN:-N/A}"
 echo ""
 echo "API base: ${API_URL}"
 echo "Swagger: ${API_URL%/api/v1}/api/docs"
+if [ -n "${PUBLIC_TOKEN}" ]; then
+    echo ""
+    echo "Example public search (GET):"
+    echo "  curl '${API_URL}/public/${PUBLIC_TOKEN}/search?query=How+do+I+get+started%3F&limit=3'"
+    echo ""
+    echo "Example public search (POST):"
+    echo "  curl -X POST '${API_URL}/public/${PUBLIC_TOKEN}/search' \\"
+    echo "    -H 'Content-Type: application/json' \\"
+    echo "    -d '{\"query\": \"How do I get started?\", \"limit\": 3}'"
+fi
