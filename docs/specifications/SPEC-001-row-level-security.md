@@ -1,7 +1,7 @@
 # SPEC-001: Row Level Security (RLS)
 
 **Data:** 2025-12-24
-**Status:** Draft
+**Status:** Done
 **Priorytet:** P0 (Fundament)
 **Zależności:** Brak
 
@@ -278,8 +278,8 @@ Scenario: Public API zwraca dokumenty bez user context
 - [x] RlsBypassService dla Public API (zaimplementowane jako `withoutRls()` w PrismaService)
 - [x] Testy integracyjne izolacji (**26/26 tests PASSING**)
 - [x] Użytkownik bazodanowy non-superuser (`knowledge_forge_app`)
-- [ ] Testy wydajnościowe (benchmark przed/po RLS)
-- [ ] Dokumentacja w README
+- [x] Testy wydajnościowe (benchmark przed/po RLS) - **avg 0.93ms, max 1.40ms**
+- [x] Dokumentacja w README
 
 ---
 

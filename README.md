@@ -35,6 +35,34 @@ docker compose up -d && curl http://localhost:6200/health
 
 ---
 
+## Security
+
+### Row Level Security (RLS)
+
+Synjar implements **PostgreSQL Row Level Security** for defense-in-depth data isolation:
+
+- **Database-level enforcement** - Even application bugs cannot leak data between workspaces
+- **Automatic filtering** - All queries are filtered by user's workspace membership
+- **Zero trust architecture** - Security doesn't rely solely on application code
+
+```
+User A ──► API ──► RLS Policy ──► Only User A's data
+User B ──► API ──► RLS Policy ──► Only User B's data
+```
+
+**Performance impact:** Average operation time ~0.9ms with RLS (< 2ms for all operations).
+
+### How it works
+
+1. Each request sets the user context in the database session
+2. RLS policies automatically filter all queries
+3. Users can only see workspaces they're members of
+4. Documents, chunks, and public links inherit workspace isolation
+
+For implementation details, see [SPEC-001: Row Level Security](docs/specifications/SPEC-001-row-level-security.md).
+
+---
+
 ## Tech Stack
 
 ```

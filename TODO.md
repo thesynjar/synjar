@@ -25,9 +25,9 @@ This file is the **single source of truth** for what we're doing and in what ord
 
 ### Backend
 
-- [~] **Row Level Security** - [SPEC-001](docs/specifications/SPEC-001-row-level-security.md)
+- [x] **Row Level Security** - [SPEC-001](docs/specifications/SPEC-001-row-level-security.md)
   - User data isolation at PostgreSQL level
-  - **Blocks:** everything else (data must be secure)
+  - **Status:** Done (26/26 tests, avg 0.93ms performance)
 
 ### Frontend
 
