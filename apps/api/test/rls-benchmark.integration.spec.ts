@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.service';
 import { PrismaClient, Role } from '@prisma/client';
