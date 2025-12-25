@@ -21,11 +21,11 @@ ALTER TABLE "PublicLink" FORCE ROW LEVEL SECURITY;
 -- This function is SECURITY DEFINER to ensure it can read WorkspaceMember
 -- regardless of RLS policies on that table
 -- SECURITY DEFINER makes it run with the privileges of the function owner (bypassing RLS)
+-- Note: Using TEXT type to match Prisma schema column types
 CREATE OR REPLACE FUNCTION get_user_workspace_ids()
-RETURNS SETOF UUID AS $$
+RETURNS SETOF TEXT AS $$
 DECLARE
   user_id_text TEXT;
-  user_id_uuid UUID;
 BEGIN
   -- Get the current user ID setting
   user_id_text := current_setting('app.current_user_id', true);
@@ -35,14 +35,12 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Convert text to UUID
-  user_id_uuid := user_id_text::UUID;
-
+  -- Return workspace IDs where user is a member
   -- Use SECURITY DEFINER to bypass RLS on WorkspaceMember table
   RETURN QUERY
-  SELECT wm."workspaceId"::UUID
+  SELECT wm."workspaceId"
   FROM "WorkspaceMember" wm
-  WHERE wm."userId" = user_id_uuid;
+  WHERE wm."userId" = user_id_text;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
