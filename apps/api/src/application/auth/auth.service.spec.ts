@@ -5,7 +5,6 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import {
   UnauthorizedException,
-  ConflictException,
   NotFoundException,
   BadRequestException,
   HttpException,
@@ -130,10 +129,12 @@ describe('AuthService', () => {
       // Act
       const result = await service.register(registerDto);
 
-      // Assert
+      // Assert - new user gets tokens (Case 3: auto-login in Cloud mode)
       expect(result).toEqual({
         message: 'Registration successful. Please check your email.',
         userId: 'user-id-123',
+        accessToken: expect.any(String),
+        refreshToken: expect.any(String),
       });
       expect(prismaStub.user!.findUnique).toHaveBeenCalledWith({
         where: { email: registerDto.email },
@@ -318,7 +319,7 @@ describe('AuthService', () => {
       expect(capturedUserData.data.emailVerificationSentAt.getTime()).toBeGreaterThanOrEqual(beforeTest.getTime());
     });
 
-    it('should throw ConflictException if email already exists', async () => {
+    it('should return generic message for existing verified user (user enumeration prevention)', async () => {
       // Arrange
       const registerDto = {
         email: 'existing@example.com',
@@ -332,17 +333,21 @@ describe('AuthService', () => {
         email: registerDto.email,
         passwordHash: 'hash',
         name: 'Existing User',
+        isEmailVerified: true, // Verified user (Case 1)
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
-      // Act & Assert
-      await expect(service.register(registerDto)).rejects.toThrow(
-        ConflictException,
-      );
-      await expect(service.register(registerDto)).rejects.toThrow(
-        'Email already registered',
-      );
+      // Act
+      const result = await service.register(registerDto);
+
+      // Assert - returns generic message (NO tokens, prevents account takeover)
+      expect(result).toEqual({
+        message: 'Registration successful. Please check your email.',
+        userId: 'existing-user-id',
+      });
+      expect(result).not.toHaveProperty('accessToken');
+      expect(result).not.toHaveProperty('refreshToken');
       expect(prismaStub.$transaction).not.toHaveBeenCalled();
     });
 
@@ -803,6 +808,204 @@ describe('AuthService', () => {
       expect(capturedUpdateData.data.emailVerificationToken).toMatch(/^[a-f0-9]{64}$/);
       expect(capturedUpdateData.data.emailVerificationSentAt).toBeDefined();
       expect(capturedUpdateData.data.emailVerificationSentAt instanceof Date).toBe(true);
+    });
+  });
+
+  // Phase 3: Cloud Mode Registration Tests (TDD)
+  describe('register - Cloud Mode (Dual-Mode Registration)', () => {
+    const registerDto = {
+      email: 'test@example.com',
+      password: 'SecurePass123!',
+      workspaceName: 'Test Workspace',
+      name: 'Test User',
+    };
+
+    it('should NOT return tokens for existing verified user (prevent account takeover)', async () => {
+      // Arrange - user already exists and is verified
+      const existingUser = {
+        id: 'existing-user-id',
+        email: registerDto.email,
+        isEmailVerified: true,
+        passwordHash: 'hashed-password',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(existingUser);
+
+      // Act
+      const result = await service.register(registerDto);
+
+      // Assert
+      expect(result).toEqual({
+        message: 'Registration successful. Please check your email.',
+        userId: existingUser.id,
+      });
+      expect(result).not.toHaveProperty('accessToken');
+      expect(result).not.toHaveProperty('refreshToken');
+      expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+    });
+
+    it('should resend verification email for existing unverified user (NO tokens)', async () => {
+      // Arrange - user exists but not verified, last email sent >60s ago
+      const existingUser = {
+        id: 'existing-user-id',
+        email: registerDto.email,
+        isEmailVerified: false,
+        emailVerificationToken: 'old-token',
+        emailVerificationSentAt: new Date(Date.now() - 120000), // 2 min ago (>60s cooldown)
+        passwordHash: 'hashed-password',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(existingUser);
+      prismaStub.user!.update = jest.fn().mockResolvedValue({
+        ...existingUser,
+        emailVerificationToken: 'new-token',
+        emailVerificationSentAt: new Date(),
+      });
+
+      // Act
+      const result = await service.register(registerDto);
+
+      // Assert
+      expect(result).toEqual({
+        message: 'Registration successful. Please check your email.',
+        userId: existingUser.id,
+      });
+      expect(result).not.toHaveProperty('accessToken');
+      expect(result).not.toHaveProperty('refreshToken');
+      expect(prismaStub.user!.update).toHaveBeenCalled();
+      expect(emailServiceStub.sendEmailVerification).toHaveBeenCalledWith(
+        existingUser.email,
+        expect.any(String),
+        expect.any(String),
+      );
+    });
+
+    it('should return tokens for NEW user (auto-login in Cloud mode)', async () => {
+      // Arrange - user does not exist
+      const createdUser = {
+        id: 'new-user-id',
+        email: registerDto.email,
+        name: registerDto.name,
+        passwordHash: 'hashed-password',
+        isEmailVerified: false,
+        emailVerificationToken: 'verification-token-123',
+        emailVerificationSentAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
+      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        const tx = {
+          user: { create: jest.fn().mockResolvedValue(createdUser) },
+          workspace: {
+            create: jest.fn().mockResolvedValue({
+              id: 'workspace-id',
+              name: registerDto.workspaceName,
+              createdById: createdUser.id,
+            }),
+          },
+          workspaceMember: {
+            create: jest.fn().mockResolvedValue({
+              id: 'member-id',
+              workspaceId: 'workspace-id',
+              userId: createdUser.id,
+              role: 'OWNER',
+            }),
+          },
+        };
+        return callback(tx);
+      });
+
+      // Act
+      const result = await service.register(registerDto);
+
+      // Assert
+      expect(result).toEqual({
+        message: 'Registration successful. Please check your email.',
+        userId: createdUser.id,
+        accessToken: expect.any(String),
+        refreshToken: expect.any(String),
+      });
+      expect(emailServiceStub.sendEmailVerification).toHaveBeenCalled();
+    });
+  });
+
+  // Phase 3: Login Grace Period Tests (TDD)
+  describe('login - Grace Period (15 minutes)', () => {
+    const loginDto = {
+      email: 'test@example.com',
+      password: 'SecurePass123!',
+    };
+
+    it('should allow login for unverified user WITHIN 15-min grace period', async () => {
+      // Arrange - user created 10 minutes ago (< 15 min)
+      const hashedPassword = await bcrypt.hash(loginDto.password, 10);
+      const user = {
+        id: 'user-id',
+        email: loginDto.email,
+        name: 'Test User',
+        passwordHash: hashedPassword,
+        isEmailVerified: false,
+        createdAt: new Date(Date.now() - 10 * 60 * 1000), // 10 min ago
+        updatedAt: new Date(),
+      };
+
+      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+
+      // Act
+      const result = await service.login(loginDto);
+
+      // Assert
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(result.user.email).toBe(loginDto.email);
+    });
+
+    it('should REJECT login for unverified user AFTER 15-min grace period', async () => {
+      // Arrange - user created 20 minutes ago (> 15 min)
+      const hashedPassword = await bcrypt.hash(loginDto.password, 10);
+      const user = {
+        id: 'user-id',
+        email: loginDto.email,
+        name: 'Test User',
+        passwordHash: hashedPassword,
+        isEmailVerified: false,
+        createdAt: new Date(Date.now() - 20 * 60 * 1000), // 20 min ago (>15)
+        updatedAt: new Date(),
+      };
+
+      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+
+      // Act & Assert
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'Please verify your email before logging in',
+      );
+    });
+
+    it('should REJECT at exactly 15 minutes (boundary test)', async () => {
+      // Arrange - user created exactly 15 minutes ago
+      const hashedPassword = await bcrypt.hash(loginDto.password, 10);
+      const user = {
+        id: 'user-id',
+        email: loginDto.email,
+        name: 'Test User',
+        passwordHash: hashedPassword,
+        isEmailVerified: false,
+        createdAt: new Date(Date.now() - 15 * 60 * 1000), // Exactly 15 min
+        updatedAt: new Date(),
+      };
+
+      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+
+      // Act & Assert
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'Please verify your email before logging in',
+      );
     });
   });
 });

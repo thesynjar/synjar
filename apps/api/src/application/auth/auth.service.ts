@@ -1,7 +1,6 @@
 import {
   Injectable,
   UnauthorizedException,
-  ConflictException,
   NotFoundException,
   BadRequestException,
   HttpException,
@@ -24,6 +23,8 @@ interface RegisterDto {
 interface RegisterResult {
   message: string;
   userId: string;
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 const OWNER_PERMISSIONS = [
@@ -68,10 +69,57 @@ export class AuthService {
       where: { email: dto.email },
     });
 
-    if (existing) {
-      throw new ConflictException('Email already registered');
+    // Case 1: User exists and is verified → NO tokens (prevent account takeover)
+    if (existing && existing.isEmailVerified) {
+      return {
+        message: 'Registration successful. Please check your email.',
+        userId: existing.id,
+      };
     }
 
+    // Case 2: User exists but NOT verified → resend email, NO tokens
+    if (existing && !existing.isEmailVerified) {
+      // Check cooldown (60s between resends)
+      const RESEND_COOLDOWN_MS = 60 * 1000;
+      if (existing.emailVerificationSentAt) {
+        const timeSinceSent = Date.now() - existing.emailVerificationSentAt.getTime();
+        if (timeSinceSent < RESEND_COOLDOWN_MS) {
+          // Within cooldown - return generic message (no email sent)
+          return {
+            message: 'Registration successful. Please check your email.',
+            userId: existing.id,
+          };
+        }
+      }
+
+      // Generate new token and resend
+      const newToken = this.generateVerificationToken();
+      await this.prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          emailVerificationToken: newToken,
+          emailVerificationSentAt: new Date(),
+        },
+      });
+
+      const baseUrl = this.configService.get(
+        'EMAIL_VERIFICATION_URL',
+        'http://localhost:5173/auth/verify',
+      );
+      const verificationUrl = `${baseUrl}?token=${newToken}`;
+      await this.emailService.sendEmailVerification(
+        existing.email,
+        newToken,
+        verificationUrl,
+      );
+
+      return {
+        message: 'Registration successful. Please check your email.',
+        userId: existing.id,
+      };
+    }
+
+    // Case 3: NEW user → create + auto-login WITH tokens (Cloud mode)
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const emailVerificationToken = this.generateVerificationToken();
     const emailVerificationSentAt = new Date();
@@ -122,9 +170,14 @@ export class AuthService {
       verificationUrl,
     );
 
+    // Generate tokens for auto-login (Case 3 only!)
+    const tokens = this.generateTokens(user.id, user.email);
+
     return {
       message: 'Registration successful. Please check your email.',
       userId: user.id,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     };
   }
 
@@ -141,6 +194,19 @@ export class AuthService {
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Grace period check (15 minutes for unverified users)
+    if (!user.isEmailVerified) {
+      const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
+      const accountAge = Date.now() - user.createdAt.getTime();
+
+      if (accountAge >= GRACE_PERIOD_MS) {
+        throw new UnauthorizedException(
+          'Please verify your email before logging in',
+        );
+      }
+      // Within grace period - allow login
     }
 
     const tokens = this.generateTokens(user.id, user.email);
