@@ -26,10 +26,12 @@ model User {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
-  workspaces        WorkspaceMember[]
-  createdWorkspaces Workspace[]
+  workspaces         WorkspaceMember[]
+  createdWorkspaces  Workspace[]
+  createdInvitations Invitation[]      @relation("InvitationsCreated")
 
   @@index([emailVerificationToken])
+  @@index([isEmailVerified, createdAt])
 }
 
 // ============ WORKSPACE ============
@@ -42,10 +44,11 @@ model Workspace {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
-  createdBy         User                     @relation(fields: [createdById], references: [id])
-  members           WorkspaceMember[]
-  documents         Document[]
-  publicLinks       PublicLink[]
+  createdBy   User                   @relation(fields: [createdById], references: [id])
+  members     WorkspaceMember[]
+  invitations Invitation[]
+  documents   Document[]
+  publicLinks PublicLink[]
   userLookups UserWorkspaceLookup[]
 
   @@index([createdById])
@@ -70,7 +73,43 @@ model WorkspaceMember {
 
 enum Role {
   OWNER
+  ADMIN
   MEMBER
+}
+
+// ============ INVITATIONS ============
+
+model Invitation {
+  id          String   @id @default(uuid())
+  workspaceId String
+  email       String
+  role        Role     @default(MEMBER)
+
+  token       String   @unique @db.VarChar(256)
+
+  status      InvitationStatus @default(PENDING)
+  acceptedAt  DateTime?        @db.Timestamptz
+  revokedAt   DateTime?        @db.Timestamptz
+
+  expiresAt   DateTime @db.Timestamptz
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  createdById String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("InvitationsCreated", fields: [createdById], references: [id])
+
+  @@index([workspaceId])
+  @@index([email])
+  @@index([token])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
 }
 
 // ============ USER WORKSPACE LOOKUP ============
