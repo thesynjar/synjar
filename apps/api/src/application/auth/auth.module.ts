@@ -6,6 +6,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from '../../interfaces/http/auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { EmailModule } from '../email/email.module';
+import { PrismaModule } from '../../infrastructure/persistence/prisma/prisma.module';
+import { USER_REPOSITORY } from '../../domain/auth/repositories/user.repository.interface';
+import { PrismaUserRepository } from '../../infrastructure/persistence/repositories/user.repository.impl';
+import {
+  RegisterUserUseCase,
+  LoginUserUseCase,
+  VerifyEmailUseCase,
+  ResendVerificationUseCase,
+} from './use-cases';
 
 @Module({
   imports: [
@@ -21,9 +30,21 @@ import { EmailModule } from '../email/email.module';
       inject: [ConfigService],
     }),
     EmailModule,
+    PrismaModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RegisterUserUseCase,
+    LoginUserUseCase,
+    VerifyEmailUseCase,
+    ResendVerificationUseCase,
+    {
+      provide: USER_REPOSITORY,
+      useClass: PrismaUserRepository,
+    },
+  ],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

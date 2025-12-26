@@ -14,8 +14,20 @@
 /**
  * Password validation result
  *
- * @property valid - True if password meets all requirements
- * @property errors - Array of error messages (empty if valid)
+ * Value object representing the outcome of password validation against security requirements.
+ * Used by registration and invite acceptance flows to enforce password complexity.
+ *
+ * @interface PasswordValidationResult
+ * @property {boolean} valid - True if password meets all security requirements (min 12 chars, uppercase, lowercase, number, special char)
+ * @property {string[]} errors - Array of validation error messages describing what requirements failed. Empty array if valid=true.
+ *
+ * @example
+ * const result = PasswordValidator.validate('MyPassword123!');
+ * if (result.valid) {
+ *   // Password is secure
+ * } else {
+ *   // Show result.errors to user (e.g. "Password must be at least 12 characters")
+ * }
  */
 export interface PasswordValidationResult {
   /** True if password meets all security requirements */

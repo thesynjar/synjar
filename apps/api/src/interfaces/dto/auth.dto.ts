@@ -1,8 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsString, MinLength, IsOptional, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com' })
+  @Transform(({ value }: { value: any }) => value?.trim().toLowerCase())
   @IsEmail()
   email!: string;
 
@@ -27,6 +29,7 @@ export class RegisterDto {
 
 export class LoginDto {
   @ApiProperty({ example: 'user@example.com' })
+  @Transform(({ value }: { value: any }) => value?.trim().toLowerCase())
   @IsEmail()
   email!: string;
 
@@ -71,6 +74,7 @@ export class VerifyEmailDto {
 
 export class ResendVerificationDto {
   @ApiProperty({ example: 'user@example.com' })
+  @Transform(({ value }: { value: any }) => value?.trim().toLowerCase())
   @IsEmail()
   email!: string;
 }

@@ -11,7 +11,33 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { EmailService } from '../email/email.service';
+import { USER_REPOSITORY } from '@/domain/auth/repositories/user.repository.interface';
+import {
+  RegisterUserUseCase,
+  LoginUserUseCase,
+  VerifyEmailUseCase,
+  ResendVerificationUseCase,
+} from './use-cases';
 import * as bcrypt from 'bcrypt';
+
+/**
+ * TODO: Split this test file (967 lines) into focused suites per CLAUDE.md Clean Code rules.
+ * Current file exceeds 500 line limit and covers multiple concerns:
+ *
+ * Plan for Phase 4 refactoring:
+ * 1. auth.service.spec.ts → Keep only core setup + basic service tests (200 lines)
+ * 2. auth.service.register.spec.ts → Registration flow tests (250 lines)
+ * 3. auth.service.login.spec.ts → Login + grace period tests (200 lines)
+ * 4. auth.service.email-verification.spec.ts → Email verification + resend tests (150 lines)
+ *
+ * This enables:
+ * - Faster test execution (parallel runs)
+ * - Easier navigation and maintenance
+ * - Single responsibility per test suite
+ * - Better IDE performance
+ *
+ * See specification 2025-12-26-review-findings.md#M5 for details.
+ */
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -19,6 +45,7 @@ describe('AuthService', () => {
   let jwtStub: Partial<JwtService>;
   let emailServiceStub: Partial<EmailService>;
   let configServiceStub: Partial<ConfigService>;
+  let userRepositoryStub: { [key: string]: jest.Mock };
 
   beforeEach(async () => {
     // Create stubs following CLAUDE.md guidelines (stub > mock)
@@ -33,6 +60,7 @@ describe('AuthService', () => {
 
     jwtStub = {
       sign: jest.fn().mockReturnValue('test-token-123'),
+      verify: jest.fn(),
     };
 
     emailServiceStub = {
@@ -44,17 +72,34 @@ describe('AuthService', () => {
         if (key === 'EMAIL_VERIFICATION_URL') {
           return 'http://localhost:5173/auth/verify';
         }
+        if (key === 'FRONTEND_URL') {
+          return 'http://localhost:5173';
+        }
         return defaultValue;
       }),
+    };
+
+    userRepositoryStub = {
+      findById: jest.fn(),
+      findByEmail: jest.fn(),
+      findByVerificationToken: jest.fn(),
+      createWithWorkspace: jest.fn(),
+      update: jest.fn(),
+      save: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        RegisterUserUseCase,
+        LoginUserUseCase,
+        VerifyEmailUseCase,
+        ResendVerificationUseCase,
         { provide: PrismaService, useValue: prismaStub },
         { provide: JwtService, useValue: jwtStub },
         { provide: EmailService, useValue: emailServiceStub },
         { provide: ConfigService, useValue: configServiceStub },
+        { provide: USER_REPOSITORY, useValue: userRepositoryStub },
       ],
     }).compile();
 
@@ -93,38 +138,8 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       };
 
-      const createdWorkspace = {
-        id: 'workspace-id-123',
-        name: registerDto.workspaceName,
-        createdById: createdUser.id,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const createdMember = {
-        id: 'member-id-123',
-        workspaceId: createdWorkspace.id,
-        userId: createdUser.id,
-        role: 'OWNER',
-        permissions: ownerPermissions,
-        createdAt: new Date(),
-      };
-
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
-      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
-        const tx = {
-          user: {
-            create: jest.fn().mockResolvedValue(createdUser),
-          },
-          workspace: {
-            create: jest.fn().mockResolvedValue(createdWorkspace),
-          },
-          workspaceMember: {
-            create: jest.fn().mockResolvedValue(createdMember),
-          },
-        };
-        return callback(tx);
-      });
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
 
       // Act
       const result = await service.register(registerDto);
@@ -136,9 +151,7 @@ describe('AuthService', () => {
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
       });
-      expect(prismaStub.user!.findUnique).toHaveBeenCalledWith({
-        where: { email: registerDto.email },
-      });
+      expect(userRepositoryStub.findByEmail).toHaveBeenCalledWith(registerDto.email);
     });
 
     it('should create workspace for user', async () => {
@@ -149,46 +162,24 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      let capturedWorkspaceData: any = null;
-
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
-      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
-        const tx = {
-          user: {
-            create: jest.fn().mockResolvedValue({
-              id: 'user-id-123',
-              email: registerDto.email,
-              isEmailVerified: false,
-              emailVerificationToken: 'token-123',
-              emailVerificationSentAt: new Date(),
-            }),
-          },
-          workspace: {
-            create: jest.fn().mockImplementation((data) => {
-              capturedWorkspaceData = data;
-              return Promise.resolve({
-                id: 'workspace-id-123',
-                ...data.data,
-              });
-            }),
-          },
-          workspaceMember: {
-            create: jest.fn().mockResolvedValue({
-              id: 'member-id-123',
-              role: 'OWNER',
-            }),
-          },
-        };
-        return callback(tx);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue({
+        id: 'user-id-123',
+        email: registerDto.email,
+        isEmailVerified: false,
+        emailVerificationToken: 'token-123',
+        emailVerificationSentAt: new Date(),
       });
 
       // Act
       await service.register(registerDto);
 
       // Assert
-      expect(capturedWorkspaceData).toBeDefined();
-      expect(capturedWorkspaceData.data.name).toBe(registerDto.workspaceName);
-      expect(capturedWorkspaceData.data.createdById).toBe('user-id-123');
+      expect(userRepositoryStub.createWithWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspace: { name: registerDto.workspaceName },
+        }),
+      );
     });
 
     it('should send verification email', async () => {
@@ -199,25 +190,12 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
-      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
-        const tx = {
-          user: {
-            create: jest.fn().mockResolvedValue({
-              id: 'user-id-123',
-              email: registerDto.email,
-              emailVerificationToken: 'verification-token-abc',
-              isEmailVerified: false,
-            }),
-          },
-          workspace: {
-            create: jest.fn().mockResolvedValue({ id: 'workspace-id-123' }),
-          },
-          workspaceMember: {
-            create: jest.fn().mockResolvedValue({ id: 'member-id-123' }),
-          },
-        };
-        return callback(tx);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue({
+        id: 'user-id-123',
+        email: registerDto.email,
+        emailVerificationToken: 'verification-token-abc',
+        isEmailVerified: false,
       });
 
       // Act
@@ -239,40 +217,31 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      let capturedUserData: any = null;
+      let capturedData: { user: { emailVerificationToken: string } } | null = null;
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
-      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
-        const tx = {
-          user: {
-            create: jest.fn().mockImplementation((data) => {
-              capturedUserData = data;
-              return Promise.resolve({
-                id: 'user-id-123',
-                email: registerDto.email,
-                emailVerificationToken: data.data.emailVerificationToken,
-                isEmailVerified: false,
-              });
-            }),
-          },
-          workspace: {
-            create: jest.fn().mockResolvedValue({ id: 'workspace-id-123' }),
-          },
-          workspaceMember: {
-            create: jest.fn().mockResolvedValue({ id: 'member-id-123' }),
-          },
-        };
-        return callback(tx);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockImplementation((data) => {
+        capturedData = data;
+        return Promise.resolve({
+          id: 'user-id-123',
+          email: registerDto.email,
+          emailVerificationToken: data.user.emailVerificationToken,
+          isEmailVerified: false,
+          emailVerificationSentAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
       });
 
       // Act
       await service.register(registerDto);
 
       // Assert
-      expect(capturedUserData.data.emailVerificationToken).toBeDefined();
-      expect(typeof capturedUserData.data.emailVerificationToken).toBe('string');
+      expect(capturedData).not.toBeNull();
+      expect(capturedData!.user.emailVerificationToken).toBeDefined();
+      expect(typeof capturedData!.user.emailVerificationToken).toBe('string');
       // Token should be 64 hex characters (32 bytes)
-      expect(capturedUserData.data.emailVerificationToken).toMatch(/^[a-f0-9]{64}$/);
+      expect(capturedData!.user.emailVerificationToken).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it('should set emailVerificationSentAt timestamp', async () => {
@@ -283,40 +252,31 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      let capturedUserData: any = null;
+      let capturedData: { user: { emailVerificationSentAt: Date } } | null = null;
       const beforeTest = new Date();
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
-      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
-        const tx = {
-          user: {
-            create: jest.fn().mockImplementation((data) => {
-              capturedUserData = data;
-              return Promise.resolve({
-                id: 'user-id-123',
-                email: registerDto.email,
-                emailVerificationToken: data.data.emailVerificationToken,
-                isEmailVerified: false,
-              });
-            }),
-          },
-          workspace: {
-            create: jest.fn().mockResolvedValue({ id: 'workspace-id-123' }),
-          },
-          workspaceMember: {
-            create: jest.fn().mockResolvedValue({ id: 'member-id-123' }),
-          },
-        };
-        return callback(tx);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockImplementation((data) => {
+        capturedData = data;
+        return Promise.resolve({
+          id: 'user-id-123',
+          email: registerDto.email,
+          emailVerificationToken: data.user.emailVerificationToken,
+          emailVerificationSentAt: data.user.emailVerificationSentAt,
+          isEmailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
       });
 
       // Act
       await service.register(registerDto);
 
       // Assert
-      expect(capturedUserData.data.emailVerificationSentAt).toBeDefined();
-      expect(capturedUserData.data.emailVerificationSentAt instanceof Date).toBe(true);
-      expect(capturedUserData.data.emailVerificationSentAt.getTime()).toBeGreaterThanOrEqual(beforeTest.getTime());
+      expect(capturedData).not.toBeNull();
+      expect(capturedData!.user.emailVerificationSentAt).toBeDefined();
+      expect(capturedData!.user.emailVerificationSentAt instanceof Date).toBe(true);
+      expect(capturedData!.user.emailVerificationSentAt.getTime()).toBeGreaterThanOrEqual(beforeTest.getTime());
     });
 
     it('should return generic message for existing verified user (user enumeration prevention)', async () => {
@@ -328,7 +288,7 @@ describe('AuthService', () => {
         name: 'Test User',
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue({
         id: 'existing-user-id',
         email: registerDto.email,
         passwordHash: 'hash',
@@ -348,7 +308,7 @@ describe('AuthService', () => {
       });
       expect(result).not.toHaveProperty('accessToken');
       expect(result).not.toHaveProperty('refreshToken');
-      expect(prismaStub.$transaction).not.toHaveBeenCalled();
+      expect(userRepositoryStub.createWithWorkspace).not.toHaveBeenCalled();
     });
 
     it('should create workspace member with OWNER role and all permissions', async () => {
@@ -359,47 +319,91 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      let capturedMemberData: any = null;
+      let capturedData: { ownerPermissions: string[]; workspace: { name: string }; user: { email: string; isEmailVerified: boolean } } | null = null;
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
-      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
-        const tx = {
-          user: {
-            create: jest.fn().mockResolvedValue({
-              id: 'user-id-123',
-              email: registerDto.email,
-              emailVerificationToken: 'token-123',
-              isEmailVerified: false,
-            }),
-          },
-          workspace: {
-            create: jest.fn().mockResolvedValue({
-              id: 'workspace-id-123',
-              name: registerDto.workspaceName,
-            }),
-          },
-          workspaceMember: {
-            create: jest.fn().mockImplementation((data) => {
-              capturedMemberData = data;
-              return Promise.resolve({
-                id: 'member-id-123',
-                ...data.data,
-              });
-            }),
-          },
-        };
-        return callback(tx);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockImplementation((data) => {
+        capturedData = data;
+        return Promise.resolve({
+          id: 'user-id-123',
+          email: registerDto.email,
+          emailVerificationToken: 'token-123',
+          isEmailVerified: false,
+          emailVerificationSentAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
       });
 
       // Act
       await service.register(registerDto);
 
       // Assert
-      expect(capturedMemberData).toBeDefined();
-      expect(capturedMemberData.data.role).toBe('OWNER');
-      expect(capturedMemberData.data.permissions).toEqual(ownerPermissions);
-      expect(capturedMemberData.data.userId).toBe('user-id-123');
-      expect(capturedMemberData.data.workspaceId).toBe('workspace-id-123');
+      expect(capturedData).toBeDefined();
+      expect(capturedData).not.toBeNull();
+      expect(capturedData!.ownerPermissions).toEqual(ownerPermissions);
+      expect(capturedData!.workspace.name).toBe(registerDto.workspaceName);
+      expect(capturedData!.user.email).toBe(registerDto.email);
+      expect(capturedData!.user.isEmailVerified).toBe(false);
+    });
+
+    it('should reject weak password during registration', async () => {
+      // Arrange
+      const weakPasswords = [
+        '123',                           // Too short
+        'password123',                   // No uppercase, no special char
+        'PASSWORD123!',                  // No lowercase
+        'Password!',                     // No number
+        'Password123',                   // No special char
+        'aB1!',                          // Too short
+      ];
+
+      // Act & Assert
+      for (const weakPassword of weakPasswords) {
+        const registerDto = {
+          email: 'test@example.com',
+          password: weakPassword,
+          workspaceName: 'My Knowledge Base',
+          name: 'Test User',
+        };
+
+        await expect(service.register(registerDto)).rejects.toThrow(BadRequestException);
+        await expect(service.register(registerDto)).rejects.toThrow('Password does not meet security requirements');
+      }
+    });
+
+    it('should accept strong password that meets all requirements', async () => {
+      // Arrange
+      const registerDto = {
+        email: 'test@example.com',
+        password: 'MySecurePass123!',
+        workspaceName: 'My Knowledge Base',
+        name: 'Test User',
+      };
+
+      const createdUser = {
+        id: 'user-id-123',
+        email: registerDto.email,
+        name: registerDto.name,
+        passwordHash: 'hashed-password',
+        isEmailVerified: false,
+        emailVerificationToken: 'verification-token-123',
+        emailVerificationSentAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
+
+      // Act
+      const result = await service.register(registerDto);
+
+      // Assert
+      expect(result.userId).toBe(createdUser.id);
+      expect(result.message).toBe('Registration successful. Please check your email.');
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
     });
   });
 
@@ -412,7 +416,7 @@ describe('AuthService', () => {
       };
 
       const hashedPassword = await bcrypt.hash(loginDto.password, 10);
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue({
         id: 'user-id-123',
         email: loginDto.email,
         name: 'Test User',
@@ -443,7 +447,7 @@ describe('AuthService', () => {
       };
 
       const hashedPassword = await bcrypt.hash('correctpassword', 10);
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue({
         id: 'user-id-123',
         email: loginDto.email,
         name: 'Test User',
@@ -469,7 +473,7 @@ describe('AuthService', () => {
         password: 'password123',
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
 
       // Act & Assert
       await expect(service.login(loginDto)).rejects.toThrow(
@@ -489,7 +493,7 @@ describe('AuthService', () => {
       };
 
       const hashedPassword = await bcrypt.hash(loginDto.password, 10);
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue({
         id: 'user-id-123',
         email: loginDto.email,
         name: null,
@@ -511,7 +515,7 @@ describe('AuthService', () => {
     it('should return user data for valid userId', async () => {
       // Arrange
       const userId = 'user-id-123';
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue({
+      userRepositoryStub.findById = jest.fn().mockResolvedValue({
         id: userId,
         email: 'test@example.com',
         name: 'Test User',
@@ -529,15 +533,13 @@ describe('AuthService', () => {
         email: 'test@example.com',
         name: 'Test User',
       });
-      expect(prismaStub.user!.findUnique).toHaveBeenCalledWith({
-        where: { id: userId },
-      });
+      expect(userRepositoryStub.findById).toHaveBeenCalledWith(userId);
     });
 
     it('should throw UnauthorizedException for non-existent user', async () => {
       // Arrange
       const userId = 'non-existent-user-id';
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
 
       // Act & Assert
       await expect(service.validateUser(userId)).rejects.toThrow(
@@ -551,7 +553,7 @@ describe('AuthService', () => {
     it('should not include passwordHash in response', async () => {
       // Arrange
       const userId = 'user-id-123';
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue({
+      userRepositoryStub.findById = jest.fn().mockResolvedValue({
         id: userId,
         email: 'test@example.com',
         name: 'Test User',
@@ -572,7 +574,7 @@ describe('AuthService', () => {
   describe('verifyEmail', () => {
     it('should verify email with valid token', async () => {
       // Arrange
-      const token = 'valid-token-123';
+      const token = 'a'.repeat(64); // Valid 64-character hex token
       const user = {
         id: 'user-id-123',
         email: 'test@example.com',
@@ -581,8 +583,8 @@ describe('AuthService', () => {
         isEmailVerified: false,
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
-      prismaStub.user!.update = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByVerificationToken = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.update = jest.fn().mockResolvedValue({
         ...user,
         isEmailVerified: true,
         emailVerifiedAt: new Date(),
@@ -594,15 +596,13 @@ describe('AuthService', () => {
 
       // Assert
       expect(result).toEqual({ message: 'Email verified successfully' });
-      expect(prismaStub.user!.findUnique).toHaveBeenCalledWith({
-        where: { emailVerificationToken: token },
-      });
+      expect(userRepositoryStub.findByVerificationToken).toHaveBeenCalledWith(token);
     });
 
     it('should throw NotFoundException for invalid token', async () => {
       // Arrange
       const token = 'invalid-token';
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.findByVerificationToken = jest.fn().mockResolvedValue(null);
 
       // Act & Assert
       await expect(service.verifyEmail(token)).rejects.toThrow(NotFoundException);
@@ -611,7 +611,7 @@ describe('AuthService', () => {
 
     it('should throw BadRequestException for expired token', async () => {
       // Arrange
-      const token = 'expired-token';
+      const token = 'b'.repeat(64); // Valid 64-character hex token
       const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
       const user = {
         id: 'user-id-123',
@@ -621,7 +621,7 @@ describe('AuthService', () => {
         isEmailVerified: false,
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.findByVerificationToken = jest.fn().mockResolvedValue(user);
 
       // Act & Assert
       await expect(service.verifyEmail(token)).rejects.toThrow(BadRequestException);
@@ -630,7 +630,7 @@ describe('AuthService', () => {
 
     it('should clear verification token after verification', async () => {
       // Arrange
-      const token = 'valid-token-123';
+      const token = 'c'.repeat(64); // Valid 64-character hex token
       const user = {
         id: 'user-id-123',
         email: 'test@example.com',
@@ -639,8 +639,8 @@ describe('AuthService', () => {
         isEmailVerified: false,
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
-      prismaStub.user!.update = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByVerificationToken = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.update = jest.fn().mockResolvedValue({
         ...user,
         isEmailVerified: true,
         emailVerifiedAt: new Date(),
@@ -651,19 +651,16 @@ describe('AuthService', () => {
       await service.verifyEmail(token);
 
       // Assert
-      expect(prismaStub.user!.update).toHaveBeenCalledWith({
-        where: { id: user.id },
-        data: {
-          isEmailVerified: true,
-          emailVerifiedAt: expect.any(Date),
-          emailVerificationToken: null,
-        },
+      expect(userRepositoryStub.update).toHaveBeenCalledWith(user.id, {
+        isEmailVerified: true,
+        emailVerifiedAt: expect.any(Date),
+        emailVerificationToken: null,
       });
     });
 
     it('should set emailVerifiedAt timestamp', async () => {
       // Arrange
-      const token = 'valid-token-123';
+      const token = 'd'.repeat(64); // Valid 64-character hex token
       const beforeTest = new Date();
       const user = {
         id: 'user-id-123',
@@ -673,14 +670,14 @@ describe('AuthService', () => {
         isEmailVerified: false,
       };
 
-      let capturedUpdateData: any = null;
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
-      prismaStub.user!.update = jest.fn().mockImplementation((args) => {
-        capturedUpdateData = args;
+      let capturedUpdateData: { emailVerifiedAt: Date; emailVerificationToken: null } | null = null;
+      userRepositoryStub.findByVerificationToken = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.update = jest.fn().mockImplementation((_id, data) => {
+        capturedUpdateData = data;
         return Promise.resolve({
           ...user,
           isEmailVerified: true,
-          emailVerifiedAt: args.data.emailVerifiedAt,
+          emailVerifiedAt: data.emailVerifiedAt,
           emailVerificationToken: null,
         });
       });
@@ -689,9 +686,10 @@ describe('AuthService', () => {
       await service.verifyEmail(token);
 
       // Assert
-      expect(capturedUpdateData.data.emailVerifiedAt).toBeDefined();
-      expect(capturedUpdateData.data.emailVerifiedAt instanceof Date).toBe(true);
-      expect(capturedUpdateData.data.emailVerifiedAt.getTime()).toBeGreaterThanOrEqual(
+      expect(capturedUpdateData).not.toBeNull();
+      expect(capturedUpdateData!.emailVerifiedAt).toBeDefined();
+      expect(capturedUpdateData!.emailVerifiedAt instanceof Date).toBe(true);
+      expect(capturedUpdateData!.emailVerifiedAt.getTime()).toBeGreaterThanOrEqual(
         beforeTest.getTime(),
       );
     });
@@ -708,8 +706,8 @@ describe('AuthService', () => {
         emailVerificationSentAt: new Date(Date.now() - 120 * 1000), // 2 minutes ago
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
-      prismaStub.user!.update = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.update = jest.fn().mockResolvedValue({
         ...user,
         emailVerificationToken: 'new-token',
         emailVerificationSentAt: new Date(),
@@ -726,7 +724,7 @@ describe('AuthService', () => {
     it('should return generic message for non-existent email (security)', async () => {
       // Arrange
       const email = 'nonexistent@example.com';
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
 
       // Act
       const result = await service.resendVerification(email);
@@ -747,7 +745,7 @@ describe('AuthService', () => {
         isEmailVerified: true,
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
 
       // Act & Assert
       await expect(service.resendVerification(email)).rejects.toThrow(BadRequestException);
@@ -764,7 +762,7 @@ describe('AuthService', () => {
         emailVerificationSentAt: new Date(Date.now() - 30 * 1000), // 30 seconds ago (within 60s cooldown)
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
 
       // Act & Assert
       await expect(service.resendVerification(email)).rejects.toThrow(HttpException);
@@ -776,6 +774,32 @@ describe('AuthService', () => {
       }
     });
 
+    it('should not resend verification within 60s cooldown', async () => {
+      // Arrange - existing unverified user, email sent 45 seconds ago (within cooldown)
+      const email = 'unverified@example.com';
+      const user = {
+        id: 'user-id-123',
+        email,
+        isEmailVerified: false,
+        emailVerificationSentAt: new Date(Date.now() - 45 * 1000), // 45 seconds ago (< 60s)
+        emailVerificationToken: 'a'.repeat(64), // Valid 64-character hex token
+      };
+
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
+
+      // Act & Assert
+      await expect(service.resendVerification(email)).rejects.toThrow(HttpException);
+      try {
+        await service.resendVerification(email);
+      } catch (error) {
+        expect(error).toBeInstanceOf(HttpException);
+        expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+        // Verify that no update was attempted
+        expect(userRepositoryStub.update).not.toHaveBeenCalled();
+        expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+      }
+    });
+
     it('should generate new token on resend', async () => {
       // Arrange
       const email = 'test@example.com';
@@ -783,18 +807,19 @@ describe('AuthService', () => {
         id: 'user-id-123',
         email,
         isEmailVerified: false,
-        emailVerificationToken: 'old-token',
+        emailVerificationToken: 'e'.repeat(64), // Valid 64-character hex token
         emailVerificationSentAt: new Date(Date.now() - 120 * 1000), // 2 minutes ago
+        createdAt: new Date(),
       };
 
-      let capturedUpdateData: any = null;
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
-      prismaStub.user!.update = jest.fn().mockImplementation((args) => {
-        capturedUpdateData = args;
+      let capturedUpdateData: { emailVerificationToken: string; emailVerificationSentAt: Date } | null = null;
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.update = jest.fn().mockImplementation((_id, data) => {
+        capturedUpdateData = data;
         return Promise.resolve({
           ...user,
-          emailVerificationToken: args.data.emailVerificationToken,
-          emailVerificationSentAt: args.data.emailVerificationSentAt,
+          emailVerificationToken: data.emailVerificationToken,
+          emailVerificationSentAt: data.emailVerificationSentAt,
         });
       });
 
@@ -802,12 +827,13 @@ describe('AuthService', () => {
       await service.resendVerification(email);
 
       // Assert
-      expect(capturedUpdateData.data.emailVerificationToken).toBeDefined();
-      expect(capturedUpdateData.data.emailVerificationToken).not.toBe('old-token');
+      expect(capturedUpdateData).not.toBeNull();
+      expect(capturedUpdateData!.emailVerificationToken).toBeDefined();
+      expect(capturedUpdateData!.emailVerificationToken).not.toBe('old-token');
       // Token should be 64 hex characters (32 bytes)
-      expect(capturedUpdateData.data.emailVerificationToken).toMatch(/^[a-f0-9]{64}$/);
-      expect(capturedUpdateData.data.emailVerificationSentAt).toBeDefined();
-      expect(capturedUpdateData.data.emailVerificationSentAt instanceof Date).toBe(true);
+      expect(capturedUpdateData!.emailVerificationToken).toMatch(/^[a-f0-9]{64}$/);
+      expect(capturedUpdateData!.emailVerificationSentAt).toBeDefined();
+      expect(capturedUpdateData!.emailVerificationSentAt instanceof Date).toBe(true);
     });
   });
 
@@ -831,7 +857,7 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(existingUser);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(existingUser);
 
       // Act
       const result = await service.register(registerDto);
@@ -852,15 +878,15 @@ describe('AuthService', () => {
         id: 'existing-user-id',
         email: registerDto.email,
         isEmailVerified: false,
-        emailVerificationToken: 'old-token',
+        emailVerificationToken: 'f'.repeat(64), // Valid 64-character hex token
         emailVerificationSentAt: new Date(Date.now() - 120000), // 2 min ago (>60s cooldown)
         passwordHash: 'hashed-password',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(existingUser);
-      prismaStub.user!.update = jest.fn().mockResolvedValue({
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(existingUser);
+      userRepositoryStub.update = jest.fn().mockResolvedValue({
         ...existingUser,
         emailVerificationToken: 'new-token',
         emailVerificationSentAt: new Date(),
@@ -876,7 +902,7 @@ describe('AuthService', () => {
       });
       expect(result).not.toHaveProperty('accessToken');
       expect(result).not.toHaveProperty('refreshToken');
-      expect(prismaStub.user!.update).toHaveBeenCalled();
+      expect(userRepositoryStub.update).toHaveBeenCalled();
       expect(emailServiceStub.sendEmailVerification).toHaveBeenCalledWith(
         existingUser.email,
         expect.any(String),
@@ -898,28 +924,8 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(null);
-      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
-        const tx = {
-          user: { create: jest.fn().mockResolvedValue(createdUser) },
-          workspace: {
-            create: jest.fn().mockResolvedValue({
-              id: 'workspace-id',
-              name: registerDto.workspaceName,
-              createdById: createdUser.id,
-            }),
-          },
-          workspaceMember: {
-            create: jest.fn().mockResolvedValue({
-              id: 'member-id',
-              workspaceId: 'workspace-id',
-              userId: createdUser.id,
-              role: 'OWNER',
-            }),
-          },
-        };
-        return callback(tx);
-      });
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
 
       // Act
       const result = await service.register(registerDto);
@@ -955,7 +961,7 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
 
       // Act
       const result = await service.login(loginDto);
@@ -979,7 +985,7 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
 
       // Act & Assert
       await expect(service.login(loginDto)).rejects.toThrow(
@@ -1000,7 +1006,7 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       };
 
-      prismaStub.user!.findUnique = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(user);
 
       // Act & Assert
       await expect(service.login(loginDto)).rejects.toThrow(
