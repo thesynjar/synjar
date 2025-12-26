@@ -37,6 +37,40 @@ import * as bcrypt from 'bcrypt';
  * - Better IDE performance
  *
  * See specification 2025-12-26-review-findings.md#M5 for details.
+ *
+ * ---
+ *
+ * TODO: Migrate tests to behavior-driven approach (M3 - Technical Debt)
+ *
+ * Current approach: Mock verification (`toHaveBeenCalledWith`)
+ * - Tests implementation (which methods were called)
+ * - Brittle (breaks when refactoring internal implementation)
+ *
+ * Better approach: State verification with InMemoryUserRepository
+ * - Tests behavior (what is the end state)
+ * - Resilient to refactoring (only breaks when behavior changes)
+ *
+ * Infrastructure ready: See InMemoryUserRepository at:
+ * - infrastructure/persistence/repositories/in-memory-user.repository.ts
+ *
+ * Example pattern:
+ * ```typescript
+ * // CURRENT (mock verification):
+ * expect(userRepositoryStub.create).toHaveBeenCalledWith(expect.objectContaining({...}));
+ *
+ * // BETTER (state verification):
+ * const user = await inMemoryRepo.findByEmail('new@test.com');
+ * expect(user).toBeDefined();
+ * expect(user!.isEmailVerified).toBe(false);
+ * ```
+ *
+ * Migration plan (2-3h technical debt):
+ * 1. Replace userRepositoryStub with InMemoryUserRepository instance
+ * 2. Remove .toHaveBeenCalledWith() verifications
+ * 3. Add state assertions (findByEmail, findById to verify end state)
+ * 4. Keep tests passing throughout migration
+ *
+ * See specification 2025-12-26-review-findings.md#M3 for details.
  */
 
 describe('AuthService', () => {

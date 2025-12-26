@@ -1,3 +1,5 @@
+import { DomainEvent } from './domain-event.interface';
+
 /**
  * UserRegisteredEvent - Domain Event
  *
@@ -7,7 +9,7 @@
  * @see docs/specifications/2025-12-26-review-findings.md Section C4
  */
 
-export class UserRegisteredEvent {
+export class UserRegisteredEvent implements DomainEvent {
   constructor(
     public readonly userId: string,
     public readonly email: string,

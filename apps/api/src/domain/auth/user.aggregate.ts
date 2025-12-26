@@ -14,6 +14,10 @@
 
 import { Email } from './value-objects/email.value-object';
 import { VerificationToken } from './value-objects/verification-token.value-object';
+import { DomainEvent } from './events/domain-event.interface';
+import { UserRegisteredEvent } from './events/user-registered.event';
+import { EmailVerifiedEvent } from './events/email-verified.event';
+import { EmailVerificationResentEvent } from './events/email-verification-resent.event';
 
 // Module-level constants for timing
 const GRACE_PERIOD_MINUTES = 15;
@@ -23,6 +27,8 @@ const RESEND_COOLDOWN_SECONDS = 60;
 const RESEND_COOLDOWN_MS = RESEND_COOLDOWN_SECONDS * 1000;
 
 export class UserAggregate {
+  private domainEvents: DomainEvent[] = [];
+
   private constructor(
     private readonly id: string,
     private readonly email: Email,
@@ -36,6 +42,8 @@ export class UserAggregate {
   /**
    * Factory method to create a new User aggregate
    * Used when registering a new user
+   *
+   * Emits: UserRegisteredEvent
    */
   static create(
     id: string,
@@ -45,7 +53,7 @@ export class UserAggregate {
     const emailVO = Email.create(email);
     const token = VerificationToken.create();
 
-    return new UserAggregate(
+    const user = new UserAggregate(
       id,
       emailVO,
       passwordHash,
@@ -54,6 +62,13 @@ export class UserAggregate {
       new Date(),
       new Date(),
     );
+
+    // Emit domain event
+    user.addDomainEvent(
+      new UserRegisteredEvent(id, emailVO.getValue(), token.getValue()),
+    );
+
+    return user;
   }
 
   /**
@@ -126,6 +141,8 @@ export class UserAggregate {
    * Generates new verification token and updates sent timestamp.
    * Enforces cooldown period (throws if within cooldown).
    *
+   * Emits: EmailVerificationResentEvent
+   *
    * @returns New VerificationToken
    * @throws Error if cooldown not elapsed or email already verified
    */
@@ -137,6 +154,16 @@ export class UserAggregate {
 
     this.verificationToken = VerificationToken.create();
     this.verificationSentAt = new Date();
+
+    // Emit domain event
+    this.addDomainEvent(
+      new EmailVerificationResentEvent(
+        this.id,
+        this.email.getValue(),
+        this.verificationToken.getValue(),
+      ),
+    );
+
     return this.verificationToken;
   }
 
@@ -144,6 +171,8 @@ export class UserAggregate {
    * Command: Verify user's email address
    *
    * Marks email as verified and clears verification token.
+   *
+   * Emits: EmailVerifiedEvent
    *
    * @throws Error if email is already verified
    */
@@ -153,6 +182,9 @@ export class UserAggregate {
     }
     this.isEmailVerified = true;
     this.verificationToken = null;
+
+    // Emit domain event
+    this.addDomainEvent(new EmailVerifiedEvent(this.id, this.email.getValue()));
   }
 
   // Getters for accessing aggregate state
@@ -182,5 +214,30 @@ export class UserAggregate {
 
   getCreatedAt(): Date {
     return this.createdAt;
+  }
+
+  // Domain Events Management
+  /**
+   * Get all uncommitted domain events
+   * Should be called by repository after saving aggregate
+   */
+  getDomainEvents(): DomainEvent[] {
+    return [...this.domainEvents];
+  }
+
+  /**
+   * Clear all domain events
+   * Should be called by repository after publishing events
+   */
+  clearEvents(): void {
+    this.domainEvents = [];
+  }
+
+  /**
+   * Add a domain event to the aggregate
+   * Private helper for internal use
+   */
+  private addDomainEvent(event: DomainEvent): void {
+    this.domainEvents.push(event);
   }
 }
