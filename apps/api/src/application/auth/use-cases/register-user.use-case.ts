@@ -1,16 +1,18 @@
-import { Injectable, BadRequestException, ForbiddenException, Inject } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import {
   IUserRepository,
   USER_REPOSITORY,
 } from '@/domain/auth/repositories/user.repository.interface';
-import { EmailService } from '@/application/email/email.service';
+import { EmailQueueService } from '@/application/email/email-queue.service';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import { PasswordValidator } from '@/domain/auth/validators/password.validator';
 import { UserAggregate } from '@/domain/auth/user.aggregate';
 import { DeploymentConfig } from '@/infrastructure/config/deployment.config';
+import { AuthConstants } from '@/infrastructure/config/constants';
+import { TokenService } from '../services/token.service';
+import { RegistrationDisabledException, WeakPasswordException } from '../exceptions';
 import type { RegisterDto, RegisterResult } from '../auth.service';
 
 const OWNER_PERMISSIONS = [
@@ -27,9 +29,9 @@ const OWNER_PERMISSIONS = [
 export class RegisterUserUseCase {
   constructor(
     @Inject(USER_REPOSITORY) private readonly userRepository: IUserRepository,
-    private readonly emailService: EmailService,
+    private readonly emailQueueService: EmailQueueService,
     private readonly configService: ConfigService,
-    private readonly jwtService: JwtService,
+    private readonly tokenService: TokenService,
   ) {}
 
   async execute(dto: RegisterDto): Promise<RegisterResult> {
@@ -85,7 +87,9 @@ export class RegisterUserUseCase {
       'http://localhost:5173/auth/verify',
     );
     const verificationUrl = `${baseUrl}?token=${newToken.getValue()}`;
-    await this.emailService.sendEmailVerification(
+
+    // Queue email in background (non-blocking) - prevents timing attacks
+    this.emailQueueService.queueEmailVerification(
       existing.email,
       newToken.getValue(),
       verificationUrl,
@@ -101,10 +105,7 @@ export class RegisterUserUseCase {
     // Password validation (required for both modes)
     const passwordValidation = PasswordValidator.validate(dto.password);
     if (!passwordValidation.valid) {
-      throw new BadRequestException({
-        message: 'Password does not meet security requirements',
-        errors: passwordValidation.errors,
-      });
+      throw new WeakPasswordException(passwordValidation.errors);
     }
 
     // Check deployment mode
@@ -122,17 +123,15 @@ export class RegisterUserUseCase {
     if (workspaceCount > 0) {
       // Case 5: Second+ user → 403 Forbidden
       const adminEmail = this.configService.get<string>('ADMIN_EMAIL');
+      const adminContact = adminEmail
+        ? this.obfuscateEmail(adminEmail)
+        : undefined;
 
-      throw new ForbiddenException({
-        error: 'REGISTRATION_DISABLED',
-        message: 'Public registration is disabled on this instance.',
-        hint: 'Please contact the administrator to request access.',
-        ...(adminEmail && { adminContact: adminEmail }),
-      });
+      throw new RegistrationDisabledException(adminContact);
     }
 
     // Case 4: First user → instant admin (verified, auto-login)
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, AuthConstants.BCRYPT_COST_FACTOR);
 
     const user = await this.userRepository.createWithWorkspace({
       user: {
@@ -150,7 +149,7 @@ export class RegisterUserUseCase {
     });
 
     // Generate tokens for auto-login
-    const tokens = this.generateTokens(user.id, user.email);
+    const tokens = this.tokenService.generateTokens(user.id, user.email);
 
     return {
       message: 'Registration successful. You can log in now.',
@@ -162,7 +161,7 @@ export class RegisterUserUseCase {
 
   private async handleCloudRegistration(dto: RegisterDto): Promise<RegisterResult> {
     // Case 3: Cloud mode → NEW user with email verification
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, AuthConstants.BCRYPT_COST_FACTOR);
     const emailVerificationToken = this.generateVerificationToken();
     const emailVerificationSentAt = new Date();
 
@@ -181,20 +180,20 @@ export class RegisterUserUseCase {
       ownerPermissions: OWNER_PERMISSIONS,
     });
 
-    // Send verification email (after transaction commits)
+    // Queue verification email in background (non-blocking) - prevents timing attacks
     const baseUrl = this.configService.get(
       'EMAIL_VERIFICATION_URL',
       'http://localhost:5173/auth/verify',
     );
     const verificationUrl = `${baseUrl}?token=${user.emailVerificationToken}`;
-    await this.emailService.sendEmailVerification(
+    this.emailQueueService.queueEmailVerification(
       user.email,
       user.emailVerificationToken!,
       verificationUrl,
     );
 
     // Generate tokens for auto-login (Case 3 only!)
-    const tokens = this.generateTokens(user.id, user.email);
+    const tokens = this.tokenService.generateTokens(user.id, user.email);
 
     return {
       message: 'Registration successful. Please check your email.',
@@ -209,9 +208,8 @@ export class RegisterUserUseCase {
     result: RegisterResult,
   ): Promise<RegisterResult> {
     const elapsed = Date.now() - startTime;
-    const MIN_RESPONSE_TIME_MS = 150;
-    if (elapsed < MIN_RESPONSE_TIME_MS) {
-      await new Promise(resolve => setTimeout(resolve, MIN_RESPONSE_TIME_MS - elapsed));
+    if (elapsed < AuthConstants.MIN_RESPONSE_TIME_MS) {
+      await new Promise(resolve => setTimeout(resolve, AuthConstants.MIN_RESPONSE_TIME_MS - elapsed));
     }
     return result;
   }
@@ -220,18 +218,11 @@ export class RegisterUserUseCase {
     return crypto.randomBytes(32).toString('hex');
   }
 
-  private generateTokens(userId: string, email: string): { accessToken: string; refreshToken: string } {
-    const payload = { sub: userId, email };
-
-    const accessToken = this.jwtService.sign(payload, {
-      expiresIn: '15m',
-    });
-
-    const refreshToken = this.jwtService.sign(
-      { sub: userId, type: 'refresh' },
-      { expiresIn: '7d' },
-    );
-
-    return { accessToken, refreshToken };
+  private obfuscateEmail(email: string): string {
+    const [local, domain] = email.split('@');
+    const localObfuscated = local.slice(0, 2) + '***';
+    const domainParts = domain.split('.');
+    const domainObfuscated = domainParts[0].slice(0, 2) + '***.' + domainParts.slice(1).join('.');
+    return `${localObfuscated}@${domainObfuscated}`;
   }
 }

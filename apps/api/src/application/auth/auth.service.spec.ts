@@ -11,13 +11,16 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { EmailService } from '../email/email.service';
+import { EmailQueueService } from '../email/email-queue.service';
 import { USER_REPOSITORY } from '@/domain/auth/repositories/user.repository.interface';
 import {
   RegisterUserUseCase,
   LoginUserUseCase,
   VerifyEmailUseCase,
   ResendVerificationUseCase,
+  AcceptInviteUseCase,
 } from './use-cases';
+import { TokenService } from './services/token.service';
 import * as bcrypt from 'bcrypt';
 import { DeploymentConfig } from '@/infrastructure/config/deployment.config';
 
@@ -79,6 +82,7 @@ describe('AuthService', () => {
   let prismaStub: Partial<PrismaService>;
   let jwtStub: Partial<JwtService>;
   let emailServiceStub: Partial<EmailService>;
+  let emailQueueServiceStub: { queueEmailVerification: jest.Mock; queueWorkspaceInvitation: jest.Mock };
   let configServiceStub: Partial<ConfigService>;
   let userRepositoryStub: { [key: string]: jest.Mock };
 
@@ -90,6 +94,10 @@ describe('AuthService', () => {
         create: jest.fn(),
         update: jest.fn(),
       } as unknown as PrismaService['user'],
+      invitation: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      } as unknown as PrismaService['invitation'],
       $transaction: jest.fn(),
     };
 
@@ -100,6 +108,11 @@ describe('AuthService', () => {
 
     emailServiceStub = {
       sendEmailVerification: jest.fn().mockResolvedValue(undefined),
+    };
+
+    emailQueueServiceStub = {
+      queueEmailVerification: jest.fn(),
+      queueWorkspaceInvitation: jest.fn(),
     };
 
     configServiceStub = {
@@ -131,9 +144,12 @@ describe('AuthService', () => {
         LoginUserUseCase,
         VerifyEmailUseCase,
         ResendVerificationUseCase,
+        AcceptInviteUseCase,
+        TokenService,
         { provide: PrismaService, useValue: prismaStub },
         { provide: JwtService, useValue: jwtStub },
         { provide: EmailService, useValue: emailServiceStub },
+        { provide: EmailQueueService, useValue: emailQueueServiceStub },
         { provide: ConfigService, useValue: configServiceStub },
         { provide: USER_REPOSITORY, useValue: userRepositoryStub },
       ],
@@ -156,12 +172,14 @@ describe('AuthService', () => {
     beforeEach(() => {
       // Mock cloud deployment mode for these tests
       process.env.DEPLOYMENT_MODE = 'cloud';
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
       (DeploymentConfig as any).resetCache();
     });
 
     afterEach(() => {
       // Reset deployment mode for other tests
       delete process.env.DEPLOYMENT_MODE;
+      delete process.env.STRIPE_SECRET_KEY;
       (DeploymentConfig as any).resetCache();
     });
 
@@ -250,7 +268,7 @@ describe('AuthService', () => {
       await service.register(registerDto);
 
       // Assert
-      expect(emailServiceStub.sendEmailVerification).toHaveBeenCalledWith(
+      expect(emailQueueServiceStub.queueEmailVerification).toHaveBeenCalledWith(
         registerDto.email,
         'verification-token-abc',
         'http://localhost:5173/auth/verify?token=verification-token-abc',
@@ -676,7 +694,7 @@ describe('AuthService', () => {
       await expect(service.verifyEmail(token)).rejects.toThrow('Verification token has expired');
     });
 
-    it('should clear verification token after verification', async () => {
+    it('should keep verification token after verification (for idempotency)', async () => {
       // Arrange
       const token = 'c'.repeat(64); // Valid 64-character hex token
       const user = {
@@ -692,18 +710,39 @@ describe('AuthService', () => {
         ...user,
         isEmailVerified: true,
         emailVerifiedAt: new Date(),
-        emailVerificationToken: null,
       });
 
       // Act
       await service.verifyEmail(token);
 
-      // Assert
+      // Assert - Token is kept to enable idempotent retries (React Strict Mode, etc.)
       expect(userRepositoryStub.update).toHaveBeenCalledWith(user.id, {
         isEmailVerified: true,
         emailVerifiedAt: expect.any(Date),
-        emailVerificationToken: null,
+        // emailVerificationToken NOT cleared - will expire after 24h TTL
       });
+    });
+
+    it('should be idempotent - allow re-verification of already verified email', async () => {
+      // Arrange - Simulates React Strict Mode double-request or accidental retry
+      const token = 'e'.repeat(64);
+      const user = {
+        id: 'user-id-123',
+        email: 'test@example.com',
+        emailVerificationToken: token,
+        emailVerificationSentAt: new Date(),
+        isEmailVerified: true, // Already verified!
+      };
+
+      userRepositoryStub.findByVerificationToken = jest.fn().mockResolvedValue(user);
+      userRepositoryStub.update = jest.fn();
+
+      // Act
+      const result = await service.verifyEmail(token);
+
+      // Assert
+      expect(result).toEqual({ message: 'Email verified successfully' });
+      expect(userRepositoryStub.update).not.toHaveBeenCalled(); // No update needed
     });
 
     it('should set emailVerifiedAt timestamp', async () => {
@@ -766,7 +805,7 @@ describe('AuthService', () => {
 
       // Assert
       expect(result).toEqual({ message: 'Verification email sent' });
-      expect(emailServiceStub.sendEmailVerification).toHaveBeenCalled();
+      expect(emailQueueServiceStub.queueEmailVerification).toHaveBeenCalled();
     });
 
     it('should return generic message for non-existent email (security)', async () => {
@@ -781,7 +820,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         message: 'If the email exists, a verification email will be sent',
       });
-      expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+      expect(emailQueueServiceStub.queueEmailVerification).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException if email already verified', async () => {
@@ -844,7 +883,7 @@ describe('AuthService', () => {
         expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
         // Verify that no update was attempted
         expect(userRepositoryStub.update).not.toHaveBeenCalled();
-        expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+        expect(emailQueueServiceStub.queueEmailVerification).not.toHaveBeenCalled();
       }
     });
 
@@ -897,12 +936,14 @@ describe('AuthService', () => {
     beforeEach(() => {
       // Mock cloud deployment mode
       process.env.DEPLOYMENT_MODE = 'cloud';
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
       (DeploymentConfig as any).resetCache();
     });
 
     afterEach(() => {
       // Reset deployment mode for other tests
       delete process.env.DEPLOYMENT_MODE;
+      delete process.env.STRIPE_SECRET_KEY;
       (DeploymentConfig as any).resetCache();
     });
 
@@ -929,7 +970,7 @@ describe('AuthService', () => {
       });
       expect(result).not.toHaveProperty('accessToken');
       expect(result).not.toHaveProperty('refreshToken');
-      expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+      expect(emailQueueServiceStub.queueEmailVerification).not.toHaveBeenCalled();
     });
 
     it('should resend verification email for existing unverified user (NO tokens)', async () => {
@@ -963,7 +1004,7 @@ describe('AuthService', () => {
       expect(result).not.toHaveProperty('accessToken');
       expect(result).not.toHaveProperty('refreshToken');
       expect(userRepositoryStub.update).toHaveBeenCalled();
-      expect(emailServiceStub.sendEmailVerification).toHaveBeenCalledWith(
+      expect(emailQueueServiceStub.queueEmailVerification).toHaveBeenCalledWith(
         existingUser.email,
         expect.any(String),
         expect.any(String),
@@ -997,7 +1038,7 @@ describe('AuthService', () => {
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
       });
-      expect(emailServiceStub.sendEmailVerification).toHaveBeenCalled();
+      expect(emailQueueServiceStub.queueEmailVerification).toHaveBeenCalled();
     });
   });
 
@@ -1013,6 +1054,7 @@ describe('AuthService', () => {
     beforeEach(() => {
       // Mock self-hosted deployment mode
       process.env.DEPLOYMENT_MODE = 'self-hosted';
+      delete process.env.STRIPE_SECRET_KEY;
       process.env.ADMIN_EMAIL = 'admin@company.com';
       (DeploymentConfig as any).resetCache();
     });
@@ -1055,7 +1097,7 @@ describe('AuthService', () => {
         }),
       );
       // No verification email sent for self-hosted first user
-      expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+      expect(emailQueueServiceStub.queueEmailVerification).not.toHaveBeenCalled();
     });
 
     it('should reject second user registration with 403 Forbidden (workspace count > 0)', async () => {
@@ -1073,7 +1115,7 @@ describe('AuthService', () => {
 
       // Verify no user was created
       expect(userRepositoryStub.createWithWorkspace).not.toHaveBeenCalled();
-      expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+      expect(emailQueueServiceStub.queueEmailVerification).not.toHaveBeenCalled();
     });
 
     it('should include adminContact in 403 error when ADMIN_EMAIL is set', async () => {
@@ -1096,12 +1138,91 @@ describe('AuthService', () => {
       } catch (error: any) {
         expect(error.status).toBe(403);
         expect(error.response).toMatchObject({
-          error: 'REGISTRATION_DISABLED',
+          errorCode: 'REGISTRATION_DISABLED',
           message: 'Public registration is disabled on this instance.',
           hint: 'Please contact the administrator to request access.',
-          adminContact: 'admin@company.com', // From ADMIN_EMAIL env var
+          adminContact: 'ad***@co***.com', // Obfuscated from admin@company.com
         });
       }
+    });
+
+    it('should obfuscate admin email in 403 response to prevent phishing (M5)', async () => {
+      // Arrange - Test email obfuscation with different email formats
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.countWorkspaces = jest.fn().mockResolvedValue(1);
+
+      // Mock configService to return ADMIN_EMAIL
+      configServiceStub.get = jest.fn().mockImplementation((key: string) => {
+        if (key === 'ADMIN_EMAIL') return 'admin@example.com';
+        if (key === 'EMAIL_VERIFICATION_URL') return 'http://localhost:5173/auth/verify';
+        if (key === 'FRONTEND_URL') return 'http://localhost:5173';
+        return undefined;
+      });
+
+      // Act & Assert
+      try {
+        await service.register(registerDto);
+        fail('Should have thrown ForbiddenException');
+      } catch (error: any) {
+        expect(error.status).toBe(403);
+        // Verify email is obfuscated: admin@example.com → ad***@ex***.com
+        expect(error.response.adminContact).toBe('ad***@ex***.com');
+        // Verify full email is NOT exposed
+        expect(error.response.adminContact).not.toBe('admin@example.com');
+      }
+    });
+
+    it('should have constant response time regardless of user existence (prevent timing attacks)', async () => {
+      // Arrange - Cloud mode
+      process.env.DEPLOYMENT_MODE = 'cloud';
+      (DeploymentConfig as any).resetCache();
+
+      const times: number[] = [];
+      const iterations = 10;
+
+      // Act - Test registration for mix of new and existing users
+      for (let i = 0; i < iterations; i++) {
+        // Alternate between existing and new users
+        if (i % 2 === 0) {
+          // Existing verified user (no email sent)
+          userRepositoryStub.findByEmail = jest.fn().mockResolvedValue({
+            id: 'existing-user',
+            email: 'existing@test.com',
+            isEmailVerified: true,
+          });
+        } else {
+          // New user (email queued in background)
+          userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+          userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue({
+            id: 'new-user',
+            email: 'new@test.com',
+            passwordHash: 'hash',
+            name: 'Test User',
+            isEmailVerified: false,
+            emailVerificationToken: 'token-123',
+            emailVerificationSentAt: new Date(),
+          });
+        }
+
+        const start = Date.now();
+        await service.register({
+          email: i % 2 === 0 ? 'existing@test.com' : 'new@test.com',
+          password: 'ValidPass123!',
+          workspaceName: 'Test Workspace',
+          name: 'Test User',
+        });
+        times.push(Date.now() - start);
+      }
+
+      // Assert - All response times should be within 50ms of each other
+      const min = Math.min(...times);
+      const max = Math.max(...times);
+      const variance = max - min;
+
+      expect(variance).toBeLessThan(50);
+
+      // Also verify minimum response time was enforced (150ms as per implementation)
+      expect(min).toBeGreaterThanOrEqual(145); // Allow 5ms tolerance
     });
 
     afterEach(() => {
@@ -1183,6 +1304,150 @@ describe('AuthService', () => {
       await expect(service.login(loginDto)).rejects.toThrow(
         'Please verify your email before logging in',
       );
+    });
+  });
+
+  // Phase 5: Invitation System Tests (TDD)
+  describe('acceptInvite - Invitation System', () => {
+    const acceptInviteDto = {
+      token: 'invitation-token-123',
+      password: 'ValidPass123!',
+      name: 'Invited User',
+    };
+
+    it('should reject expired invitation token and update status to EXPIRED', async () => {
+      // Arrange - invitation expired 1 second ago
+      const expiredInvitation = {
+        id: 'inv-123',
+        token: acceptInviteDto.token,
+        email: 'invited@test.com',
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
+        workspaceId: 'ws-123',
+        role: 'MEMBER',
+        createdById: 'creator-id',
+        createdAt: new Date(),
+      };
+
+      (prismaStub.invitation!.findUnique as jest.Mock).mockResolvedValue(expiredInvitation);
+      (prismaStub.invitation!.update as jest.Mock).mockResolvedValue({
+        ...expiredInvitation,
+        status: 'EXPIRED',
+      });
+
+      // Act & Assert
+      await expect(service.acceptInvite(acceptInviteDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.acceptInvite(acceptInviteDto)).rejects.toThrow(
+        'This invitation has expired',
+      );
+
+      // Verify invitation status updated to EXPIRED
+      expect(prismaStub.invitation!.update).toHaveBeenCalledWith({
+        where: { id: 'inv-123' },
+        data: { status: 'EXPIRED' },
+      });
+    });
+
+    it('should reject already-used invitation', async () => {
+      // Arrange - invitation already accepted
+      const usedInvitation = {
+        id: 'inv-456',
+        token: acceptInviteDto.token,
+        email: 'invited@test.com',
+        status: 'ACCEPTED', // Already used
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Valid expiry
+        workspaceId: 'ws-123',
+        role: 'MEMBER',
+        createdById: 'creator-id',
+        createdAt: new Date(),
+        acceptedAt: new Date(Date.now() - 60000), // Accepted 1 min ago
+      };
+
+      (prismaStub.invitation!.findUnique as jest.Mock).mockResolvedValue(usedInvitation);
+
+      // Act & Assert
+      await expect(service.acceptInvite(acceptInviteDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.acceptInvite(acceptInviteDto)).rejects.toThrow(
+        'Invitation already used or revoked',
+      );
+    });
+
+    it('should create user, add to workspace, mark invitation as ACCEPTED, and return tokens', async () => {
+      // Arrange - valid invitation
+      const validInvitation = {
+        id: 'inv-789',
+        token: acceptInviteDto.token,
+        email: 'invited@test.com',
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Valid for 7 days
+        workspaceId: 'ws-123',
+        role: 'MEMBER',
+        createdById: 'creator-id',
+        createdAt: new Date(),
+        workspace: {
+          id: 'ws-123',
+          name: 'Test Workspace',
+        },
+      };
+
+      const createdUser = {
+        id: 'new-user-id',
+        email: validInvitation.email,
+        name: acceptInviteDto.name,
+        passwordHash: 'hashed-password',
+        isEmailVerified: true, // Skip verification for invited users
+        emailVerificationToken: null,
+        emailVerificationSentAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      (prismaStub.invitation!.findUnique as jest.Mock).mockResolvedValue(validInvitation);
+
+      // Mock transaction
+      (prismaStub.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        const txStub = {
+          user: {
+            create: jest.fn().mockResolvedValue(createdUser),
+          },
+          workspaceMember: {
+            create: jest.fn().mockResolvedValue({
+              id: 'member-id',
+              userId: createdUser.id,
+              workspaceId: validInvitation.workspaceId,
+              role: validInvitation.role,
+              createdAt: new Date(),
+            }),
+          },
+          invitation: {
+            update: jest.fn().mockResolvedValue({
+              ...validInvitation,
+              status: 'ACCEPTED',
+              acceptedAt: new Date(),
+            }),
+          },
+        };
+        return callback(txStub);
+      });
+
+      // Act
+      const result = await service.acceptInvite(acceptInviteDto);
+
+      // Assert - user created with isEmailVerified=true
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(result.user).toEqual({
+        id: createdUser.id,
+        email: createdUser.email,
+        name: createdUser.name,
+      });
+
+      // Verify transaction executed
+      expect(prismaStub.$transaction).toHaveBeenCalled();
     });
   });
 });

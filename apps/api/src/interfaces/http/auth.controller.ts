@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Res, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Res, HttpCode, HttpStatus, Header } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -12,6 +12,7 @@ import {
   ResendVerificationDto,
   MessageResponseDto,
   RegisterResponseDto,
+  AcceptInviteDto,
 } from '../dto/auth.dto';
 
 @ApiTags('Auth')
@@ -20,6 +21,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Header('Retry-After', '60')
   @Post('register')
   @ApiOperation({ summary: 'Register new user with workspace' })
   @ApiResponse({ status: 201, type: RegisterResponseDto })
@@ -29,6 +31,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Header('Retry-After', '60')
   @Post('login')
   @ApiOperation({ summary: 'Login user' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
@@ -103,6 +106,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 1, ttl: 60000 } })
+  @Header('Retry-After', '60')
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resend verification email' })
@@ -111,5 +115,44 @@ export class AuthController {
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async resendVerification(@Body() dto: ResendVerificationDto): Promise<{ message: string }> {
     return this.authService.resendVerification(dto.email);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Header('Retry-After', '60')
+  @Post('accept-invite')
+  @ApiOperation({ summary: 'Accept workspace invitation' })
+  @ApiResponse({ status: 201, type: AuthResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid or expired invitation' })
+  async acceptInvite(
+    @Body() dto: AcceptInviteDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{
+    message: string;
+    user: { id: string; email: string; name: string | null };
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    const result = await this.authService.acceptInvite(dto);
+
+    res.cookie('access_token', result.accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    res.cookie('refresh_token', result.refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    return {
+      message: 'Invitation accepted successfully',
+      user: result.user,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
   }
 }

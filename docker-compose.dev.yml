@@ -1,0 +1,69 @@
+# Synjar Community - Full Development Environment
+#
+# ONE COMMAND TO START EVERYTHING:
+#   pnpm dev:full
+#
+# This starts:
+# - PostgreSQL + pgvector (port 5432)
+# - Mailpit SMTP server (SMTP: 1025, Web UI: 8025)
+# - Redis (port 6379, for future BullMQ)
+#
+# After containers are up, the dev:full script will:
+# - Run database migrations automatically
+# - Start API (port 6200)
+# - Start Web frontend (port 6210)
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: synjar-dev-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: synjar_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - synjar-dev
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: synjar-dev-mailpit
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      - synjar-dev
+
+  redis:
+    image: redis:7-alpine
+    container_name: synjar-dev-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - synjar-dev
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  synjar-dev:
+    driver: bridge

@@ -7,7 +7,10 @@ import { DomainEvent } from './domain-event.interface';
  * (within system constraints - after cooldown period).
  * Past tense naming convention (DDD best practice).
  *
- * @see docs/specifications/2025-12-26-review-findings.md Section C4, M4
+ * ⚠️ SECURITY WARNING: Contains PII (email) and sensitive tokens.
+ * DO NOT log this event directly. Use toSafeLog() for logging.
+ *
+ * @see docs/specifications/2025-12-26-review-findings.md Section C4, M4, M6
  */
 
 export class EmailVerificationResentEvent implements DomainEvent {
@@ -16,4 +19,16 @@ export class EmailVerificationResentEvent implements DomainEvent {
     public readonly email: string,
     public readonly newVerificationToken: string,
   ) {}
+
+  /**
+   * Returns sanitized event data safe for logging
+   * Removes PII (email) and sensitive tokens
+   */
+  toSafeLog(): object {
+    return {
+      eventType: 'EmailVerificationResent',
+      userId: this.userId,
+      // Email and newVerificationToken intentionally omitted
+    };
+  }
 }

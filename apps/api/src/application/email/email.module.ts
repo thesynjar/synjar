@@ -3,7 +3,9 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
+import { existsSync, readdirSync } from 'fs';
 import { EmailService } from './email.service';
+import { EmailQueueService } from './email-queue.service';
 
 @Module({
   imports: [
@@ -17,6 +19,24 @@ import { EmailService } from './email.service';
         const smtpHost = configService.get('SMTP_HOST', 'localhost');
         const smtpPortConfig = configService.get('SMTP_PORT');
         const smtpPort = smtpPortConfig ? parseInt(smtpPortConfig, 10) : defaultSmtpPort;
+
+        // DEBUG: Log template directory resolution
+        const templateDir = join(__dirname, 'templates');
+        console.log('🔍 [EmailModule] Template directory resolution:');
+        console.log('  __dirname:', __dirname);
+        console.log('  templateDir:', templateDir);
+        console.log('  exists?', existsSync(templateDir));
+        if (existsSync(templateDir)) {
+          console.log('  files:', readdirSync(templateDir));
+        } else {
+          console.log('  ❌ Directory does not exist!');
+          // Check parent directory
+          const parentDir = join(__dirname, '..');
+          console.log('  parent dir:', parentDir, 'exists?', existsSync(parentDir));
+          if (existsSync(parentDir)) {
+            console.log('  parent contents:', readdirSync(parentDir));
+          }
+        }
 
         return {
         transport: {
@@ -35,7 +55,7 @@ import { EmailService } from './email.service';
           from: `"${configService.get('SMTP_FROM_NAME', 'Synjar')}" <${configService.get('SMTP_FROM_EMAIL', 'help@synjar.com')}>`,
         },
         template: {
-          dir: join(__dirname, 'templates'),
+          dir: templateDir,
           adapter: new HandlebarsAdapter(),
           options: {
             strict: true,
@@ -45,7 +65,7 @@ import { EmailService } from './email.service';
       inject: [ConfigService],
     }),
   ],
-  providers: [EmailService],
-  exports: [EmailService],
+  providers: [EmailService, EmailQueueService],
+  exports: [EmailService, EmailQueueService],
 })
 export class EmailModule {}

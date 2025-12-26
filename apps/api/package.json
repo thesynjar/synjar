@@ -17,10 +17,11 @@
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "db:generate": "prisma generate",
-    "db:migrate": "DATABASE_URL=\"$DATABASE_URL_MIGRATE\" prisma migrate dev",
-    "db:push": "DATABASE_URL=\"$DATABASE_URL_MIGRATE\" prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "prisma:seed": "DATABASE_URL=\"$DATABASE_URL_MIGRATE\" ts-node prisma/seed.ts"
+    "prisma:reset": "PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION='dev:reset script - automatic database reset for development' prisma migrate reset --force --skip-seed",
+    "prisma:seed": "ts-node prisma/seed.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

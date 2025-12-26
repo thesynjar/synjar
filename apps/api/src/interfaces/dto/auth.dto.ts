@@ -90,4 +90,32 @@ export class RegisterResponseDto {
 
   @ApiProperty()
   userId!: string;
+
+  @ApiPropertyOptional({
+    description: 'JWT access token (returned for cloud mode and self-hosted first user)',
+  })
+  accessToken?: string;
+
+  @ApiPropertyOptional({
+    description: 'JWT refresh token (returned for cloud mode and self-hosted first user)',
+  })
+  refreshToken?: string;
+}
+
+export class AcceptInviteDto {
+  @ApiProperty({ description: 'Invitation token' })
+  @IsString()
+  token!: string;
+
+  @ApiProperty({ example: 'MyP@ssw0rd!', minLength: 12 })
+  @IsString()
+  @MinLength(12, { message: 'Password must be at least 12 characters long' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
+    message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)',
+  })
+  password!: string;
+
+  @ApiProperty({ example: 'John Doe' })
+  @IsString()
+  name!: string;
 }

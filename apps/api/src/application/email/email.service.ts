@@ -20,4 +20,20 @@ export class EmailService {
       },
     });
   }
+
+  async sendWorkspaceInvitation(
+    email: string,
+    workspaceName: string,
+    inviteUrl: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to: email,
+      subject: `You've been invited to join ${workspaceName} on Synjar`,
+      template: 'workspace-invitation',
+      context: {
+        workspaceName,
+        inviteUrl,
+      },
+    });
+  }
 }

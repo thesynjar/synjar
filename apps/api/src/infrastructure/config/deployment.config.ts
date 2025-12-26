@@ -1,12 +1,15 @@
 /**
- * Deployment Configuration Utility
+ * Deployment Configuration Utility (Community Edition)
  *
  * Detects deployment mode (Cloud vs Self-hosted) and environment configuration.
  *
+ * **IMPORTANT - Package Boundaries:**
+ * Community edition does NOT know about enterprise features (Stripe, billing).
+ * Enterprise packages can extend this with their own validators.
+ *
  * Detection priority:
- * 1. Explicit DEPLOYMENT_MODE env var (recommended)
- * 2. Auto-detect: STRIPE_SECRET_KEY exists → cloud
- * 3. Default: self-hosted
+ * 1. Explicit DEPLOYMENT_MODE env var (required in community)
+ * 2. Default: self-hosted
  *
  * **Cache behavior:**
  * - Mode is cached after first detection for performance
@@ -16,6 +19,7 @@
  *
  * @see docs/specifications/2025-12-26-dual-mode-registration.md
  * @see docs/adr/2025-12-26-deployment-mode-detection.md
+ * @see docs/ecosystem.md - Package boundaries and separation of concerns
  */
 export class DeploymentConfig {
   /** Cached deployment mode (null until first detection) */
@@ -23,6 +27,9 @@ export class DeploymentConfig {
 
   /**
    * Get current deployment mode
+   *
+   * Community edition: reads DEPLOYMENT_MODE env var
+   * Enterprise packages can override/extend with additional validation
    */
   static getMode(): 'cloud' | 'self-hosted' {
     if (this.cachedMode) {
@@ -31,19 +38,13 @@ export class DeploymentConfig {
 
     const explicitMode = process.env.DEPLOYMENT_MODE;
 
-    // 1. Explicit mode (recommended)
+    // 1. Explicit mode (required in community)
     if (explicitMode === 'cloud' || explicitMode === 'self-hosted') {
       this.cachedMode = explicitMode;
       return explicitMode;
     }
 
-    // 2. Auto-detect from STRIPE_SECRET_KEY
-    if (process.env.STRIPE_SECRET_KEY) {
-      this.cachedMode = 'cloud';
-      return 'cloud';
-    }
-
-    // 3. Default to self-hosted
+    // 2. Default to self-hosted (community default)
     this.cachedMode = 'self-hosted';
     return 'self-hosted';
   }

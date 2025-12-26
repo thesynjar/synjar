@@ -18,13 +18,7 @@ import { DomainEvent } from './events/domain-event.interface';
 import { UserRegisteredEvent } from './events/user-registered.event';
 import { EmailVerifiedEvent } from './events/email-verified.event';
 import { EmailVerificationResentEvent } from './events/email-verification-resent.event';
-
-// Module-level constants for timing
-const GRACE_PERIOD_MINUTES = 15;
-const GRACE_PERIOD_MS = GRACE_PERIOD_MINUTES * 60 * 1000;
-
-const RESEND_COOLDOWN_SECONDS = 60;
-const RESEND_COOLDOWN_MS = RESEND_COOLDOWN_SECONDS * 1000;
+import { AuthConstants } from '@/infrastructure/config/constants';
 
 export class UserAggregate {
   private domainEvents: DomainEvent[] = [];
@@ -110,7 +104,7 @@ export class UserAggregate {
     }
 
     const accountAge = Date.now() - this.createdAt.getTime();
-    return accountAge < GRACE_PERIOD_MS;
+    return accountAge < AuthConstants.GRACE_PERIOD_MS;
   }
 
   /**
@@ -127,7 +121,7 @@ export class UserAggregate {
 
     if (this.verificationSentAt) {
       const timeSinceSent = Date.now() - this.verificationSentAt.getTime();
-      if (timeSinceSent < RESEND_COOLDOWN_MS) {
+      if (timeSinceSent < AuthConstants.RESEND_COOLDOWN_MS) {
         return { can: false, reason: 'Please wait before requesting another email' };
       }
     }

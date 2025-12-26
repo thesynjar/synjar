@@ -12,6 +12,29 @@
  */
 
 /**
+ * Individual password requirement with validation status
+ *
+ * Represents a single password security requirement (e.g., "at least 12 characters")
+ * along with whether the provided password meets that requirement.
+ *
+ * @interface PasswordRequirement
+ * @property {string} requirement - Human-readable description of the requirement
+ * @property {boolean} met - True if the password satisfies this requirement
+ *
+ * @example
+ * {
+ *   requirement: "At least 12 characters",
+ *   met: true
+ * }
+ */
+export interface PasswordRequirement {
+  /** Human-readable description of the requirement */
+  requirement: string;
+  /** True if password meets this requirement */
+  met: boolean;
+}
+
+/**
  * Password validation result
  *
  * Value object representing the outcome of password validation against security requirements.
@@ -19,21 +42,24 @@
  *
  * @interface PasswordValidationResult
  * @property {boolean} valid - True if password meets all security requirements (min 12 chars, uppercase, lowercase, number, special char)
- * @property {string[]} errors - Array of validation error messages describing what requirements failed. Empty array if valid=true.
+ * @property {PasswordRequirement[]} errors - Array of requirements with validation status. All items have met=true if valid=true.
  *
  * @example
  * const result = PasswordValidator.validate('MyPassword123!');
  * if (result.valid) {
  *   // Password is secure
  * } else {
- *   // Show result.errors to user (e.g. "Password must be at least 12 characters")
+ *   // Show result.errors to user with visual indicators (✓/✗)
+ *   result.errors.forEach(req => {
+ *     console.log(`${req.met ? '✓' : '✗'} ${req.requirement}`);
+ *   });
  * }
  */
 export interface PasswordValidationResult {
   /** True if password meets all security requirements */
   valid: boolean;
-  /** Array of validation error messages (empty if valid) */
-  errors: string[];
+  /** Array of requirements with validation status */
+  errors: PasswordRequirement[];
 }
 
 export class PasswordValidator {
@@ -47,33 +73,43 @@ export class PasswordValidator {
    * Validate password against security requirements
    *
    * @param password - The password to validate
-   * @returns Validation result with errors if any
+   * @returns Validation result with requirement status
    */
   static validate(password: string): PasswordValidationResult {
-    const errors: string[] = [];
+    const errors: PasswordRequirement[] = [];
 
-    if (password.length < this.MIN_LENGTH) {
-      errors.push('Password must be at least 12 characters');
-    }
+    const lengthMet = password.length >= this.MIN_LENGTH;
+    errors.push({
+      requirement: 'Password must be at least 12 characters',
+      met: lengthMet,
+    });
 
-    if (!this.UPPERCASE_REGEX.test(password)) {
-      errors.push('Password must contain at least one uppercase letter');
-    }
+    const uppercaseMet = this.UPPERCASE_REGEX.test(password);
+    errors.push({
+      requirement: 'Password must contain at least one uppercase letter',
+      met: uppercaseMet,
+    });
 
-    if (!this.LOWERCASE_REGEX.test(password)) {
-      errors.push('Password must contain at least one lowercase letter');
-    }
+    const lowercaseMet = this.LOWERCASE_REGEX.test(password);
+    errors.push({
+      requirement: 'Password must contain at least one lowercase letter',
+      met: lowercaseMet,
+    });
 
-    if (!this.NUMBER_REGEX.test(password)) {
-      errors.push('Password must contain at least one number');
-    }
+    const numberMet = this.NUMBER_REGEX.test(password);
+    errors.push({
+      requirement: 'Password must contain at least one number',
+      met: numberMet,
+    });
 
-    if (!this.SPECIAL_CHAR_REGEX.test(password)) {
-      errors.push('Password must contain at least one special character');
-    }
+    const specialCharMet = this.SPECIAL_CHAR_REGEX.test(password);
+    errors.push({
+      requirement: 'Password must contain at least one special character',
+      met: specialCharMet,
+    });
 
     return {
-      valid: errors.length === 0,
+      valid: lengthMet && uppercaseMet && lowercaseMet && numberMet && specialCharMet,
       errors,
     };
   }

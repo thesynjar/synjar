@@ -28,16 +28,8 @@ describe('DeploymentConfig', () => {
       expect(DeploymentConfig.getMode()).toBe('self-hosted');
     });
 
-    it('should detect cloud mode from STRIPE_SECRET_KEY', () => {
+    it('should default to self-hosted when DEPLOYMENT_MODE not set', () => {
       delete process.env.DEPLOYMENT_MODE;
-      process.env.STRIPE_SECRET_KEY = 'sk_test_123';
-
-      expect(DeploymentConfig.getMode()).toBe('cloud');
-    });
-
-    it('should default to self-hosted when no indicators present', () => {
-      delete process.env.DEPLOYMENT_MODE;
-      delete process.env.STRIPE_SECRET_KEY;
 
       expect(DeploymentConfig.getMode()).toBe('self-hosted');
     });

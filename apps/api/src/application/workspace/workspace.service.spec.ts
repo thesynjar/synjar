@@ -7,11 +7,15 @@ import {
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ConfigService } from '@nestjs/config';
+import { EmailQueueService } from '../email/email-queue.service';
 
 describe('WorkspaceService', () => {
   let service: WorkspaceService;
   let prismaStub: Partial<PrismaService>;
   let eventEmitterStub: Partial<EventEmitter2>;
+  let configServiceStub: Partial<ConfigService>;
+  let emailQueueServiceStub: { queueEmailVerification: jest.Mock; queueWorkspaceInvitation: jest.Mock };
 
   beforeEach(async () => {
     // Mock transaction client that will be passed to forUser callback
@@ -32,6 +36,11 @@ describe('WorkspaceService', () => {
       user: {
         findUnique: jest.fn(),
       },
+      invitation: {
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
     };
 
     // Create stubs following CLAUDE.md guidelines (stub > mock)
@@ -43,10 +52,24 @@ describe('WorkspaceService', () => {
       workspace: mockTx.workspace as unknown as PrismaService['workspace'],
       workspaceMember: mockTx.workspaceMember as unknown as PrismaService['workspaceMember'],
       user: mockTx.user as unknown as PrismaService['user'],
+      invitation: mockTx.invitation as unknown as PrismaService['invitation'],
     };
 
     eventEmitterStub = {
       emit: jest.fn(),
+    };
+
+    configServiceStub = {
+      get: jest.fn().mockImplementation((key: string, defaultValue?: string) => {
+        if (key === 'SMTP_HOST') return 'localhost';
+        if (key === 'FRONTEND_URL') return 'http://localhost:5173';
+        return defaultValue;
+      }),
+    };
+
+    emailQueueServiceStub = {
+      queueEmailVerification: jest.fn(),
+      queueWorkspaceInvitation: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -54,6 +77,8 @@ describe('WorkspaceService', () => {
         WorkspaceService,
         { provide: PrismaService, useValue: prismaStub },
         { provide: EventEmitter2, useValue: eventEmitterStub },
+        { provide: ConfigService, useValue: configServiceStub },
+        { provide: EmailQueueService, useValue: emailQueueServiceStub },
       ],
     }).compile();
 

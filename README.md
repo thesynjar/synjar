@@ -6,6 +6,30 @@
 
 ---
 
+## Quick Start (5 seconds)
+
+```bash
+# 1. Copy environment file
+cp apps/api/.env.example apps/api/.env
+
+# 2. Add your API keys to apps/api/.env:
+#    - OPENAI_API_KEY (required)
+#    - B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME (required)
+
+# 3. Start everything
+pnpm install
+pnpm dev:full
+```
+
+**Done!** Open:
+- Frontend: http://localhost:6210
+- API: http://localhost:6200
+- Emails: http://localhost:8025 (Mailpit)
+
+See [QUICKSTART.md](QUICKSTART.md) for full development guide including dual-mode registration testing.
+
+---
+
 ## Why Synjar?
 
 You're building AI apps. You need retrieval. You don't want:
@@ -89,45 +113,97 @@ For implementation details, see [SPEC-001: Row Level Security](docs/specificatio
 
 ---
 
-## Quick Start
-
-### Prerequisites
+## Prerequisites
 
 - Node.js 20+
 - pnpm 9+
 - Docker & Docker Compose
-- OpenAI API key
-- Backblaze B2 credentials (or any S3-compatible storage)
+- OpenAI API key ([get one here](https://platform.openai.com/api-keys))
+- Backblaze B2 credentials ([sign up here](https://www.backblaze.com/b2/sign-up.html))
 
-### 10-Minute Setup
+For detailed setup and testing instructions, see [QUICKSTART.md](QUICKSTART.md).
 
+---
+
+## Deployment Modes
+
+Synjar supports two deployment modes optimized for different use cases:
+
+### Self-Hosted Mode (Default)
+
+**Best for:** Single-tenant deployments, internal tools, maximum control
+
+**Features:**
+- First user becomes admin automatically (no email verification required)
+- Public registration disabled after first user (invite-only)
+- SMTP optional - works without email configuration
+- Full data ownership and control
+- No external service dependencies
+
+**Configuration:**
 ```bash
-# Clone
-git clone https://github.com/thesynjar/synjar.git
-cd synjar
+# .env
+DEPLOYMENT_MODE=self-hosted  # Optional: auto-detected if no STRIPE_SECRET_KEY
 
-# Install
-pnpm install
-
-# Configure
-cp apps/api/.env.example apps/api/.env
-# Edit apps/api/.env: add OPENAI_API_KEY, B2 credentials
-
-# Start
-pnpm docker:up      # PostgreSQL + pgvector
-pnpm db:migrate     # Run migrations
-pnpm dev            # API at localhost:6200
+# Optional: Set admin email for blocked registration messages
+ADMIN_EMAIL=admin@yourcompany.com
 ```
 
-### Verify It Works
+**First User Setup:**
+1. Deploy Synjar
+2. Navigate to registration page
+3. Create account - you're instantly admin (no email verification)
+4. Invite team members via invitation system
+
+### Cloud Mode (SaaS)
+
+**Best for:** Multi-tenant SaaS, public offerings, managed deployments
+
+**Features:**
+- Public registration enabled for all users
+- Email verification required (15-minute grace period for exploration)
+- Auto-login after registration (immediate access)
+- Stripe integration for billing (if STRIPE_SECRET_KEY is set)
+
+**Configuration:**
+```bash
+# .env
+DEPLOYMENT_MODE=cloud  # Or auto-detected from STRIPE_SECRET_KEY
+
+# Email required
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASSWORD=SG.xxxxx
+
+# Billing (optional)
+STRIPE_SECRET_KEY=sk_live_xxxxx
+```
+
+### Auto-Detection
+
+If `DEPLOYMENT_MODE` is not set, Synjar auto-detects:
+- **Cloud mode:** If `STRIPE_SECRET_KEY` is present
+- **Self-hosted mode:** Otherwise (default)
+
+### Switching Modes
+
+**⚠️ Warning:** Changing deployment modes on existing instances may affect user access patterns. Test thoroughly before production changes.
 
 ```bash
-# Health check
-curl http://localhost:6200/health
+# From self-hosted to cloud
+# 1. Add SMTP configuration
+# 2. Set DEPLOYMENT_MODE=cloud
+# 3. Restart application
+# 4. Public registration becomes available
 
-# Swagger UI
-open http://localhost:6200/api/docs
+# From cloud to self-hosted
+# 1. Set DEPLOYMENT_MODE=self-hosted
+# 2. Restart application
+# 3. Public registration becomes disabled (existing users keep access)
 ```
+
+For architecture details, see [docs/ecosystem.md](../docs/ecosystem.md).
 
 ---
 

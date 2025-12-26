@@ -7,11 +7,19 @@
     "dev": "turbo run dev",
     "dev:api": "pnpm --filter api dev",
     "dev:web": "pnpm --filter @synjar/web dev",
+    "dev:full": "pnpm dev:reset && concurrently --names 'API,WEB' --prefix-colors 'blue,green' 'pnpm dev:api' 'pnpm dev:web'",
+    "dev:stop": "docker-compose -f docker-compose.dev.yml down",
+    "dev:clean": "docker-compose -f docker-compose.dev.yml down -v",
+    "dev:reset": "docker-compose -f docker-compose.dev.yml down -v && docker-compose -f docker-compose.dev.yml up -d && wait-on tcp:5432 && pnpm --filter api prisma:reset && pnpm db:seed",
+    "dev:logs": "docker-compose -f docker-compose.dev.yml logs -f",
     "build": "turbo run build",
     "test": "turbo run test",
     "test:all": "pnpm --filter api test:all",
     "test:e2e": "pnpm --filter api test:e2e:full",
     "test:e2e:web": "./apps/web/e2e/run-e2e.sh",
+    "test:security": "pnpm --filter api test:e2e registration",
+    "test:cloud": "DEPLOYMENT_MODE=cloud pnpm test:security",
+    "test:selfhosted": "DEPLOYMENT_MODE=self-hosted pnpm test:security",
     "lint": "turbo run lint",
     "db:generate": "pnpm --filter api db:generate",
     "db:migrate": "pnpm --filter api db:migrate",
@@ -27,7 +35,9 @@
   "devDependencies": {
     "@commitlint/cli": "^20.2.0",
     "@commitlint/config-conventional": "^20.2.0",
+    "concurrently": "^9.1.2",
     "husky": "^9.1.7",
-    "turbo": "^2.3.3"
+    "turbo": "^2.3.3",
+    "wait-on": "^8.0.3"
   }
 }

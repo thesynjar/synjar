@@ -4,14 +4,14 @@ import {
   IUserRepository,
   USER_REPOSITORY,
 } from '@/domain/auth/repositories/user.repository.interface';
-import { EmailService } from '@/application/email/email.service';
+import { EmailQueueService } from '@/application/email/email-queue.service';
 import { UserAggregate } from '@/domain/auth/user.aggregate';
 
 @Injectable()
 export class ResendVerificationUseCase {
   constructor(
     @Inject(USER_REPOSITORY) private readonly userRepository: IUserRepository,
-    private readonly emailService: EmailService,
+    private readonly emailQueueService: EmailQueueService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -47,11 +47,11 @@ export class ResendVerificationUseCase {
       emailVerificationSentAt: new Date(),
     });
 
-    // Send verification email
+    // Queue verification email in background (non-blocking) - prevents timing attacks
     const frontendUrl = this.configService.get('FRONTEND_URL', 'http://localhost:5173');
     const verificationUrl = `${frontendUrl}/verify-email?token=${newToken.getValue()}`;
 
-    await this.emailService.sendEmailVerification(email, newToken.getValue(), verificationUrl);
+    this.emailQueueService.queueEmailVerification(email, newToken.getValue(), verificationUrl);
 
     return { message: 'Verification email sent' };
   }

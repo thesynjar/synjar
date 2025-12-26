@@ -5,9 +5,12 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '@/infrastructure/persistence/prisma/prisma.service';
-import { Role } from '@prisma/client';
+import { Role, InvitationStatus } from '@prisma/client';
 import { WorkspaceMemberAddedEvent } from '@/application/workspace-lookup/events/workspace-member-added.event';
 import { WorkspaceMemberRemovedEvent } from '@/application/workspace-lookup/events/workspace-member-removed.event';
+import { ConfigService } from '@nestjs/config';
+import { EmailQueueService } from '@/application/email/email-queue.service';
+import * as crypto from 'crypto';
 
 interface CreateWorkspaceDto {
   name: string;
@@ -22,11 +25,18 @@ interface AddMemberDto {
   role?: Role;
 }
 
+interface InviteMemberDto {
+  email: string;
+  role?: Role;
+}
+
 @Injectable()
 export class WorkspaceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly configService: ConfigService,
+    private readonly emailQueueService: EmailQueueService,
   ) {}
 
   async create(userId: string, dto: CreateWorkspaceDto) {
@@ -195,6 +205,62 @@ export class WorkspaceService {
         'workspace.member.removed',
         new WorkspaceMemberRemovedEvent(memberUserId, workspaceId),
       );
+    });
+  }
+
+  async inviteMember(
+    workspaceId: string,
+    userId: string,
+    dto: InviteMemberDto,
+  ): Promise<{ invitationToken: string }> {
+    return this.prisma.forUser(userId, async (tx) => {
+      // Ensure user has OWNER or ADMIN role
+      const member = await this.ensureMemberTx(tx, workspaceId, userId);
+      if (member.role !== Role.OWNER && member.role !== Role.ADMIN) {
+        throw new ForbiddenException('Only workspace owners and admins can invite members');
+      }
+
+      // Check if workspace exists
+      const workspace = await tx.workspace.findUnique({
+        where: { id: workspaceId },
+      });
+
+      if (!workspace) {
+        throw new NotFoundException('Workspace not found');
+      }
+
+      // Generate invitation token (JWT-like format but stored in DB)
+      const invitationToken = crypto.randomBytes(32).toString('hex');
+
+      // Create invitation (7-day expiry)
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const invitation = await tx.invitation.create({
+        data: {
+          workspaceId,
+          email: dto.email,
+          role: dto.role || Role.MEMBER,
+          token: invitationToken,
+          status: InvitationStatus.PENDING,
+          expiresAt,
+          createdById: userId,
+        },
+      });
+
+      // Send email if SMTP configured
+      const smtpHost = this.configService.get<string>('SMTP_HOST');
+      if (smtpHost) {
+        const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
+        const inviteUrl = `${frontendUrl}/auth/accept-invite?token=${invitationToken}`;
+
+        // Queue invitation email in background (non-blocking) - prevents timing attacks
+        this.emailQueueService.queueWorkspaceInvitation(
+          dto.email,
+          workspace.name,
+          inviteUrl,
+        );
+      }
+
+      return { invitationToken: invitation.token };
     });
   }
 

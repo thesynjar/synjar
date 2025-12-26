@@ -20,6 +20,12 @@ export class VerifyEmailUseCase {
       throw new NotFoundException('Invalid verification token');
     }
 
+    // Idempotency: If email already verified, return success
+    // This handles React Strict Mode double-requests and accidental retries
+    if (user.isEmailVerified) {
+      return { message: 'Email verified successfully' };
+    }
+
     if (!user.emailVerificationSentAt) {
       throw new BadRequestException('Verification token is invalid');
     }
@@ -38,7 +44,8 @@ export class VerifyEmailUseCase {
     await this.userRepository.update(user.id, {
       isEmailVerified: true,
       emailVerifiedAt: new Date(),
-      emailVerificationToken: null,
+      // Keep token until TTL expires - enables idempotent retries
+      // Token will be unusable after 24h anyway due to TTL check above
     });
 
     return { message: 'Email verified successfully' };

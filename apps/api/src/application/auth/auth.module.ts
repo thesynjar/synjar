@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from '../../interfaces/http/auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { TokenService } from './services/token.service';
 import { EmailModule } from '../email/email.module';
 import { PrismaModule } from '../../infrastructure/persistence/prisma/prisma.module';
 import { USER_REPOSITORY } from '../../domain/auth/repositories/user.repository.interface';
@@ -14,6 +15,7 @@ import {
   LoginUserUseCase,
   VerifyEmailUseCase,
   ResendVerificationUseCase,
+  AcceptInviteUseCase,
 } from './use-cases';
 
 @Module({
@@ -36,15 +38,17 @@ import {
   providers: [
     AuthService,
     JwtStrategy,
+    TokenService,
     RegisterUserUseCase,
     LoginUserUseCase,
     VerifyEmailUseCase,
     ResendVerificationUseCase,
+    AcceptInviteUseCase,
     {
       provide: USER_REPOSITORY,
       useClass: PrismaUserRepository,
     },
   ],
-  exports: [AuthService, JwtModule],
+  exports: [AuthService, JwtModule, TokenService],
 })
 export class AuthModule {}

@@ -3,11 +3,12 @@ import { WorkspaceService } from './workspace.service';
 import { WorkspaceLimitsService } from './workspace-limits.service';
 import { WorkspaceController } from '../../interfaces/http/workspace.controller';
 import { PrismaModule } from '../../infrastructure/persistence/prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
 import { WORKSPACE_REPOSITORY } from '../../domain/workspace/workspace.repository';
 import { PrismaWorkspaceRepository } from '../../infrastructure/persistence/repositories/workspace.repository.impl';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, EmailModule],
   controllers: [WorkspaceController],
   providers: [
     WorkspaceService,

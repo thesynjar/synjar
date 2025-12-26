@@ -13,6 +13,7 @@ import {
   LoginUserUseCase,
   VerifyEmailUseCase,
   ResendVerificationUseCase,
+  AcceptInviteUseCase,
 } from './use-cases';
 
 export interface RegisterDto {
@@ -44,6 +45,12 @@ export interface AuthResult {
   };
 }
 
+export interface AcceptInviteDto {
+  token: string;
+  password: string;
+  name: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -53,6 +60,7 @@ export class AuthService {
     private readonly loginUserUseCase: LoginUserUseCase,
     private readonly verifyEmailUseCase: VerifyEmailUseCase,
     private readonly resendVerificationUseCase: ResendVerificationUseCase,
+    private readonly acceptInviteUseCase: AcceptInviteUseCase,
   ) {}
 
   async register(dto: RegisterDto): Promise<RegisterResult> {
@@ -107,6 +115,10 @@ export class AuthService {
 
   async resendVerification(email: string): Promise<{ message: string }> {
     return this.resendVerificationUseCase.execute(email);
+  }
+
+  async acceptInvite(dto: AcceptInviteDto): Promise<AuthResult> {
+    return this.acceptInviteUseCase.execute(dto);
   }
 
   private generateTokens(userId: string, email: string): { accessToken: string; refreshToken: string } {

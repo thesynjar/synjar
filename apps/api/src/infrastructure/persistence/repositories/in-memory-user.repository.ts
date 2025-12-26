@@ -22,7 +22,7 @@ interface InMemoryUser {
   id: string;
   email: string;
   passwordHash: string;
-  name?: string;
+  name: string | null;
   isEmailVerified: boolean;
   emailVerificationToken: string | null;
   emailVerificationSentAt: Date | null;
@@ -75,7 +75,7 @@ export class InMemoryUserRepository implements IUserRepository {
       id: this.generateId(),
       email: data.email,
       passwordHash: data.passwordHash,
-      name: data.name,
+      name: data.name ?? null,
       isEmailVerified: data.isEmailVerified,
       emailVerificationToken: data.emailVerificationToken,
       emailVerificationSentAt: data.emailVerificationSentAt,
@@ -108,12 +108,12 @@ export class InMemoryUserRepository implements IUserRepository {
     // Create user
     const user: InMemoryUser = {
       id: this.generateId(),
-      email: data.email,
-      passwordHash: data.passwordHash,
-      name: data.name,
-      isEmailVerified: false,
-      emailVerificationToken: data.emailVerificationToken,
-      emailVerificationSentAt: new Date(),
+      email: data.user.email,
+      passwordHash: data.user.passwordHash,
+      name: data.user.name ?? null,
+      isEmailVerified: data.user.isEmailVerified,
+      emailVerificationToken: data.user.emailVerificationToken,
+      emailVerificationSentAt: data.user.emailVerificationSentAt,
       emailVerifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -123,7 +123,7 @@ export class InMemoryUserRepository implements IUserRepository {
     // Create workspace
     const workspace: InMemoryWorkspace = {
       id: this.generateId(),
-      name: data.workspaceName,
+      name: data.workspace.name,
       createdById: user.id,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -136,7 +136,7 @@ export class InMemoryUserRepository implements IUserRepository {
       workspaceId: workspace.id,
       userId: user.id,
       role: 'OWNER',
-      permissions: ['workspace:read', 'workspace:write', 'workspace:delete'],
+      permissions: data.ownerPermissions,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

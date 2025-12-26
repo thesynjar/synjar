@@ -27,6 +27,8 @@ import {
   AddMemberDto,
   WorkspaceResponseDto,
   MemberResponseDto,
+  InviteMemberDto,
+  InvitationResponseDto,
 } from '../dto/workspace.dto';
 
 @ApiTags('Workspaces')
@@ -126,5 +128,18 @@ export class WorkspaceController {
   ) {
     await this.workspaceService.ensureMember(id, user.id);
     return this.limitsService.getUsageStats(id);
+  }
+
+  @Post(':id/invite')
+  @ApiOperation({ summary: 'Invite user to workspace' })
+  @ApiResponse({ status: 201, type: InvitationResponseDto })
+  @ApiResponse({ status: 403, description: 'Only owners and admins can invite members' })
+  @ApiResponse({ status: 404, description: 'Workspace not found' })
+  async inviteMember(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: InviteMemberDto,
+  ) {
+    return this.workspaceService.inviteMember(id, user.id, dto);
   }
 }
