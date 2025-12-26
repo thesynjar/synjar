@@ -30,8 +30,8 @@ CREATE INDEX "Invitation_workspaceId_idx" ON "Invitation"("workspaceId");
 -- CreateIndex
 CREATE INDEX "Invitation_email_idx" ON "Invitation"("email");
 
--- CreateIndex
-CREATE INDEX "Invitation_token_idx" ON "Invitation"("token");
+-- CreateIndex (token already has UNIQUE index above, no need for duplicate)
+-- CREATE INDEX "Invitation_token_idx" ON "Invitation"("token");
 
 -- CreateIndex
 CREATE INDEX "Invitation_status_idx" ON "Invitation"("status");

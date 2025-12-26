@@ -9,7 +9,7 @@ ALTER TABLE "Invitation" DROP CONSTRAINT IF EXISTS "Invitation_workspaceId_fkey"
 -- 2. Drop indexes (Invitation)
 DROP INDEX IF EXISTS "Invitation_expiresAt_idx";
 DROP INDEX IF EXISTS "Invitation_status_idx";
-DROP INDEX IF EXISTS "Invitation_token_idx";
+-- DROP INDEX IF EXISTS "Invitation_token_idx"; -- Never created (duplicate of UNIQUE index)
 DROP INDEX IF EXISTS "Invitation_email_idx";
 DROP INDEX IF EXISTS "Invitation_workspaceId_idx";
 DROP INDEX IF EXISTS "Invitation_token_key";
