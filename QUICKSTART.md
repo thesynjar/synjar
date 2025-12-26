@@ -24,8 +24,8 @@ pnpm dev:full
 ```
 
 **That's it!** The `dev:full` command automatically:
-- Starts PostgreSQL + pgvector (port 5432)
-- Starts Mailpit SMTP server (SMTP: 1025, Web UI: 8025)
+- Starts PostgreSQL + pgvector (port 6205)
+- Starts Mailpit SMTP server (SMTP: 6202, Web UI: 6203)
 - Starts Redis (port 6379)
 - Runs database migrations
 - Starts API (port 6200)
@@ -36,8 +36,8 @@ pnpm dev:full
 - **Frontend:** http://localhost:6210
 - **API:** http://localhost:6200
 - **API Docs:** http://localhost:6200/api/docs
-- **Mailpit (emails):** http://localhost:8025
-- **Database:** postgresql://postgres:postgres@localhost:5432/synjar_dev
+- **Mailpit (emails):** http://localhost:6203
+- **Database:** postgresql://postgres:postgres@localhost:6205/synjar_dev
 
 ## Testing Dual-Mode Registration
 
@@ -60,7 +60,7 @@ pnpm dev:full
 #    - Registration is BLOCKED (403 Forbidden)
 #    - Message: "Registration is disabled. Contact admin@yourcompany.com"
 
-# 5. View all emails at http://localhost:8025
+# 5. View all emails at http://localhost:6203
 ```
 
 **Expected behavior:**
@@ -85,7 +85,7 @@ pnpm dev:full
 #    - 15-minute grace period to explore
 #    - Verification email sent
 
-# 4. Check email at http://localhost:8025
+# 4. Check email at http://localhost:6203
 #    - Click verification link
 #    - Account fully verified
 
@@ -163,7 +163,7 @@ pnpm test:selfhosted   # Test self-hosted mode
 
 All emails are captured by Mailpit during development:
 
-1. Open http://localhost:8025
+1. Open http://localhost:6203
 2. See all emails sent by the application
 3. Click any email to view
 4. Test verification links directly
@@ -191,11 +191,11 @@ JWT_SECRET=change-in-production-min-32-chars
 
 ```bash
 # Database (points to docker-compose.dev.yml)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/synjar_dev
+DATABASE_URL=postgresql://postgres:postgres@localhost:6205/synjar_dev
 
 # Email (points to Mailpit)
 SMTP_HOST=localhost
-SMTP_PORT=1025
+SMTP_PORT=6202
 
 # Mode
 DEPLOYMENT_MODE=self-hosted
@@ -207,7 +207,7 @@ DEPLOYMENT_MODE=self-hosted
 
 ```bash
 # Check what's using the port
-lsof -i :5432  # PostgreSQL
+lsof -i :6205  # PostgreSQL
 lsof -i :6200  # API
 lsof -i :6210  # Web
 
@@ -227,7 +227,7 @@ pnpm dev:full
 
 ```bash
 # Check Mailpit is running
-curl http://localhost:8025/api/v1/messages
+curl http://localhost:6203/api/v1/messages
 
 # View logs
 pnpm dev:logs

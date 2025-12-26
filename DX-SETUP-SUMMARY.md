@@ -12,8 +12,8 @@
 **Purpose:** All-in-one development environment setup
 
 **Services:**
-- PostgreSQL 16 + pgvector (port 5432)
-- Mailpit SMTP server (SMTP: 1025, Web UI: 8025)
+- PostgreSQL 16 + pgvector (port 6205)
+- Mailpit SMTP server (SMTP: 6202, Web UI: 6203)
 - Redis 7 (port 6379, for future BullMQ)
 
 **Features:**
@@ -36,9 +36,9 @@
 
 **Key Defaults:**
 ```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/synjar_dev
+DATABASE_URL=postgresql://postgres:postgres@localhost:6205/synjar_dev
 SMTP_HOST=localhost
-SMTP_PORT=1025
+SMTP_PORT=6202
 DEPLOYMENT_MODE=self-hosted
 ```
 
@@ -153,7 +153,7 @@ pnpm dev:full
 # Access:
 # - Frontend: http://localhost:6210
 # - API: http://localhost:6200
-# - Mailpit: http://localhost:8025
+# - Mailpit: http://localhost:6203
 
 # Stop everything
 pnpm dev:stop
@@ -197,7 +197,7 @@ pnpm dev:full
 
 3. **Frontend Testing, Not curl**
    - Register users via UI at http://localhost:6210
-   - View emails at http://localhost:8025
+   - View emails at http://localhost:6203
    - Real user experience testing
 
 4. **Automated Security Testing**
@@ -211,9 +211,10 @@ pnpm dev:full
    - Test both modes easily
 
 6. **No Port Conflicts**
-   - Dev uses port 5432 (standard)
-   - Production uses port 6201
-   - Mailpit uses 1025/8025 (standard)
+   - Dev PostgreSQL: 6205
+   - Production PostgreSQL: 6201
+   - Mailpit: 6202/6203
+   - All ports in 62XX range
 
 ## Access Points
 
@@ -222,8 +223,8 @@ pnpm dev:full
 | Frontend | http://localhost:6210 | Register users, test UI |
 | API | http://localhost:6200 | Backend API |
 | API Docs | http://localhost:6200/api/docs | Swagger UI |
-| Mailpit | http://localhost:8025 | View all emails |
-| PostgreSQL | localhost:5432 | Database connection |
+| Mailpit | http://localhost:6203 | View all emails |
+| PostgreSQL | localhost:6205 | Database connection |
 
 ## Files Modified
 
@@ -257,7 +258,7 @@ Expected output: All checks should pass with green checkmarks.
 2. Register users at http://localhost:6210
 3. Test both deployment modes (cloud + self-hosted)
 4. Run security tests with `pnpm test:security`
-5. View emails at http://localhost:8025
+5. View emails at http://localhost:6203
 
 ## Documentation
 

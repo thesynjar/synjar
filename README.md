@@ -24,7 +24,7 @@ pnpm dev:full
 **Done!** Open:
 - Frontend: http://localhost:6210
 - API: http://localhost:6200
-- Emails: http://localhost:8025 (Mailpit)
+- Emails: http://localhost:6203 (Mailpit)
 
 See [QUICKSTART.md](QUICKSTART.md) for full development guide including dual-mode registration testing.
 

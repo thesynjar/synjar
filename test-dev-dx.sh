@@ -114,7 +114,7 @@ echo ""
 # Check .env.example has sensible defaults
 echo -e "${BLUE}[5/6]${NC} Checking .env.example defaults..."
 
-if ! grep -q 'DATABASE_URL="postgresql://postgres:postgres@localhost:5432/synjar_dev' apps/api/.env.example; then
+if ! grep -q 'DATABASE_URL="postgresql://postgres:postgres@localhost:6205/synjar_dev' apps/api/.env.example; then
     echo -e "${RED}✗ DATABASE_URL not pointing to docker-compose.dev.yml${NC}"
     exit 1
 fi
@@ -124,7 +124,7 @@ if ! grep -q 'SMTP_HOST=localhost' apps/api/.env.example; then
     exit 1
 fi
 
-if ! grep -q 'SMTP_PORT=1025' apps/api/.env.example; then
+if ! grep -q 'SMTP_PORT=6202' apps/api/.env.example; then
     echo -e "${RED}✗ SMTP_PORT not pointing to Mailpit${NC}"
     exit 1
 fi
@@ -175,7 +175,7 @@ echo -e "${YELLOW}Access Points:${NC}"
 echo -e "  Frontend:  ${BLUE}http://localhost:6210${NC}"
 echo -e "  API:       ${BLUE}http://localhost:6200${NC}"
 echo -e "  API Docs:  ${BLUE}http://localhost:6200/api/docs${NC}"
-echo -e "  Mailpit:   ${BLUE}http://localhost:8025${NC}"
+echo -e "  Mailpit:   ${BLUE}http://localhost:6203${NC}"
 echo ""
 echo -e "See ${BLUE}QUICKSTART.md${NC} for full guide."
 echo ""

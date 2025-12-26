@@ -4,8 +4,8 @@
 #   pnpm dev:full
 #
 # This starts:
-# - PostgreSQL + pgvector (port 5432)
-# - Mailpit SMTP server (SMTP: 1025, Web UI: 8025)
+# - PostgreSQL + pgvector (port 6205)
+# - Mailpit SMTP server (SMTP: 6202, Web UI: 6203)
 # - Redis (port 6379, for future BullMQ)
 #
 # After containers are up, the dev:full script will:
@@ -22,7 +22,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: synjar_dev
     ports:
-      - "5432:5432"
+      - "6205:5432"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
@@ -37,8 +37,8 @@ services:
     image: axllent/mailpit:latest
     container_name: synjar-dev-mailpit
     ports:
-      - "1025:1025"  # SMTP server
-      - "8025:8025"  # Web UI
+      - "6202:1025"  # SMTP server
+      - "6203:8025"  # Web UI
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
