@@ -97,4 +97,8 @@ export class PrismaUserRepository implements IUserRepository {
       return user;
     });
   }
+
+  async countWorkspaces(): Promise<number> {
+    return this.prisma.workspace.count();
+  }
 }

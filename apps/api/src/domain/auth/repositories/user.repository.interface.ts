@@ -15,8 +15,8 @@ export interface CreateUserData {
   passwordHash: string;
   name?: string;
   isEmailVerified: boolean;
-  emailVerificationToken: string;
-  emailVerificationSentAt: Date;
+  emailVerificationToken: string | null;
+  emailVerificationSentAt: Date | null;
 }
 
 export interface UpdateUserData {
@@ -76,6 +76,12 @@ export interface IUserRepository {
    * Used during registration to ensure atomic creation
    */
   createWithWorkspace(data: CreateUserWithWorkspaceData): Promise<User>;
+
+  /**
+   * Count total workspaces in the system
+   * Used in self-hosted mode to check if first user (workspace count = 0)
+   */
+  countWorkspaces(): Promise<number>;
 }
 
 /**

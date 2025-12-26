@@ -166,6 +166,10 @@ export class InMemoryUserRepository implements IUserRepository {
     );
   }
 
+  async countWorkspaces(): Promise<number> {
+    return this.workspaces.size;
+  }
+
   private idCounter = 1;
   private generateId(): string {
     return `test-id-${this.idCounter++}`;

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Inject } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import {
@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PasswordValidator } from '@/domain/auth/validators/password.validator';
 import { UserAggregate } from '@/domain/auth/user.aggregate';
+import { DeploymentConfig } from '@/infrastructure/config/deployment.config';
 import type { RegisterDto, RegisterResult } from '../auth.service';
 
 const OWNER_PERMISSIONS = [
@@ -97,7 +98,7 @@ export class RegisterUserUseCase {
   }
 
   private async handleNewUserRegistration(dto: RegisterDto): Promise<RegisterResult> {
-    // Case 3: NEW user → create + auto-login WITH tokens (Cloud mode)
+    // Password validation (required for both modes)
     const passwordValidation = PasswordValidator.validate(dto.password);
     if (!passwordValidation.valid) {
       throw new BadRequestException({
@@ -106,6 +107,61 @@ export class RegisterUserUseCase {
       });
     }
 
+    // Check deployment mode
+    if (DeploymentConfig.isSelfHosted()) {
+      return this.handleSelfHostedRegistration(dto);
+    } else {
+      return this.handleCloudRegistration(dto);
+    }
+  }
+
+  private async handleSelfHostedRegistration(dto: RegisterDto): Promise<RegisterResult> {
+    // Case 4 & 5: Self-hosted mode
+    const workspaceCount = await this.userRepository.countWorkspaces();
+
+    if (workspaceCount > 0) {
+      // Case 5: Second+ user → 403 Forbidden
+      const adminEmail = this.configService.get<string>('ADMIN_EMAIL');
+
+      throw new ForbiddenException({
+        error: 'REGISTRATION_DISABLED',
+        message: 'Public registration is disabled on this instance.',
+        hint: 'Please contact the administrator to request access.',
+        ...(adminEmail && { adminContact: adminEmail }),
+      });
+    }
+
+    // Case 4: First user → instant admin (verified, auto-login)
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    const user = await this.userRepository.createWithWorkspace({
+      user: {
+        email: dto.email,
+        passwordHash,
+        name: dto.name,
+        isEmailVerified: true, // VERIFIED immediately in self-hosted!
+        emailVerificationToken: null,
+        emailVerificationSentAt: null,
+      },
+      workspace: {
+        name: dto.workspaceName,
+      },
+      ownerPermissions: OWNER_PERMISSIONS,
+    });
+
+    // Generate tokens for auto-login
+    const tokens = this.generateTokens(user.id, user.email);
+
+    return {
+      message: 'Registration successful. You can log in now.',
+      userId: user.id,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    };
+  }
+
+  private async handleCloudRegistration(dto: RegisterDto): Promise<RegisterResult> {
+    // Case 3: Cloud mode → NEW user with email verification
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const emailVerificationToken = this.generateVerificationToken();
     const emailVerificationSentAt = new Date();

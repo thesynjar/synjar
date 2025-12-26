@@ -19,6 +19,7 @@ import {
   ResendVerificationUseCase,
 } from './use-cases';
 import * as bcrypt from 'bcrypt';
+import { DeploymentConfig } from '@/infrastructure/config/deployment.config';
 
 /**
  * TODO: Split this test file (967 lines) into focused suites per CLAUDE.md Clean Code rules.
@@ -120,6 +121,7 @@ describe('AuthService', () => {
       createWithWorkspace: jest.fn(),
       update: jest.fn(),
       save: jest.fn(),
+      countWorkspaces: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -150,6 +152,18 @@ describe('AuthService', () => {
       'user:invite',
       'user:remove',
     ];
+
+    beforeEach(() => {
+      // Mock cloud deployment mode for these tests
+      process.env.DEPLOYMENT_MODE = 'cloud';
+      (DeploymentConfig as any).resetCache();
+    });
+
+    afterEach(() => {
+      // Reset deployment mode for other tests
+      delete process.env.DEPLOYMENT_MODE;
+      (DeploymentConfig as any).resetCache();
+    });
 
     it('should create user with unverified email', async () => {
       // Arrange
@@ -880,6 +894,18 @@ describe('AuthService', () => {
       name: 'Test User',
     };
 
+    beforeEach(() => {
+      // Mock cloud deployment mode
+      process.env.DEPLOYMENT_MODE = 'cloud';
+      (DeploymentConfig as any).resetCache();
+    });
+
+    afterEach(() => {
+      // Reset deployment mode for other tests
+      delete process.env.DEPLOYMENT_MODE;
+      (DeploymentConfig as any).resetCache();
+    });
+
     it('should NOT return tokens for existing verified user (prevent account takeover)', async () => {
       // Arrange - user already exists and is verified
       const existingUser = {
@@ -972,6 +998,117 @@ describe('AuthService', () => {
         refreshToken: expect.any(String),
       });
       expect(emailServiceStub.sendEmailVerification).toHaveBeenCalled();
+    });
+  });
+
+  // Phase 4: Self-Hosted Mode Tests (TDD)
+  describe('register - Self-Hosted Mode (Dual-Mode Registration)', () => {
+    const registerDto = {
+      email: 'admin@example.com',
+      password: 'MyP@ssw0rd123!',
+      workspaceName: 'My Company',
+      name: 'Admin User',
+    };
+
+    beforeEach(() => {
+      // Mock self-hosted deployment mode
+      process.env.DEPLOYMENT_MODE = 'self-hosted';
+      process.env.ADMIN_EMAIL = 'admin@company.com';
+      (DeploymentConfig as any).resetCache();
+    });
+
+    it('should create VERIFIED admin user for first registration (workspace count = 0)', async () => {
+      // Arrange - first user in self-hosted instance
+      const createdUser = {
+        id: 'admin-user-id',
+        email: registerDto.email,
+        name: registerDto.name,
+        passwordHash: 'hashed-password',
+        isEmailVerified: true, // VERIFIED immediately in self-hosted!
+        emailVerificationToken: null,
+        emailVerificationSentAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.countWorkspaces = jest.fn().mockResolvedValue(0); // No workspaces yet
+      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
+
+      // Act
+      const result = await service.register(registerDto);
+
+      // Assert
+      expect(result).toEqual({
+        message: 'Registration successful. You can log in now.',
+        userId: createdUser.id,
+        accessToken: expect.any(String),
+        refreshToken: expect.any(String),
+      });
+      expect(userRepositoryStub.createWithWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: expect.objectContaining({
+            email: registerDto.email,
+            isEmailVerified: true, // Verified immediately!
+            emailVerificationToken: null,
+          }),
+        }),
+      );
+      // No verification email sent for self-hosted first user
+      expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+    });
+
+    it('should reject second user registration with 403 Forbidden (workspace count > 0)', async () => {
+      // Arrange - second user trying to register in self-hosted
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.countWorkspaces = jest.fn().mockResolvedValue(1); // Workspace exists
+
+      // Act & Assert
+      await expect(service.register(registerDto)).rejects.toThrow(
+        expect.objectContaining({
+          status: 403,
+          message: 'Public registration is disabled on this instance.',
+        }),
+      );
+
+      // Verify no user was created
+      expect(userRepositoryStub.createWithWorkspace).not.toHaveBeenCalled();
+      expect(emailServiceStub.sendEmailVerification).not.toHaveBeenCalled();
+    });
+
+    it('should include adminContact in 403 error when ADMIN_EMAIL is set', async () => {
+      // Arrange - ADMIN_EMAIL env var is set
+      userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
+      userRepositoryStub.countWorkspaces = jest.fn().mockResolvedValue(1);
+
+      // Mock configService to return ADMIN_EMAIL
+      configServiceStub.get = jest.fn().mockImplementation((key: string) => {
+        if (key === 'ADMIN_EMAIL') return 'admin@company.com';
+        if (key === 'EMAIL_VERIFICATION_URL') return 'http://localhost:5173/auth/verify';
+        if (key === 'FRONTEND_URL') return 'http://localhost:5173';
+        return undefined;
+      });
+
+      // Act & Assert
+      try {
+        await service.register(registerDto);
+        fail('Should have thrown ForbiddenException');
+      } catch (error: any) {
+        expect(error.status).toBe(403);
+        expect(error.response).toMatchObject({
+          error: 'REGISTRATION_DISABLED',
+          message: 'Public registration is disabled on this instance.',
+          hint: 'Please contact the administrator to request access.',
+          adminContact: 'admin@company.com', // From ADMIN_EMAIL env var
+        });
+      }
+    });
+
+    afterEach(() => {
+      // Reset deployment mode and env vars for other tests
+      delete process.env.DEPLOYMENT_MODE;
+      delete process.env.ADMIN_EMAIL;
+      (DeploymentConfig as any).resetCache();
     });
   });
 
