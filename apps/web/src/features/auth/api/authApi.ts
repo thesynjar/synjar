@@ -3,9 +3,14 @@ import type {
   LoginResponse,
   RefreshRequest,
   AuthenticatedUser,
+  RegisterRequest,
+  RegisterResponse,
+  VerifyEmailRequest,
+  MessageResponse,
 } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+const BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_URL = `${BASE_URL}/api/v1`;
 
 class ApiError extends Error {
   constructor(
@@ -54,6 +59,30 @@ function getAuthHeaders(): HeadersInit {
 }
 
 export const authApi = {
+  async register(request: RegisterRequest): Promise<RegisterResponse> {
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    return handleResponse<RegisterResponse>(response);
+  },
+
+  async verifyEmail(request: VerifyEmailRequest): Promise<MessageResponse> {
+    const response = await fetch(`${API_URL}/auth/verify-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    return handleResponse<MessageResponse>(response);
+  },
+
   async login(request: LoginRequest): Promise<LoginResponse> {
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',

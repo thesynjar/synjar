@@ -20,29 +20,41 @@ const logger = new Logger('AppModule');
 
 /**
  * Core modules always loaded (community edition)
+ * This function is called at runtime to ensure process.env is properly set
  */
-const CORE_MODULES = [
-  ConfigModule.forRoot({
-    isGlobal: true,
-  }),
-  ThrottlerModule.forRoot([
-    {
-      ttl: 60000,
-      limit: 100,
-    },
-  ]),
-  PrismaModule,
-  EventsModule,
-  EmbeddingsModule,
-  StorageModule,
-  LLMModule,
-  AuthModule,
-  WorkspaceModule,
-  DocumentModule,
-  SearchModule,
-  PublicLinkModule,
-  WorkspaceLookupModule,
-];
+function getCoreModules() {
+  const path = require('path');
+  const isTest = process.env.NODE_ENV === 'test';
+  // Use process.cwd() which is always the api folder
+  // Test: test/.env.test (ports 6211-6213), Dev: .env (ports 6201-6203)
+  const envFile = isTest
+    ? path.join(process.cwd(), 'test', '.env.test')
+    : path.join(process.cwd(), '.env');
+
+  return [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: envFile,
+    }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
+    PrismaModule,
+    EventsModule,
+    EmbeddingsModule,
+    StorageModule,
+    LLMModule,
+    AuthModule,
+    WorkspaceModule,
+    DocumentModule,
+    SearchModule,
+    PublicLinkModule,
+    WorkspaceLookupModule,
+  ];
+}
 
 /**
  * Enterprise module configuration
@@ -108,7 +120,7 @@ export class AppModule implements NestModule {
 
     return {
       module: AppModule,
-      imports: [...CORE_MODULES, ...enterpriseModules],
+      imports: [...getCoreModules(), ...enterpriseModules],
       controllers: [HealthController],
       providers: [
         RlsMiddleware,

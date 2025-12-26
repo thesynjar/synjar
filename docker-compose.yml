@@ -1,4 +1,8 @@
-version: '3.8'
+# Synjar Community - Development Environment
+#
+# Port allocation:
+# Dev:  postgres 6201, mailpit SMTP 6202, mailpit UI 6203, API 6200
+# Test: postgres 6211, mailpit SMTP 6212, mailpit UI 6213
 
 services:
   postgres:
@@ -17,6 +21,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - synjar-dev
 
   mailpit:
     image: axllent/mailpit
@@ -27,6 +33,8 @@ services:
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      - synjar-dev
 
   api:
     build:
@@ -49,7 +57,7 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
-      EMAIL_VERIFICATION_URL: http://localhost:5173/auth/verify
+      EMAIL_VERIFICATION_URL: http://localhost:6210/auth/verify
     ports:
       - "6200:6200"
     depends_on:
@@ -58,6 +66,12 @@ services:
       mailpit:
         condition: service_started
     restart: unless-stopped
+    networks:
+      - synjar-dev
 
 volumes:
   postgres_data:
+
+networks:
+  synjar-dev:
+    driver: bridge

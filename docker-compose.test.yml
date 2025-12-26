@@ -3,6 +3,10 @@ version: '3.8'
 # Test environment with Mailpit for email testing
 # Usage: docker-compose -f docker-compose.test.yml up -d
 # Then run: pnpm test:e2e -- --testPathPattern=registration-e2e
+#
+# IMPORTANT: Uses separate network and ports from dev environment
+# Dev: postgres 6201, mailpit 6202/6203
+# Test: postgres 6211, mailpit 6212/6213
 
 services:
   postgres-test:
@@ -19,13 +23,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - synjar-test
 
-  mailpit:
+  mailpit-test:
     image: axllent/mailpit
     container_name: synjar-mailpit-test
     ports:
-      - "6202:1025"  # SMTP
-      - "6203:8025"  # Web UI / API
+      - "6212:1025"  # SMTP (dev uses 6202)
+      - "6213:8025"  # Web UI / API (dev uses 6203)
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      - synjar-test
+
+networks:
+  synjar-test:
+    driver: bridge

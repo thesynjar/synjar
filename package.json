@@ -11,6 +11,7 @@
     "test": "turbo run test",
     "test:all": "pnpm --filter api test:all",
     "test:e2e": "pnpm --filter api test:e2e:full",
+    "test:e2e:web": "./apps/web/e2e/run-e2e.sh",
     "lint": "turbo run lint",
     "db:generate": "pnpm --filter api db:generate",
     "db:migrate": "pnpm --filter api db:migrate",

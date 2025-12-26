@@ -14,15 +14,15 @@ import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.s
  * 3. Login after email verification
  * 4. Access to workspace after verification
  *
- * Prerequisites:
- * - Mailpit running on localhost:6202 (SMTP) / 6203 (API)
- * - PostgreSQL running on localhost:6201
+ * Prerequisites (TEST environment - separate from dev):
+ * - Mailpit running on localhost:6212 (SMTP) / 6213 (API)
+ * - PostgreSQL running on localhost:6211
  *
  * Run with: pnpm test:e2e -- --testPathPattern=registration-e2e
  */
 
-// Mailpit API configuration
-const MAILPIT_API_URL = process.env.MAILPIT_API_URL || 'http://localhost:6203';
+// Mailpit API configuration (loaded from setup-env.ts or environment)
+const MAILPIT_API_URL = process.env.MAILPIT_API_URL || 'http://localhost:6213';
 
 interface MailpitMessage {
   ID: string;
@@ -121,11 +121,8 @@ describe('Registration E2E Integration Tests', () => {
   let prisma: PrismaService;
 
   beforeAll(async () => {
-    // Set up environment variables for Mailpit
-    process.env.SMTP_HOST = 'localhost';
-    process.env.SMTP_PORT = '6202';
-    process.env.SMTP_SECURE = 'false';
-    process.env.EMAIL_VERIFICATION_URL = 'http://localhost:5173/auth/verify';
+    // Environment variables are set by setup-env.ts
+    // Test ports: SMTP 6212, Mailpit API 6213, Postgres 6211
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [await AppModule.forRoot()],

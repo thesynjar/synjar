@@ -9,10 +9,19 @@ import { EmailService } from './email.service';
   imports: [
     MailerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => {
+        // SMTP port defaults: Test: 6212, Dev: 6202
+        const isTest = process.env.NODE_ENV === 'test';
+        const defaultSmtpPort = isTest ? 6212 : 6202;
+
+        const smtpHost = configService.get('SMTP_HOST', 'localhost');
+        const smtpPortConfig = configService.get('SMTP_PORT');
+        const smtpPort = smtpPortConfig ? parseInt(smtpPortConfig, 10) : defaultSmtpPort;
+
+        return {
         transport: {
-          host: configService.get('SMTP_HOST', 'mailpit'),
-          port: configService.get<number>('SMTP_PORT', 1025),
+          host: smtpHost,
+          port: smtpPort,
           secure: configService.get('SMTP_SECURE', 'false') === 'true',
           auth:
             configService.get('SMTP_USER') && configService.get('SMTP_PASSWORD')
@@ -32,7 +41,7 @@ import { EmailService } from './email.service';
             strict: true,
           },
         },
-      }),
+      };},
       inject: [ConfigService],
     }),
   ],
