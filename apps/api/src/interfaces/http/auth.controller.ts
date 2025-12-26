@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Res, HttpCode, HttpStatus } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AuthService } from '@/application/auth/auth.service';
@@ -18,6 +19,7 @@ import {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('register')
   @ApiOperation({ summary: 'Register new user with workspace' })
   @ApiResponse({ status: 201, type: RegisterResponseDto })
@@ -26,6 +28,7 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   @ApiOperation({ summary: 'Login user' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
@@ -99,6 +102,7 @@ export class AuthController {
     return this.authService.verifyEmail(dto.token);
   }
 
+  @Throttle({ default: { limit: 1, ttl: 60000 } })
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resend verification email' })

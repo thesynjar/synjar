@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '@/infrastructure/persistence/prisma/prisma.service';
 import { EmailService } from '@/application/email/email.service';
+import { PasswordValidator } from '@/domain/auth/validators/password.validator';
 
 interface RegisterDto {
   email: string;
@@ -65,16 +66,29 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<RegisterResult> {
+    const startTime = Date.now();
+
+    // Helper to ensure constant response time (minimum 150ms)
+    const ensureConstantTime = async (result: RegisterResult): Promise<RegisterResult> => {
+      const elapsed = Date.now() - startTime;
+      const MIN_RESPONSE_TIME_MS = 150;
+      if (elapsed < MIN_RESPONSE_TIME_MS) {
+        await new Promise(resolve => setTimeout(resolve, MIN_RESPONSE_TIME_MS - elapsed));
+      }
+      return result;
+    };
+
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
     // Case 1: User exists and is verified → NO tokens (prevent account takeover)
     if (existing && existing.isEmailVerified) {
-      return {
+      const result = {
         message: 'Registration successful. Please check your email.',
         userId: existing.id,
       };
+      return ensureConstantTime(result);
     }
 
     // Case 2: User exists but NOT verified → resend email, NO tokens
@@ -85,10 +99,11 @@ export class AuthService {
         const timeSinceSent = Date.now() - existing.emailVerificationSentAt.getTime();
         if (timeSinceSent < RESEND_COOLDOWN_MS) {
           // Within cooldown - return generic message (no email sent)
-          return {
+          const result = {
             message: 'Registration successful. Please check your email.',
             userId: existing.id,
           };
+          return ensureConstantTime(result);
         }
       }
 
@@ -113,13 +128,23 @@ export class AuthService {
         verificationUrl,
       );
 
-      return {
+      const result = {
         message: 'Registration successful. Please check your email.',
         userId: existing.id,
       };
+      return ensureConstantTime(result);
     }
 
     // Case 3: NEW user → create + auto-login WITH tokens (Cloud mode)
+    // Validate password before hashing
+    const passwordValidation = PasswordValidator.validate(dto.password);
+    if (!passwordValidation.valid) {
+      throw new BadRequestException({
+        message: 'Password does not meet security requirements',
+        errors: passwordValidation.errors,
+      });
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const emailVerificationToken = this.generateVerificationToken();
     const emailVerificationSentAt = new Date();
@@ -173,12 +198,13 @@ export class AuthService {
     // Generate tokens for auto-login (Case 3 only!)
     const tokens = this.generateTokens(user.id, user.email);
 
-    return {
+    const result = {
       message: 'Registration successful. Please check your email.',
       userId: user.id,
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
+    return ensureConstantTime(result);
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
