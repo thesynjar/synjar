@@ -25,6 +25,8 @@ async function bootstrap() {
     process.env.CORS_ORIGINS?.split(',') || [
       'http://localhost:3000',
       'http://localhost:5173',
+      'http://localhost:6210',
+      'http://localhost:6211',
     ];
 
   app.enableCors({
