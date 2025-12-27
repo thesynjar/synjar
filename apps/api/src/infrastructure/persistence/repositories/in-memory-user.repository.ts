@@ -27,6 +27,8 @@ interface InMemoryUser {
   emailVerificationToken: string | null;
   emailVerificationSentAt: Date | null;
   emailVerifiedAt: Date | null;
+  passwordResetToken: string | null;
+  passwordResetSentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -70,6 +72,13 @@ export class InMemoryUserRepository implements IUserRepository {
     return found || null;
   }
 
+  async findByPasswordResetToken(token: string): Promise<InMemoryUser | null> {
+    const found = Array.from(this.users.values()).find(
+      (u) => u.passwordResetToken === token,
+    );
+    return found || null;
+  }
+
   async create(data: CreateUserData): Promise<InMemoryUser> {
     const user: InMemoryUser = {
       id: this.generateId(),
@@ -80,6 +89,8 @@ export class InMemoryUserRepository implements IUserRepository {
       emailVerificationToken: data.emailVerificationToken,
       emailVerificationSentAt: data.emailVerificationSentAt,
       emailVerifiedAt: null,
+      passwordResetToken: null,
+      passwordResetSentAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -115,6 +126,8 @@ export class InMemoryUserRepository implements IUserRepository {
       emailVerificationToken: data.user.emailVerificationToken,
       emailVerificationSentAt: data.user.emailVerificationSentAt,
       emailVerifiedAt: null,
+      passwordResetToken: null,
+      passwordResetSentAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

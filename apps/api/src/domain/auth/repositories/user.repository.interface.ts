@@ -26,6 +26,8 @@ export interface UpdateUserData {
   emailVerificationToken?: string | null;
   emailVerificationSentAt?: Date | null;
   emailVerifiedAt?: Date | null;
+  passwordResetToken?: string | null;
+  passwordResetSentAt?: Date | null;
 }
 
 export interface CreateUserWithWorkspaceData {
@@ -58,6 +60,12 @@ export interface IUserRepository {
    * Used for email verification flow
    */
   findByVerificationToken(token: string): Promise<User | null>;
+
+  /**
+   * Find user by password reset token
+   * Used for password reset flow
+   */
+  findByPasswordResetToken(token: string): Promise<User | null>;
 
   /**
    * Create a new user

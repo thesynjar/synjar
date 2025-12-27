@@ -12,6 +12,8 @@ import {
   MessageResponseDto,
   RegisterResponseDto,
   AcceptInviteDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
 } from '../dto/auth.dto';
 
 @ApiTags('Auth')
@@ -100,5 +102,28 @@ export class AuthController {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     };
+  }
+
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Header('Retry-After', '60')
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset email' })
+  @ApiResponse({ status: 200, type: MessageResponseDto })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Header('Retry-After', '60')
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password with token' })
+  @ApiResponse({ status: 200, type: MessageResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  @ApiResponse({ status: 404, description: 'Token not found' })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
+    return this.authService.resetPassword(dto.token, dto.password);
   }
 }

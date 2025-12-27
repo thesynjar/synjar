@@ -23,6 +23,10 @@ model User {
   emailVerificationSentAt DateTime? @db.Timestamptz
   emailVerifiedAt         DateTime? @db.Timestamptz
 
+  // Password reset
+  passwordResetToken  String?   @unique
+  passwordResetSentAt DateTime? @db.Timestamptz
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
@@ -32,6 +36,7 @@ model User {
 
   @@index([emailVerificationToken])
   @@index([isEmailVerified, createdAt])
+  @@index([passwordResetToken])
 }
 
 // ============ WORKSPACE ============

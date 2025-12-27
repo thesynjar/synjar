@@ -18,6 +18,8 @@ import { DomainEvent } from './events/domain-event.interface';
 import { UserRegisteredEvent } from './events/user-registered.event';
 import { EmailVerifiedEvent } from './events/email-verified.event';
 import { EmailVerificationResentEvent } from './events/email-verification-resent.event';
+import { PasswordResetRequestedEvent } from './events/password-reset-requested.event';
+import { PasswordResetEvent } from './events/password-reset.event';
 import { AuthConstants } from '@/infrastructure/config/constants';
 
 export class UserAggregate {
@@ -31,6 +33,8 @@ export class UserAggregate {
     private verificationToken: VerificationToken | null,
     private verificationSentAt: Date | null,
     private readonly createdAt: Date,
+    private passwordResetToken: VerificationToken | null,
+    private passwordResetSentAt: Date | null,
   ) {}
 
   /**
@@ -55,6 +59,8 @@ export class UserAggregate {
       token,
       new Date(),
       new Date(),
+      null, // no password reset token initially
+      null, // no password reset sent at initially
     );
 
     // Emit domain event
@@ -77,6 +83,8 @@ export class UserAggregate {
     emailVerificationToken: string | null;
     emailVerificationSentAt: Date | null;
     createdAt: Date;
+    passwordResetToken: string | null;
+    passwordResetSentAt: Date | null;
   }): UserAggregate {
     return new UserAggregate(
       userData.id,
@@ -88,6 +96,10 @@ export class UserAggregate {
         : null,
       userData.emailVerificationSentAt,
       userData.createdAt,
+      userData.passwordResetToken
+        ? VerificationToken.fromString(userData.passwordResetToken)
+        : null,
+      userData.passwordResetSentAt,
     );
   }
 
@@ -181,6 +193,67 @@ export class UserAggregate {
     this.addDomainEvent(new EmailVerifiedEvent(this.id, this.email.getValue()));
   }
 
+  /**
+   * Business Rule: Can user request password reset?
+   * Returns {can: false} if within 60-second cooldown period
+   */
+  canRequestPasswordReset(): { can: boolean; reason?: string } {
+    if (this.passwordResetSentAt) {
+      const timeSinceSent = Date.now() - this.passwordResetSentAt.getTime();
+      if (timeSinceSent < AuthConstants.PASSWORD_RESET_COOLDOWN_MS) {
+        return {
+          can: false,
+          reason: 'Please wait before requesting another password reset',
+        };
+      }
+    }
+    return { can: true };
+  }
+
+  /**
+   * Command: Request password reset
+   * Generates new reset token and updates sent timestamp.
+   * Enforces cooldown period.
+   *
+   * Emits: PasswordResetRequestedEvent
+   *
+   * @returns New VerificationToken (reusing same value object)
+   * @throws Error if cooldown not elapsed
+   */
+  requestPasswordReset(): VerificationToken {
+    const result = this.canRequestPasswordReset();
+    if (!result.can) {
+      throw new Error(result.reason);
+    }
+
+    this.passwordResetToken = VerificationToken.create();
+    this.passwordResetSentAt = new Date();
+
+    // Emit domain event
+    this.addDomainEvent(
+      new PasswordResetRequestedEvent(this.id, this.email.getValue()),
+    );
+
+    return this.passwordResetToken;
+  }
+
+  /**
+   * Command: Reset password
+   * Clears reset token after successful password reset.
+   *
+   * Note: The actual password hash update is handled by the repository
+   * since passwordHash is immutable in the aggregate.
+   *
+   * Emits: PasswordResetEvent
+   */
+  resetPassword(): void {
+    this.passwordResetToken = null;
+    this.passwordResetSentAt = null;
+
+    // Emit domain event
+    this.addDomainEvent(new PasswordResetEvent(this.id));
+  }
+
   // Getters for accessing aggregate state
   getId(): string {
     return this.id;
@@ -208,6 +281,14 @@ export class UserAggregate {
 
   getCreatedAt(): Date {
     return this.createdAt;
+  }
+
+  getPasswordResetToken(): string | null {
+    return this.passwordResetToken?.getValue() ?? null;
+  }
+
+  getPasswordResetSentAt(): Date | null {
+    return this.passwordResetSentAt;
   }
 
   // Domain Events Management

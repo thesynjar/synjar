@@ -14,6 +14,8 @@ import {
   VerifyEmailUseCase,
   ResendVerificationUseCase,
   AcceptInviteUseCase,
+  ForgotPasswordUseCase,
+  ResetPasswordUseCase,
 } from './use-cases';
 
 export interface RegisterDto {
@@ -62,6 +64,8 @@ export class AuthService {
     private readonly verifyEmailUseCase: VerifyEmailUseCase,
     private readonly resendVerificationUseCase: ResendVerificationUseCase,
     private readonly acceptInviteUseCase: AcceptInviteUseCase,
+    private readonly forgotPasswordUseCase: ForgotPasswordUseCase,
+    private readonly resetPasswordUseCase: ResetPasswordUseCase,
   ) {}
 
   async register(dto: RegisterDto): Promise<RegisterResult> {
@@ -126,6 +130,14 @@ export class AuthService {
 
   async acceptInvite(dto: AcceptInviteDto): Promise<AuthResult> {
     return this.acceptInviteUseCase.execute(dto);
+  }
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return this.forgotPasswordUseCase.execute(email);
+  }
+
+  async resetPassword(token: string, password: string): Promise<{ message: string }> {
+    return this.resetPasswordUseCase.execute(token, password);
   }
 
   private generateTokens(userId: string, email: string): { accessToken: string; refreshToken: string } {

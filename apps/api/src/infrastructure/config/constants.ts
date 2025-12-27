@@ -46,4 +46,18 @@ export const AuthConstants = {
    * Format: '7d' (7 days)
    */
   REFRESH_TOKEN_EXPIRY: '7d',
+
+  /**
+   * Password reset token time-to-live (ms)
+   * 1 hour = 3,600,000 ms
+   * Security: Short window to minimize attack surface
+   */
+  PASSWORD_RESET_TOKEN_TTL_MS: 60 * 60 * 1000,
+
+  /**
+   * Cooldown period between password reset requests (ms)
+   * 60 seconds = 60,000 ms
+   * Prevents spam and abuse
+   */
+  PASSWORD_RESET_COOLDOWN_MS: 60 * 1000,
 } as const;

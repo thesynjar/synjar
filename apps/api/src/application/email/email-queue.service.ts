@@ -32,9 +32,9 @@ export class EmailQueueService {
     this.queue.push(async () => {
       try {
         await this.emailService.sendEmailVerification(email, token, verificationUrl);
-        this.logger.log(`Email verification sent to ${email}`);
+        this.logger.log('Email verification queued successfully');
       } catch (error) {
-        this.logger.error(`Failed to send verification email to ${email}`, error);
+        this.logger.error('Failed to queue verification email', error);
         // Don't throw - registration should succeed even if email fails
       }
     });
@@ -50,10 +50,28 @@ export class EmailQueueService {
     this.queue.push(async () => {
       try {
         await this.emailService.sendWorkspaceInvitation(email, workspaceName, inviteUrl);
-        this.logger.log(`Workspace invitation sent to ${email}`);
+        this.logger.log('Workspace invitation queued successfully');
       } catch (error) {
-        this.logger.error(`Failed to send workspace invitation to ${email}`, error);
+        this.logger.error('Failed to queue workspace invitation', error);
         // Don't throw - invitation creation should succeed even if email fails
+      }
+    });
+
+    this.processQueue();
+  }
+
+  /**
+   * Queue password reset email for background sending (non-blocking)
+   * Returns immediately - does NOT wait for email to send
+   */
+  queuePasswordReset(email: string, token: string, resetUrl: string): void {
+    this.queue.push(async () => {
+      try {
+        await this.emailService.sendPasswordReset(email, token, resetUrl);
+        this.logger.log('Password reset email queued successfully');
+      } catch (error) {
+        this.logger.error('Failed to queue password reset email', error);
+        // Don't throw - password reset request should succeed even if email fails
       }
     });
 

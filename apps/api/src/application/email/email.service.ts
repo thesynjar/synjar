@@ -36,4 +36,20 @@ export class EmailService {
       },
     });
   }
+
+  async sendPasswordReset(
+    email: string,
+    token: string,
+    resetUrl: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Reset your password - Synjar',
+      template: 'password-reset',
+      context: {
+        token,
+        resetUrl,
+      },
+    });
+  }
 }

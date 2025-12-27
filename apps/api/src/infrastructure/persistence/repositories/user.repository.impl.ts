@@ -42,6 +42,12 @@ export class PrismaUserRepository implements IUserRepository {
     });
   }
 
+  async findByPasswordResetToken(token: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: { passwordResetToken: token },
+    });
+  }
+
   async create(data: CreateUserData): Promise<User> {
     return this.prisma.user.create({
       data: {

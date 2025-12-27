@@ -19,6 +19,8 @@ import {
   VerifyEmailUseCase,
   ResendVerificationUseCase,
   AcceptInviteUseCase,
+  ForgotPasswordUseCase,
+  ResetPasswordUseCase,
 } from './use-cases';
 import { TokenService } from './services/token.service';
 import * as bcrypt from 'bcrypt';
@@ -82,7 +84,7 @@ describe('AuthService', () => {
   let prismaStub: Partial<PrismaService>;
   let jwtStub: Partial<JwtService>;
   let emailServiceStub: Partial<EmailService>;
-  let emailQueueServiceStub: { queueEmailVerification: jest.Mock; queueWorkspaceInvitation: jest.Mock };
+  let emailQueueServiceStub: { queueEmailVerification: jest.Mock; queueWorkspaceInvitation: jest.Mock; queuePasswordReset: jest.Mock };
   let configServiceStub: Partial<ConfigService>;
   let userRepositoryStub: { [key: string]: jest.Mock };
 
@@ -113,6 +115,7 @@ describe('AuthService', () => {
     emailQueueServiceStub = {
       queueEmailVerification: jest.fn(),
       queueWorkspaceInvitation: jest.fn(),
+      queuePasswordReset: jest.fn(),
     };
 
     configServiceStub = {
@@ -131,6 +134,7 @@ describe('AuthService', () => {
       findById: jest.fn(),
       findByEmail: jest.fn(),
       findByVerificationToken: jest.fn(),
+      findByPasswordResetToken: jest.fn(),
       createWithWorkspace: jest.fn(),
       update: jest.fn(),
       save: jest.fn(),
@@ -145,6 +149,8 @@ describe('AuthService', () => {
         VerifyEmailUseCase,
         ResendVerificationUseCase,
         AcceptInviteUseCase,
+        ForgotPasswordUseCase,
+        ResetPasswordUseCase,
         TokenService,
         { provide: PrismaService, useValue: prismaStub },
         { provide: JwtService, useValue: jwtStub },

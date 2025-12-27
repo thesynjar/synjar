@@ -16,6 +16,8 @@ import {
   VerifyEmailUseCase,
   ResendVerificationUseCase,
   AcceptInviteUseCase,
+  ForgotPasswordUseCase,
+  ResetPasswordUseCase,
 } from './use-cases';
 
 @Module({
@@ -44,6 +46,8 @@ import {
     VerifyEmailUseCase,
     ResendVerificationUseCase,
     AcceptInviteUseCase,
+    ForgotPasswordUseCase,
+    ResetPasswordUseCase,
     {
       provide: USER_REPOSITORY,
       useClass: PrismaUserRepository,

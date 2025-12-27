@@ -20,23 +20,7 @@ import { EmailQueueService } from './email-queue.service';
         const smtpPortConfig = configService.get('SMTP_PORT');
         const smtpPort = smtpPortConfig ? parseInt(smtpPortConfig, 10) : defaultSmtpPort;
 
-        // DEBUG: Log template directory resolution
         const templateDir = join(__dirname, 'templates');
-        console.log('🔍 [EmailModule] Template directory resolution:');
-        console.log('  __dirname:', __dirname);
-        console.log('  templateDir:', templateDir);
-        console.log('  exists?', existsSync(templateDir));
-        if (existsSync(templateDir)) {
-          console.log('  files:', readdirSync(templateDir));
-        } else {
-          console.log('  ❌ Directory does not exist!');
-          // Check parent directory
-          const parentDir = join(__dirname, '..');
-          console.log('  parent dir:', parentDir, 'exists?', existsSync(parentDir));
-          if (existsSync(parentDir)) {
-            console.log('  parent contents:', readdirSync(parentDir));
-          }
-        }
 
         return {
         transport: {
