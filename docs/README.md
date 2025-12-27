@@ -38,6 +38,28 @@ Synjar is a self-hosted RAG backend - a knowledge base service with Retrieval Au
 |------|-------------|
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment guide (CapRover, Docker Compose) |
 
+## Testing
+
+**Comprehensive testing strategy for contributors.**
+
+| File | Description |
+|------|-------------|
+| [testing/README.md](testing/README.md) | Main testing guide - start here |
+| [testing/test-types.md](testing/test-types.md) | Unit, Integration, E2E types |
+| [testing/folder-structure.md](testing/folder-structure.md) | Where to put test files |
+| [testing/configuration.md](testing/configuration.md) | Jest, Vitest, Playwright configs |
+| [testing/environment.md](testing/environment.md) | Test environment (62xx ports) |
+| [testing/patterns.md](testing/patterns.md) | Fixtures, mocking, AAA pattern |
+
+### Quick Start
+
+```bash
+pnpm test              # Unit tests
+pnpm test:integration  # Integration tests (requires Docker)
+pnpm test:e2e          # E2E tests
+pnpm test:all          # All tests
+```
+
 ## Security
 
 **Comprehensive documentation for multi-tenant architecture security.**

@@ -14,6 +14,7 @@
     "dev:logs": "docker-compose -f docker-compose.dev.yml logs -f",
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:integration": "pnpm --filter api test:integration",
     "test:all": "pnpm --filter api test:all",
     "test:e2e": "pnpm --filter api test:e2e:full",
     "test:e2e:web": "./apps/web/e2e/run-e2e.sh",
