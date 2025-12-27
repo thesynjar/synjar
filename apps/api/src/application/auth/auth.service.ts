@@ -38,6 +38,7 @@ export interface LoginDto {
 export interface AuthResult {
   accessToken: string;
   refreshToken: string;
+  expiresIn: number;
   user: {
     id: string;
     email: string;
@@ -85,7 +86,7 @@ export class AuthService {
     };
   }
 
-  async refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+  async refreshTokens(refreshToken: string): Promise<AuthResult> {
     try {
       const payload = this.jwtService.verify(refreshToken);
 
@@ -103,6 +104,12 @@ export class AuthService {
       return {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
+        expiresIn: 900, // 15 minutes in seconds
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
       };
     } catch {
       throw new UnauthorizedException('Invalid refresh token');

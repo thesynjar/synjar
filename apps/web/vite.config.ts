@@ -12,12 +12,6 @@ export default defineConfig({
   },
   server: {
     port: 3100,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:6200',
-        changeOrigin: true,
-      },
-    },
   },
   build: {
     outDir: 'dist',

@@ -8,6 +8,7 @@ import type {
   VerifyEmailRequest,
   MessageResponse,
 } from './types';
+import { useAuthStore } from '../model/authStore';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 const API_URL = `${BASE_URL}/api/v1`;
@@ -50,7 +51,8 @@ function getAuthHeaders(): HeadersInit {
     'Content-Type': 'application/json',
   };
 
-  const accessToken = localStorage.getItem('accessToken');
+  // Get access token from Zustand store (memory-based for security)
+  const accessToken = useAuthStore.getState().getAccessToken();
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
   }

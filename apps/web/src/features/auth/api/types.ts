@@ -30,10 +30,7 @@ export interface RefreshRequest {
 export interface AuthenticatedUser {
   id: string;
   email: string;
-  name: string;
-  isActive: boolean;
-  createdAt: string;
-  permissions: string[];
+  name: string | null;
 }
 
 export interface LoginResponse {

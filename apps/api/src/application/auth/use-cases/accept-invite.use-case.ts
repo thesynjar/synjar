@@ -94,6 +94,7 @@ export class AcceptInviteUseCase {
     return {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      expiresIn: 900, // 15 minutes in seconds
       user: {
         id: user.id,
         email: user.email,

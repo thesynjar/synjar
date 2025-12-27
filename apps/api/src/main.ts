@@ -21,13 +21,15 @@ async function bootstrap() {
     }),
   );
 
-  const allowedOrigins =
-    process.env.CORS_ORIGINS?.split(',') || [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:6210',
-      'http://localhost:6211',
-    ];
+  const allowedOrigins = [
+    ...(process.env.CORS_ORIGINS?.split(',') || []),
+    process.env.FRONTEND_URL,
+    'http://localhost:3000',
+    'http://localhost:3100',
+    'http://localhost:5173',
+    'http://localhost:6210',
+    'http://localhost:6211',
+  ].filter(Boolean) as string[];
 
   app.enableCors({
     origin: (origin, callback) => {

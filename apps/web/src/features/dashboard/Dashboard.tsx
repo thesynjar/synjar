@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { createApiClient } from '../../shared/api/client';
+import { useAuthStore } from '../auth/model/authStore';
 
 interface Workspace {
   id: string;
@@ -11,17 +13,26 @@ export function Dashboard() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const authStore = useAuthStore();
+
+  // Create API client with token provider from auth store
+  const apiClient = useMemo(() => createApiClient({
+    getAccessToken: authStore.getAccessToken,
+    getRefreshToken: authStore.getRefreshToken,
+    setTokens: authStore.setTokens,
+    clearTokens: authStore.clearTokens,
+    getWorkspaceId: authStore.getWorkspaceId,
+  }), [authStore]);
+
   useEffect(() => {
     fetchWorkspaces();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchWorkspaces = async () => {
     try {
-      const response = await fetch('/api/workspaces');
-      if (response.ok) {
-        const data = await response.json();
-        setWorkspaces(data);
-      }
+      const data = await apiClient.get('workspaces').json<Workspace[]>();
+      setWorkspaces(data);
     } catch (err) {
       console.error('Failed to fetch workspaces:', err);
     } finally {

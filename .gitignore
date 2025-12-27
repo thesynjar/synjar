@@ -42,3 +42,5 @@ prisma/*.db-journal
 tmp/
 temp/
 cookies.txt
+apps/web/playwright-report/data/
+apps/web/test-results/

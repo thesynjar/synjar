@@ -56,6 +56,9 @@ export class AuthResponseDto {
   @ApiProperty()
   refreshToken!: string;
 
+  @ApiProperty({ description: 'Token expiry time in seconds' })
+  expiresIn!: number;
+
   @ApiProperty({ type: UserDto })
   user!: UserDto;
 }
@@ -63,7 +66,7 @@ export class AuthResponseDto {
 export class RefreshTokenDto {
   @ApiProperty({ description: 'Refresh token' })
   @IsString()
-  refresh_token!: string;
+  refreshToken!: string;
 }
 
 export class VerifyEmailDto {
