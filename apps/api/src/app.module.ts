@@ -15,6 +15,7 @@ import { LLMModule } from './infrastructure/llm/llm.module';
 import { EventsModule } from './infrastructure/events/events.module';
 import { RlsMiddleware } from './infrastructure/persistence/rls/rls.middleware';
 import { HealthController } from './interfaces/http/health.controller';
+import * as path from 'path';
 
 const logger = new Logger('AppModule');
 
@@ -23,7 +24,6 @@ const logger = new Logger('AppModule');
  * This function is called at runtime to ensure process.env is properly set
  */
 function getCoreModules() {
-  const path = require('path');
   const isTest = process.env.NODE_ENV === 'test';
   // Use process.cwd() which is always the api folder
   // Test: test/.env.test (ports 6211-6213), Dev: .env (ports 6201-6203)

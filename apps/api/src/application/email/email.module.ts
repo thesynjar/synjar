@@ -3,7 +3,6 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
-import { existsSync, readdirSync } from 'fs';
 import { EmailService } from './email.service';
 import { EmailQueueService } from './email-queue.service';
 

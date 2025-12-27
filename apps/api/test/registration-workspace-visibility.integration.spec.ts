@@ -368,10 +368,8 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
     const workspaces = workspacesRes.body;
     expect(workspaces).toHaveLength(1); // ❌ FAILS initially (bug confirmed)
 
-    // Additional debugging: Log RLS context
-    console.log('DEBUG: User ID:', userId);
-    console.log('DEBUG: Workspace ID:', workspaceInDb?.id);
-    console.log('DEBUG: WorkspaceMember ID:', memberInDb?.id);
-    console.log('DEBUG: API workspaces response:', workspaces);
+    // Additional debugging: Log RLS context (use console.warn for CI compatibility)
+     
+    console.warn('DEBUG: User ID:', userId, 'Workspace ID:', workspaceInDb?.id, 'WorkspaceMember ID:', memberInDb?.id, 'API workspaces response:', workspaces);
   });
 });
