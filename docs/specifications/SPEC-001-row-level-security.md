@@ -1,9 +1,12 @@
 # SPEC-001: Row Level Security (RLS)
 
 **Data:** 2025-12-24
-**Status:** Done
+**Status:** Done (Refactored)
 **Priorytet:** P0 (Fundament)
 **Zależności:** Brak
+
+> **Note (2025-12-28):** Mechanizm RLS został zrefaktorowany z user-based na workspace-based context.
+> Szczegóły: [2025-12-28-rls-per-workspace-refactor.md](./2025-12-28-rls-per-workspace-refactor.md)
 
 ---
 
