@@ -49,12 +49,13 @@ model Workspace {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
-  createdBy   User                   @relation(fields: [createdById], references: [id])
-  members     WorkspaceMember[]
-  invitations Invitation[]
-  documents   Document[]
-  publicLinks PublicLink[]
-  userLookups UserWorkspaceLookup[]
+  createdBy       User                      @relation(fields: [createdById], references: [id])
+  members         WorkspaceMember[]
+  invitations     Invitation[]
+  documents       Document[]
+  publicLinks     PublicLink[]
+  userLookups     UserWorkspaceLookup[]
+  processingQueue WorkspaceProcessingQueue?
 
   @@index([createdById])
 }
@@ -243,4 +244,21 @@ model PublicLink {
 
   @@index([token])
   @@index([workspaceId])
+}
+
+// ============ SYSTEM TABLES ============
+// Internal tables for system operations (no RLS)
+
+model WorkspaceProcessingQueue {
+  workspaceId           String    @id
+  pendingDocumentsCount Int       @default(0)
+  lastProcessedAt       DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([pendingDocumentsCount])
+  @@map("WorkspaceProcessingQueue")
 }

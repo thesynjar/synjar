@@ -5,11 +5,6 @@ import { PrismaService } from '@/infrastructure/persistence/prisma/prisma.servic
 import { DocumentProcessorService } from './document-processor.service';
 import { ProcessingStatus } from '@prisma/client';
 
-interface WorkspaceWithOwner {
-  id: string;
-  createdById: string;
-}
-
 @Injectable()
 export class DocumentProcessingScheduler {
   private readonly logger = new Logger(DocumentProcessingScheduler.name);
@@ -23,7 +18,7 @@ export class DocumentProcessingScheduler {
   /**
    * Process pending documents every 10 seconds.
    * Uses PostgreSQL advisory lock for multi-instance safety (Cloud deployment).
-   * Processes per workspace with RLS context for tenant isolation.
+   * Processes per workspace with workspace-based RLS context for tenant isolation.
    */
   @Cron(CronExpression.EVERY_10_SECONDS)
   async processPendingDocuments(): Promise<void> {
@@ -35,7 +30,7 @@ export class DocumentProcessingScheduler {
     }
 
     try {
-      // 2. Get workspaces with pending documents
+      // 2. Get workspaces with pending documents from the queue
       const workspacesWithPending = await this.getWorkspacesWithPendingDocs();
 
       if (workspacesWithPending.length === 0) {
@@ -46,9 +41,9 @@ export class DocumentProcessingScheduler {
         `Found ${workspacesWithPending.length} workspace(s) with pending documents`,
       );
 
-      // 3. Process per workspace (RLS context for tenant isolation)
-      for (const workspace of workspacesWithPending) {
-        await this.processWorkspaceDocuments(workspace);
+      // 3. Process per workspace (workspace-based RLS context for tenant isolation)
+      for (const workspaceId of workspacesWithPending) {
+        await this.processWorkspaceDocuments(workspaceId);
       }
     } catch (error) {
       this.logger.error(
@@ -93,36 +88,34 @@ export class DocumentProcessingScheduler {
   }
 
   /**
-   * Get unique workspaces that have pending documents.
-   * Uses raw query to bypass RLS (this is a system-level operation).
+   * Get workspace IDs that have pending documents.
+   * Queries WorkspaceProcessingQueue directly (system table, no RLS).
    */
-  private async getWorkspacesWithPendingDocs(): Promise<WorkspaceWithOwner[]> {
-    // Use withoutRls for system-level query (finding which workspaces need processing)
-    return this.prisma.withoutRls(async (tx) => {
-      const workspaces = await tx.workspace.findMany({
-        where: {
-          documents: {
-            some: {
-              processingStatus: ProcessingStatus.PENDING,
-            },
-          },
+  private async getWorkspacesWithPendingDocs(): Promise<string[]> {
+    // WorkspaceProcessingQueue has RLS disabled - direct query is safe
+    const workspaces = await this.prisma.workspaceProcessingQueue.findMany({
+      where: {
+        pendingDocumentsCount: {
+          gt: 0,
         },
-        select: {
-          id: true,
-          createdById: true,
-        },
-      });
-      return workspaces;
+      },
+      select: {
+        workspaceId: true,
+      },
+      orderBy: {
+        // Process workspaces that haven't been processed recently first
+        lastProcessedAt: 'asc',
+      },
     });
+
+    return workspaces.map((w) => w.workspaceId);
   }
 
   /**
    * Process pending documents for a specific workspace.
-   * Uses forUser() to enforce RLS context (tenant isolation).
+   * Uses forWorkspace() to enforce RLS context (tenant isolation).
    */
-  private async processWorkspaceDocuments(
-    workspace: WorkspaceWithOwner,
-  ): Promise<void> {
+  private async processWorkspaceDocuments(workspaceId: string): Promise<void> {
     const batchSize = this.configService.get<number>(
       'DOCUMENT_PROCESSING_BATCH_SIZE',
       5,
@@ -132,11 +125,10 @@ export class DocumentProcessingScheduler {
       60000,
     );
 
-    // Process with RLS context (tenant isolation)
-    await this.prisma.forUser(workspace.createdById, async (tx) => {
+    // Process with workspace-based RLS context (tenant isolation)
+    await this.prisma.forWorkspace(workspaceId, async (tx) => {
       const pendingDocs = await tx.document.findMany({
         where: {
-          workspaceId: workspace.id,
           processingStatus: ProcessingStatus.PENDING,
         },
         select: { id: true, title: true },
@@ -147,7 +139,7 @@ export class DocumentProcessingScheduler {
       for (const doc of pendingDocs) {
         try {
           await this.processWithTimeout(doc.id, timeoutMs);
-          this.logger.log(`Processed: ${doc.title} (workspace: ${workspace.id})`);
+          this.logger.log(`Processed: ${doc.title} (workspace: ${workspaceId})`);
         } catch (error) {
           this.logger.error(
             `Failed to process document ${doc.id}: ${error instanceof Error ? error.message : 'Unknown'}`,
@@ -155,6 +147,12 @@ export class DocumentProcessingScheduler {
           // Continue with next document even if one fails
         }
       }
+    });
+
+    // Update last processed timestamp in queue (outside of forWorkspace transaction)
+    await this.prisma.workspaceProcessingQueue.update({
+      where: { workspaceId },
+      data: { lastProcessedAt: new Date() },
     });
   }
 

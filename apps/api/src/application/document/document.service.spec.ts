@@ -46,6 +46,9 @@ describe('DocumentService', () => {
       chunk: {
         deleteMany: jest.fn(),
       } as unknown as PrismaService['chunk'],
+      tag: {
+        upsert: jest.fn().mockResolvedValue({ id: 'tag-id', name: 'tag' }),
+      } as unknown as PrismaService['tag'],
       $executeRaw: jest.fn(),
       // Add RLS context methods
       forUser: jest.fn((_userId, callback) => {
@@ -65,12 +68,22 @@ describe('DocumentService', () => {
         } as any;
         return callback(tx);
       }) as any,
-      withoutRls: jest.fn((callback) => {
-        // Mock transaction object for system operations
+      forWorkspace: jest.fn((_workspaceId, callback) => {
+        // Mock transaction object for workspace-based RLS
         const tx = {
-          tag: {
-            upsert: jest.fn(),
+          document: {
+            create: jest.fn(),
+            findMany: jest.fn(),
+            findFirst: jest.fn(),
+            findUnique: jest.fn(),
+            update: jest.fn(),
+            delete: jest.fn(),
+            count: jest.fn(),
           },
+          chunk: {
+            deleteMany: jest.fn(),
+          },
+          $executeRaw: jest.fn(),
         } as any;
         return callback(tx);
       }) as any,
@@ -167,24 +180,23 @@ describe('DocumentService', () => {
         updatedAt: new Date(),
       };
 
-      // Mock withoutRls for tag creation
-      prismaStub.withoutRls = jest.fn((callback) => {
-        const tx = {
-          tag: {
-            upsert: jest.fn()
-              .mockResolvedValueOnce({ id: 'tag-test', name: 'test' })
-              .mockResolvedValueOnce({ id: 'tag-example', name: 'example' }),
-          },
-        } as any;
-        return callback(tx);
-      }) as any;
+      // Mock tag.upsert for tag creation (Tag table has no RLS)
+      (prismaStub.tag as any).upsert = jest.fn()
+        .mockResolvedValueOnce({ id: 'tag-test', name: 'test' })
+        .mockResolvedValueOnce({ id: 'tag-example', name: 'example' });
 
-      // Mock forUser for document creation
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace for document creation
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             create: jest.fn().mockResolvedValue(expectedDocument),
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue({}),
           },
+          chunk: {
+            deleteMany: jest.fn(),
+          },
+          $executeRaw: jest.fn(),
         } as any;
         return callback(tx);
       }) as any;
@@ -235,18 +247,18 @@ describe('DocumentService', () => {
         updatedAt: new Date(),
       };
 
-      // Mock withoutRls for tag creation
-      prismaStub.withoutRls = jest.fn((callback) => {
-        const tx = { tag: { upsert: jest.fn() } } as any;
-        return callback(tx);
-      }) as any;
-
-      // Mock forUser for document creation
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace for document creation
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             create: jest.fn().mockResolvedValue(expectedDocument),
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue({}),
           },
+          chunk: {
+            deleteMany: jest.fn(),
+          },
+          $executeRaw: jest.fn(),
         } as any;
         return callback(tx);
       }) as any;
@@ -326,24 +338,23 @@ describe('DocumentService', () => {
         chunks: [],
       };
 
-      // Mock withoutRls for tag creation
-      prismaStub.withoutRls = jest.fn((callback) => {
-        const tx = {
-          tag: {
-            upsert: jest.fn()
-              .mockResolvedValueOnce({ id: 'tag-1', name: 'test-tag' })
-              .mockResolvedValueOnce({ id: 'tag-2', name: 'another-tag' }),
-          },
-        } as any;
-        return callback(tx);
-      }) as any;
+      // Mock tag.upsert for tag creation (Tag table has no RLS)
+      (prismaStub.tag as any).upsert = jest.fn()
+        .mockResolvedValueOnce({ id: 'tag-1', name: 'test-tag' })
+        .mockResolvedValueOnce({ id: 'tag-2', name: 'another-tag' });
 
-      // Mock forUser for document creation
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace for document creation
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             create: jest.fn().mockResolvedValue(expectedDocument),
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue({}),
           },
+          chunk: {
+            deleteMany: jest.fn(),
+          },
+          $executeRaw: jest.fn(),
         } as any;
         return callback(tx);
       }) as any;
@@ -352,7 +363,7 @@ describe('DocumentService', () => {
       await service.create(workspaceId, userId, createDto);
 
       // Assert
-      expect(prismaStub.forUser).toHaveBeenCalled();
+      expect(prismaStub.forWorkspace).toHaveBeenCalled();
     });
 
     it('should default to TEXT content type when not provided', async () => {
@@ -372,18 +383,18 @@ describe('DocumentService', () => {
         chunks: [],
       };
 
-      // Mock withoutRls for tag creation
-      prismaStub.withoutRls = jest.fn((callback) => {
-        const tx = { tag: { upsert: jest.fn() } } as any;
-        return callback(tx);
-      }) as any;
-
-      // Mock forUser for document creation
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace for document creation
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             create: jest.fn().mockResolvedValue(expectedDocument),
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue({}),
           },
+          chunk: {
+            deleteMany: jest.fn(),
+          },
+          $executeRaw: jest.fn(),
         } as any;
         return callback(tx);
       }) as any;
@@ -420,8 +431,8 @@ describe('DocumentService', () => {
         },
       ];
 
-      // Mock forUser for document query
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace for document query
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findMany: jest.fn().mockResolvedValue(documents),
@@ -460,8 +471,8 @@ describe('DocumentService', () => {
         limit: 10,
       };
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findMany: jest.fn().mockResolvedValue([]),
@@ -475,7 +486,7 @@ describe('DocumentService', () => {
       await service.findAll(workspaceId, userId, query);
 
       // Assert
-      expect(prismaStub.forUser).toHaveBeenCalled();
+      expect(prismaStub.forWorkspace).toHaveBeenCalled();
     });
 
     it('should handle pagination correctly', async () => {
@@ -484,8 +495,8 @@ describe('DocumentService', () => {
       const userId = 'user-id-123';
       const query = { page: 3, limit: 10 };
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findMany: jest.fn().mockResolvedValue([]),
@@ -513,8 +524,8 @@ describe('DocumentService', () => {
       const userId = 'user-id-123';
       const query = {};
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findMany: jest.fn().mockResolvedValue([]),
@@ -552,8 +563,8 @@ describe('DocumentService', () => {
         ],
       };
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(expectedDocument),
@@ -579,8 +590,8 @@ describe('DocumentService', () => {
       const documentId = 'non-existent-document';
       const userId = 'user-id-123';
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(null),
@@ -604,8 +615,8 @@ describe('DocumentService', () => {
       const documentId = 'document-id-123';
       const userId = 'user-id-123';
 
-      // Mock forUser - returns null because RLS would filter it out
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace - returns null because RLS would filter it out
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(null),
@@ -654,8 +665,8 @@ describe('DocumentService', () => {
         chunks: [],
       };
 
-      // Mock forUser for update
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace for update
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(existingDocument),
@@ -700,8 +711,8 @@ describe('DocumentService', () => {
         processingStatus: ProcessingStatus.PENDING,
       };
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(existingDocument),
@@ -742,8 +753,8 @@ describe('DocumentService', () => {
         chunks: [],
       };
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(existingDocument),
@@ -757,7 +768,7 @@ describe('DocumentService', () => {
       await service.update(workspaceId, documentId, userId, updateDto);
 
       // Assert - processingStatus should be undefined (not changed)
-      expect(prismaStub.forUser).toHaveBeenCalled();
+      expect(prismaStub.forWorkspace).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if document does not exist', async () => {
@@ -767,8 +778,8 @@ describe('DocumentService', () => {
       const userId = 'user-id-123';
       const updateDto = { title: 'New title' };
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(null),
@@ -822,9 +833,9 @@ describe('DocumentService', () => {
         chunks: [],
       };
 
-      // Mock forUser for both find and delete
+      // Mock forWorkspace for both find and delete
       let callCount = 0;
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         callCount++;
         if (callCount === 1) {
           // First call - find document
@@ -870,9 +881,9 @@ describe('DocumentService', () => {
         chunks: [],
       };
 
-      // Mock forUser
+      // Mock forWorkspace
       let callCount = 0;
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         callCount++;
         if (callCount === 1) {
           const tx = {
@@ -904,8 +915,8 @@ describe('DocumentService', () => {
       const documentId = 'non-existent-document';
       const userId = 'user-id-123';
 
-      // Mock forUser
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             findFirst: jest.fn().mockResolvedValue(null),
@@ -960,9 +971,9 @@ describe('DocumentService', () => {
         .fn()
         .mockRejectedValue(new Error('Storage error'));
 
-      // Mock forUser
+      // Mock forWorkspace
       let callCount = 0;
-      prismaStub.forUser = jest.fn((_userId, callback) => {
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         callCount++;
         if (callCount === 1) {
           const tx = {
@@ -985,7 +996,7 @@ describe('DocumentService', () => {
       await service.delete(workspaceId, documentId, userId);
 
       // Assert - deletion should still happen
-      expect(prismaStub.forUser).toHaveBeenCalledTimes(2);
+      expect(prismaStub.forWorkspace).toHaveBeenCalledTimes(2);
     });
   });
 });

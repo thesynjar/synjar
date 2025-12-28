@@ -10,11 +10,8 @@ describe('DocumentProcessingScheduler', () => {
   let documentProcessorStub: Partial<DocumentProcessorService>;
   let configServiceStub: Partial<ConfigService>;
 
-  // Mock data
-  const mockWorkspace = {
-    id: 'workspace-1',
-    createdById: 'user-1',
-  };
+  // Mock data - now uses workspaceId instead of full workspace object
+  const mockWorkspaceId = 'workspace-1';
 
   const mockDocuments = [
     { id: 'doc-1', title: 'Document 1' },
@@ -26,8 +23,11 @@ describe('DocumentProcessingScheduler', () => {
     // Reset stubs
     prismaStub = {
       $queryRaw: jest.fn(),
-      withoutRls: jest.fn(),
-      forUser: jest.fn(),
+      workspaceProcessingQueue: {
+        findMany: jest.fn(),
+        update: jest.fn(),
+      } as any,
+      forWorkspace: jest.fn(),
     };
 
     documentProcessorStub = {
@@ -57,22 +57,13 @@ describe('DocumentProcessingScheduler', () => {
   });
 
   describe('Scenario 1: No pending documents', () => {
-    it('should acquire lock, find no workspaces, and release lock', async () => {
-      // Given: No documents PENDING in any workspace
-      (prismaStub.$queryRaw as jest.Mock).mockResolvedValueOnce([
-        { pg_try_advisory_lock: true },
-      ]); // Acquire lock
-      (prismaStub.withoutRls as jest.Mock).mockImplementation(async (cb) => {
-        const tx = {
-          workspace: {
-            findMany: jest.fn().mockResolvedValue([]), // No workspaces with pending docs
-          },
-        };
-        return cb(tx);
-      });
-      (prismaStub.$queryRaw as jest.Mock).mockResolvedValueOnce([
-        { pg_advisory_unlock: true },
-      ]); // Release lock
+    it('should acquire lock, find no workspaces with pending, and release lock', async () => {
+      // Given: No workspaces with pending documents in queue
+      (prismaStub.$queryRaw as jest.Mock)
+        .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
+        .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
+
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([]);
 
       // When
       await scheduler.processPendingDocuments();
@@ -85,22 +76,19 @@ describe('DocumentProcessingScheduler', () => {
 
   describe('Scenario 2: Single workspace, 3 documents', () => {
     it('should process all 3 documents in order', async () => {
-      // Given: Workspace "General" with owner user-1, 3 documents PENDING
+      // Given: Workspace with 3 documents PENDING
       (prismaStub.$queryRaw as jest.Mock)
         .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
         .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
 
-      (prismaStub.withoutRls as jest.Mock).mockImplementation(async (cb) => {
-        const tx = {
-          workspace: {
-            findMany: jest.fn().mockResolvedValue([mockWorkspace]),
-          },
-        };
-        return cb(tx);
-      });
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: mockWorkspaceId },
+      ]);
 
-      (prismaStub.forUser as jest.Mock).mockImplementation(
-        async (_userId, cb) => {
+      (prismaStub.workspaceProcessingQueue!.update as jest.Mock).mockResolvedValue({});
+
+      (prismaStub.forWorkspace as jest.Mock).mockImplementation(
+        async (_workspaceId, cb) => {
           const tx = {
             document: {
               findMany: jest.fn().mockResolvedValue(mockDocuments),
@@ -114,20 +102,11 @@ describe('DocumentProcessingScheduler', () => {
       await scheduler.processPendingDocuments();
 
       // Then
-      expect(prismaStub.forUser).toHaveBeenCalledWith('user-1', expect.any(Function));
+      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(mockWorkspaceId, expect.any(Function));
       expect(documentProcessorStub.processDocument).toHaveBeenCalledTimes(3);
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
-        1,
-        'doc-1',
-      );
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
-        2,
-        'doc-2',
-      );
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
-        3,
-        'doc-3',
-      );
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(1, 'doc-1');
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(2, 'doc-2');
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(3, 'doc-3');
     });
   });
 
@@ -143,18 +122,15 @@ describe('DocumentProcessingScheduler', () => {
         .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
         .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
 
-      (prismaStub.withoutRls as jest.Mock).mockImplementation(async (cb) => {
-        const tx = {
-          workspace: {
-            findMany: jest.fn().mockResolvedValue([mockWorkspace]),
-          },
-        };
-        return cb(tx);
-      });
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: mockWorkspaceId },
+      ]);
+
+      (prismaStub.workspaceProcessingQueue!.update as jest.Mock).mockResolvedValue({});
 
       // Mock returns only 5 docs (batch limit enforced at query level)
-      (prismaStub.forUser as jest.Mock).mockImplementation(
-        async (_userId, cb) => {
+      (prismaStub.forWorkspace as jest.Mock).mockImplementation(
+        async (_workspaceId, cb) => {
           const tx = {
             document: {
               findMany: jest.fn().mockResolvedValue(sevenDocs.slice(0, 5)),
@@ -179,17 +155,14 @@ describe('DocumentProcessingScheduler', () => {
         .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
         .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
 
-      (prismaStub.withoutRls as jest.Mock).mockImplementation(async (cb) => {
-        const tx = {
-          workspace: {
-            findMany: jest.fn().mockResolvedValue([mockWorkspace]),
-          },
-        };
-        return cb(tx);
-      });
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: mockWorkspaceId },
+      ]);
 
-      (prismaStub.forUser as jest.Mock).mockImplementation(
-        async (_userId, cb) => {
+      (prismaStub.workspaceProcessingQueue!.update as jest.Mock).mockResolvedValue({});
+
+      (prismaStub.forWorkspace as jest.Mock).mockImplementation(
+        async (_workspaceId, cb) => {
           const tx = {
             document: {
               findMany: jest.fn().mockResolvedValue(mockDocuments),
@@ -210,27 +183,18 @@ describe('DocumentProcessingScheduler', () => {
 
       // Then: All 3 documents attempted, error doesn't stop processing
       expect(documentProcessorStub.processDocument).toHaveBeenCalledTimes(3);
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
-        1,
-        'doc-1',
-      );
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
-        2,
-        'doc-2',
-      );
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
-        3,
-        'doc-3',
-      );
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(1, 'doc-1');
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(2, 'doc-2');
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(3, 'doc-3');
     });
 
     it('should release lock even when processing fails', async () => {
-      // Given: Lock acquired, but withoutRls throws error
+      // Given: Lock acquired, but workspaceProcessingQueue throws error
       (prismaStub.$queryRaw as jest.Mock)
         .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
         .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
 
-      (prismaStub.withoutRls as jest.Mock).mockRejectedValue(
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockRejectedValue(
         new Error('Database error'),
       );
 
@@ -254,7 +218,7 @@ describe('DocumentProcessingScheduler', () => {
 
       // Then: No processing, no unlock attempt
       expect(prismaStub.$queryRaw).toHaveBeenCalledTimes(1);
-      expect(prismaStub.withoutRls).not.toHaveBeenCalled();
+      expect(prismaStub.workspaceProcessingQueue!.findMany).not.toHaveBeenCalled();
       expect(documentProcessorStub.processDocument).not.toHaveBeenCalled();
     });
   });
@@ -274,17 +238,14 @@ describe('DocumentProcessingScheduler', () => {
         .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
         .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
 
-      (prismaStub.withoutRls as jest.Mock).mockImplementation(async (cb) => {
-        const tx = {
-          workspace: {
-            findMany: jest.fn().mockResolvedValue([mockWorkspace]),
-          },
-        };
-        return cb(tx);
-      });
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: mockWorkspaceId },
+      ]);
 
-      (prismaStub.forUser as jest.Mock).mockImplementation(
-        async (_userId, cb) => {
+      (prismaStub.workspaceProcessingQueue!.update as jest.Mock).mockResolvedValue({});
+
+      (prismaStub.forWorkspace as jest.Mock).mockImplementation(
+        async (_workspaceId, cb) => {
           const tx = {
             document: {
               findMany: jest.fn().mockResolvedValue([{ id: 'doc-slow', title: 'Slow Doc' }]),
@@ -312,28 +273,24 @@ describe('DocumentProcessingScheduler', () => {
   describe('Multiple workspaces (fair processing)', () => {
     it('should process documents from multiple workspaces', async () => {
       // Given: 2 workspaces with pending documents
-      const workspace1 = { id: 'workspace-1', createdById: 'user-1' };
-      const workspace2 = { id: 'workspace-2', createdById: 'user-2' };
+      const workspace1Id = 'workspace-1';
+      const workspace2Id = 'workspace-2';
 
       (prismaStub.$queryRaw as jest.Mock)
         .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
         .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
 
-      (prismaStub.withoutRls as jest.Mock).mockImplementation(async (cb) => {
-        const tx = {
-          workspace: {
-            findMany: jest.fn().mockResolvedValue([workspace1, workspace2]),
-          },
-        };
-        return cb(tx);
-      });
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: workspace1Id },
+        { workspaceId: workspace2Id },
+      ]);
 
-      let forUserCallCount = 0;
-      (prismaStub.forUser as jest.Mock).mockImplementation(
-        async (userId, cb) => {
-          forUserCallCount++;
+      (prismaStub.workspaceProcessingQueue!.update as jest.Mock).mockResolvedValue({});
+
+      (prismaStub.forWorkspace as jest.Mock).mockImplementation(
+        async (workspaceId, cb) => {
           const docs =
-            userId === 'user-1'
+            workspaceId === workspace1Id
               ? [{ id: 'doc-w1', title: 'Doc W1' }]
               : [{ id: 'doc-w2', title: 'Doc W2' }];
           const tx = {
@@ -349,9 +306,9 @@ describe('DocumentProcessingScheduler', () => {
       await scheduler.processPendingDocuments();
 
       // Then: Both workspaces processed
-      expect(prismaStub.forUser).toHaveBeenCalledTimes(2);
-      expect(prismaStub.forUser).toHaveBeenCalledWith('user-1', expect.any(Function));
-      expect(prismaStub.forUser).toHaveBeenCalledWith('user-2', expect.any(Function));
+      expect(prismaStub.forWorkspace).toHaveBeenCalledTimes(2);
+      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(workspace1Id, expect.any(Function));
+      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(workspace2Id, expect.any(Function));
       expect(documentProcessorStub.processDocument).toHaveBeenCalledTimes(2);
       expect(documentProcessorStub.processDocument).toHaveBeenCalledWith('doc-w1');
       expect(documentProcessorStub.processDocument).toHaveBeenCalledWith('doc-w2');
@@ -373,22 +330,19 @@ describe('DocumentProcessingScheduler', () => {
         .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
         .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
 
-      (prismaStub.withoutRls as jest.Mock).mockImplementation(async (cb) => {
-        const tx = {
-          workspace: {
-            findMany: jest.fn().mockResolvedValue([mockWorkspace]),
-          },
-        };
-        return cb(tx);
-      });
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: mockWorkspaceId },
+      ]);
+
+      (prismaStub.workspaceProcessingQueue!.update as jest.Mock).mockResolvedValue({});
 
       const findManyMock = jest.fn().mockResolvedValue([
         { id: 'doc-1', title: 'Doc 1' },
         { id: 'doc-2', title: 'Doc 2' },
       ]);
 
-      (prismaStub.forUser as jest.Mock).mockImplementation(
-        async (_userId, cb) => {
+      (prismaStub.forWorkspace as jest.Mock).mockImplementation(
+        async (_workspaceId, cb) => {
           const tx = {
             document: {
               findMany: findManyMock,
@@ -407,6 +361,41 @@ describe('DocumentProcessingScheduler', () => {
           take: 2,
         }),
       );
+    });
+  });
+
+  describe('lastProcessedAt update', () => {
+    it('should update lastProcessedAt after processing workspace', async () => {
+      // Given: Workspace with pending documents
+      (prismaStub.$queryRaw as jest.Mock)
+        .mockResolvedValueOnce([{ pg_try_advisory_lock: true }])
+        .mockResolvedValueOnce([{ pg_advisory_unlock: true }]);
+
+      (prismaStub.workspaceProcessingQueue!.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: mockWorkspaceId },
+      ]);
+
+      (prismaStub.workspaceProcessingQueue!.update as jest.Mock).mockResolvedValue({});
+
+      (prismaStub.forWorkspace as jest.Mock).mockImplementation(
+        async (_workspaceId, cb) => {
+          const tx = {
+            document: {
+              findMany: jest.fn().mockResolvedValue([{ id: 'doc-1', title: 'Doc 1' }]),
+            },
+          };
+          return cb(tx);
+        },
+      );
+
+      // When
+      await scheduler.processPendingDocuments();
+
+      // Then: lastProcessedAt should be updated
+      expect(prismaStub.workspaceProcessingQueue!.update).toHaveBeenCalledWith({
+        where: { workspaceId: mockWorkspaceId },
+        data: { lastProcessedAt: expect.any(Date) },
+      });
     });
   });
 });

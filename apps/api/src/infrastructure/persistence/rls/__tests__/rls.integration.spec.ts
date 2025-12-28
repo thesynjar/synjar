@@ -6,7 +6,7 @@ import { Role } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * RLS Integration Tests
+ * RLS Integration Tests - Workspace-Based Context
  *
  * These tests verify Row Level Security implementation at the database level.
  * IMPORTANT: These tests use a real database connection, not mocks!
@@ -16,11 +16,15 @@ import { v4 as uuidv4 } from 'uuid';
  * - prismaSuperuser: Superuser client (for setup/teardown, bypasses RLS)
  *
  * Test scenarios:
- * 1. Workspace isolation - users can't see other workspaces
- * 2. Document isolation - users can't access documents from other workspaces
+ * 1. Workspace isolation - workspace context filters workspaces
+ * 2. Document isolation - workspace context filters documents
  * 3. RLS blocks ID manipulation - direct ID access is blocked by RLS
  * 4. Public API bypass works correctly
  * 5. Stress tests - concurrent operations maintain isolation
+ *
+ * Note: With workspace-based RLS:
+ * - forWorkspace(workspaceId) sets app.current_workspace_id
+ * - forUser(userId) sets app.current_user_id (for list operations with user fallback)
  */
 describe('RLS Integration Tests', () => {
   let prisma: PrismaService;
@@ -149,8 +153,9 @@ describe('RLS Integration Tests', () => {
     });
   });
 
-  describe('1. Workspace Isolation', () => {
-    it('User A should only see Workspace A', async () => {
+  describe('1. Workspace Isolation (User Context for List)', () => {
+    it('User A should only see Workspace A via user context', async () => {
+      // Use forUser for listing workspaces (user fallback in policy)
       const workspaces = await prisma.forUser(userA.id, async (tx) => {
         return tx.workspace.findMany();
       });
@@ -160,7 +165,7 @@ describe('RLS Integration Tests', () => {
       expect(workspaces[0].name).toBe(workspaceA.name);
     });
 
-    it('User B should only see Workspace B', async () => {
+    it('User B should only see Workspace B via user context', async () => {
       const workspaces = await prisma.forUser(userB.id, async (tx) => {
         return tx.workspace.findMany();
       });
@@ -170,13 +175,13 @@ describe('RLS Integration Tests', () => {
       expect(workspaces[0].name).toBe(workspaceB.name);
     });
 
-    it('User A should not see Workspace B in list', async () => {
-      const workspaces = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace context should return the specific workspace', async () => {
+      const workspaces = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.workspace.findMany();
       });
 
-      const workspaceIds = workspaces.map((w) => w.id);
-      expect(workspaceIds).not.toContain(workspaceB.id);
+      expect(workspaces).toHaveLength(1);
+      expect(workspaces[0].id).toBe(workspaceA.id);
     });
 
     it('User without workspace membership should see empty list', async () => {
@@ -203,9 +208,9 @@ describe('RLS Integration Tests', () => {
     });
   });
 
-  describe('2. Document Isolation', () => {
-    it('User A should only see documents from Workspace A', async () => {
-      const documents = await prisma.forUser(userA.id, async (tx) => {
+  describe('2. Document Isolation (Workspace Context)', () => {
+    it('Workspace A context should only see documents from Workspace A', async () => {
+      const documents = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.document.findMany();
       });
 
@@ -214,8 +219,8 @@ describe('RLS Integration Tests', () => {
       expect(documents[0].workspaceId).toBe(workspaceA.id);
     });
 
-    it('User B should only see documents from Workspace B', async () => {
-      const documents = await prisma.forUser(userB.id, async (tx) => {
+    it('Workspace B context should only see documents from Workspace B', async () => {
+      const documents = await prisma.forWorkspace(workspaceB.id, async (tx) => {
         return tx.document.findMany();
       });
 
@@ -224,8 +229,8 @@ describe('RLS Integration Tests', () => {
       expect(documents[0].workspaceId).toBe(workspaceB.id);
     });
 
-    it('User A should not see Document B in list', async () => {
-      const documents = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context should not see Document B in list', async () => {
+      const documents = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.document.findMany();
       });
 
@@ -235,8 +240,8 @@ describe('RLS Integration Tests', () => {
   });
 
   describe('3. RLS Blocks ID Manipulation', () => {
-    it('User A cannot access Document B by direct ID query', async () => {
-      const document = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context cannot access Document B by direct ID query', async () => {
+      const document = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.document.findUnique({
           where: { id: documentB.id },
         });
@@ -246,8 +251,8 @@ describe('RLS Integration Tests', () => {
       expect(document).toBeNull();
     });
 
-    it('User B cannot access Document A by direct ID query', async () => {
-      const document = await prisma.forUser(userB.id, async (tx) => {
+    it('Workspace B context cannot access Document A by direct ID query', async () => {
+      const document = await prisma.forWorkspace(workspaceB.id, async (tx) => {
         return tx.document.findUnique({
           where: { id: documentA.id },
         });
@@ -256,8 +261,8 @@ describe('RLS Integration Tests', () => {
       expect(document).toBeNull();
     });
 
-    it('User A cannot access Workspace B by direct ID query', async () => {
-      const workspace = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context cannot access Workspace B by direct ID query', async () => {
+      const workspace = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.workspace.findUnique({
           where: { id: workspaceB.id },
         });
@@ -266,9 +271,9 @@ describe('RLS Integration Tests', () => {
       expect(workspace).toBeNull();
     });
 
-    it('User A cannot update Document B even with correct ID', async () => {
+    it('Workspace A context cannot update Document B even with correct ID', async () => {
       await expect(
-        prisma.forUser(userA.id, async (tx) => {
+        prisma.forWorkspace(workspaceA.id, async (tx) => {
           return tx.document.update({
             where: { id: documentB.id },
             data: { title: 'Hacked Title' },
@@ -283,9 +288,9 @@ describe('RLS Integration Tests', () => {
       expect(document?.title).toBe('Document B');
     });
 
-    it('User A cannot delete Document B even with correct ID', async () => {
+    it('Workspace A context cannot delete Document B even with correct ID', async () => {
       await expect(
-        prisma.forUser(userA.id, async (tx) => {
+        prisma.forWorkspace(workspaceA.id, async (tx) => {
           return tx.document.delete({
             where: { id: documentB.id },
           });
@@ -334,8 +339,8 @@ describe('RLS Integration Tests', () => {
       });
     });
 
-    it('User A should only see chunks from their documents', async () => {
-      const chunks = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context should only see chunks from their documents', async () => {
+      const chunks = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.chunk.findMany();
       });
 
@@ -344,8 +349,8 @@ describe('RLS Integration Tests', () => {
       expect(chunks[0].documentId).toBe(documentA.id);
     });
 
-    it('User B should only see chunks from their documents', async () => {
-      const chunks = await prisma.forUser(userB.id, async (tx) => {
+    it('Workspace B context should only see chunks from their documents', async () => {
+      const chunks = await prisma.forWorkspace(workspaceB.id, async (tx) => {
         return tx.chunk.findMany();
       });
 
@@ -354,8 +359,8 @@ describe('RLS Integration Tests', () => {
       expect(chunks[0].documentId).toBe(documentB.id);
     });
 
-    it('User A cannot access Chunk B by direct ID query', async () => {
-      const chunk = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context cannot access Chunk B by direct ID query', async () => {
+      const chunk = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.chunk.findUnique({
           where: { id: chunkB.id },
         });
@@ -444,43 +449,43 @@ describe('RLS Integration Tests', () => {
         },
       );
 
-      // Execute 50+ parallel operations - each user should only see their own data
+      // Execute 50+ parallel operations using workspace context
       const results = await Promise.all(
-        users.flatMap((user, i) => [
-          // Each user queries workspaces
-          prisma.forUser(user.id, (tx) => tx.workspace.findMany()),
-          // Each user queries documents
-          prisma.forUser(user.id, (tx) => tx.document.findMany()),
-          // Each user tries to access another user's workspace
-          prisma.forUser(user.id, (tx) =>
+        workspaces.flatMap((workspace, i) => [
+          // Each workspace queries its workspace
+          prisma.forWorkspace(workspace.id, (tx) => tx.workspace.findMany()),
+          // Each workspace queries its documents
+          prisma.forWorkspace(workspace.id, (tx) => tx.document.findMany()),
+          // Each workspace tries to access another workspace
+          prisma.forWorkspace(workspace.id, (tx) =>
             tx.workspace.findUnique({
-              where: { id: workspaces[(i + 1) % users.length].id },
+              where: { id: workspaces[(i + 1) % workspaces.length].id },
             }),
           ),
-          // Each user tries to access another user's document
-          prisma.forUser(user.id, (tx) =>
+          // Each workspace tries to access another workspace's document
+          prisma.forWorkspace(workspace.id, (tx) =>
             tx.document.findUnique({
-              where: { id: documents[(i + 1) % users.length].id },
+              where: { id: documents[(i + 1) % documents.length].id },
             }),
           ),
-          // Each user counts their workspaces
-          prisma.forUser(user.id, (tx) => tx.workspace.count()),
+          // Each workspace counts its documents
+          prisma.forWorkspace(workspace.id, (tx) => tx.document.count()),
         ]),
       );
 
-      // Verify results - each user should only see their own workspace
-      for (let i = 0; i < users.length; i++) {
+      // Verify results - each workspace should only see its own data
+      for (let i = 0; i < workspaces.length; i++) {
         const baseIndex = i * 5;
 
         // findMany workspaces
-        const userWorkspaces = results[baseIndex] as any[];
-        expect(userWorkspaces).toHaveLength(1);
-        expect(userWorkspaces[0].id).toBe(workspaces[i].id);
+        const wsWorkspaces = results[baseIndex] as any[];
+        expect(wsWorkspaces).toHaveLength(1);
+        expect(wsWorkspaces[0].id).toBe(workspaces[i].id);
 
         // findMany documents
-        const userDocuments = results[baseIndex + 1] as any[];
-        expect(userDocuments).toHaveLength(1);
-        expect(userDocuments[0].id).toBe(documents[i].id);
+        const wsDocuments = results[baseIndex + 1] as any[];
+        expect(wsDocuments).toHaveLength(1);
+        expect(wsDocuments[0].id).toBe(documents[i].id);
 
         // Accessing other workspace should return null
         expect(results[baseIndex + 2]).toBeNull();
@@ -514,20 +519,20 @@ describe('RLS Integration Tests', () => {
       const results: boolean[] = [];
 
       for (let i = 0; i < iterations; i++) {
-        // Rapidly switch between User A and User B contexts
-        const workspacesA = await prisma.forUser(userA.id, (tx) =>
-          tx.workspace.findMany(),
+        // Rapidly switch between Workspace A and Workspace B contexts
+        const documentsA = await prisma.forWorkspace(workspaceA.id, (tx) =>
+          tx.document.findMany(),
         );
-        const workspacesB = await prisma.forUser(userB.id, (tx) =>
-          tx.workspace.findMany(),
+        const documentsB = await prisma.forWorkspace(workspaceB.id, (tx) =>
+          tx.document.findMany(),
         );
 
         // Verify isolation
         results.push(
-          workspacesA.length === 1 &&
-            workspacesA[0].id === workspaceA.id &&
-            workspacesB.length === 1 &&
-            workspacesB[0].id === workspaceB.id,
+          documentsA.length === 1 &&
+            documentsA[0].id === documentA.id &&
+            documentsB.length === 1 &&
+            documentsB[0].id === documentB.id,
         );
       }
 
@@ -536,35 +541,35 @@ describe('RLS Integration Tests', () => {
     });
 
     it('should handle nested withRls calls correctly', async () => {
-      // Outer context: User A
-      const result = await prisma.forUser(userA.id, async (tx1) => {
-        const workspacesA = await tx1.workspace.findMany();
+      // Outer context: Workspace A
+      const result = await prisma.forWorkspace(workspaceA.id, async (tx1) => {
+        const docsA = await tx1.document.findMany();
 
-        // Inner context should maintain User A context
+        // Inner context should maintain Workspace A context
         // (nested transactions aren't supported, but we test sequential calls)
         return {
-          outerWorkspaces: workspacesA,
+          outerDocuments: docsA,
         };
       });
 
-      // Then immediately switch to User B
-      const resultB = await prisma.forUser(userB.id, async (tx2) => {
-        const workspacesB = await tx2.workspace.findMany();
+      // Then immediately switch to Workspace B
+      const resultB = await prisma.forWorkspace(workspaceB.id, async (tx2) => {
+        const docsB = await tx2.document.findMany();
         return {
-          innerWorkspaces: workspacesB,
+          innerDocuments: docsB,
         };
       });
 
-      expect(result.outerWorkspaces).toHaveLength(1);
-      expect(result.outerWorkspaces[0].id).toBe(workspaceA.id);
-      expect(resultB.innerWorkspaces).toHaveLength(1);
-      expect(resultB.innerWorkspaces[0].id).toBe(workspaceB.id);
+      expect(result.outerDocuments).toHaveLength(1);
+      expect(result.outerDocuments[0].id).toBe(documentA.id);
+      expect(resultB.innerDocuments).toHaveLength(1);
+      expect(resultB.innerDocuments[0].id).toBe(documentB.id);
     });
   });
 
   describe('7. WorkspaceMember Isolation', () => {
-    it('User A should only see members from their workspaces', async () => {
-      const members = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context should only see members from Workspace A', async () => {
+      const members = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.workspaceMember.findMany();
       });
 
@@ -573,8 +578,8 @@ describe('RLS Integration Tests', () => {
       expect(members[0].userId).toBe(userA.id);
     });
 
-    it('User B should only see members from their workspaces', async () => {
-      const members = await prisma.forUser(userB.id, async (tx) => {
+    it('Workspace B context should only see members from Workspace B', async () => {
+      const members = await prisma.forWorkspace(workspaceB.id, async (tx) => {
         return tx.workspaceMember.findMany();
       });
 
@@ -583,14 +588,23 @@ describe('RLS Integration Tests', () => {
       expect(members[0].userId).toBe(userB.id);
     });
 
-    it('User A cannot see workspace members from Workspace B', async () => {
-      const members = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context cannot see workspace members from Workspace B', async () => {
+      const members = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.workspaceMember.findMany({
           where: { workspaceId: workspaceB.id },
         });
       });
 
       expect(members).toHaveLength(0);
+    });
+
+    it('User context should see own memberships', async () => {
+      const members = await prisma.forUser(userA.id, async (tx) => {
+        return tx.workspaceMember.findMany();
+      });
+
+      expect(members).toHaveLength(1);
+      expect(members[0].userId).toBe(userA.id);
     });
   });
 
@@ -599,7 +613,7 @@ describe('RLS Integration Tests', () => {
     let publicLinkB: { id: string; token: string; workspaceId: string };
 
     beforeEach(async () => {
-      // Create public links using withoutRls (system context)
+      // Create public links using superuser (bypasses RLS)
       const links = await prismaSuperuser.$transaction(async (tx) => {
         const a = await tx.publicLink.create({
           data: {
@@ -625,15 +639,15 @@ describe('RLS Integration Tests', () => {
     });
 
     afterEach(async () => {
-      await prisma.publicLink.deleteMany({
+      await prismaSuperuser.publicLink.deleteMany({
         where: {
           id: { in: [publicLinkA?.id, publicLinkB?.id].filter(Boolean) },
         },
       });
     });
 
-    it('User A should only see public links from their workspaces', async () => {
-      const links = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context should only see public links from Workspace A', async () => {
+      const links = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.publicLink.findMany();
       });
 
@@ -642,8 +656,8 @@ describe('RLS Integration Tests', () => {
       expect(links[0].workspaceId).toBe(workspaceA.id);
     });
 
-    it('User B should only see public links from their workspaces', async () => {
-      const links = await prisma.forUser(userB.id, async (tx) => {
+    it('Workspace B context should only see public links from Workspace B', async () => {
+      const links = await prisma.forWorkspace(workspaceB.id, async (tx) => {
         return tx.publicLink.findMany();
       });
 
@@ -652,8 +666,8 @@ describe('RLS Integration Tests', () => {
       expect(links[0].workspaceId).toBe(workspaceB.id);
     });
 
-    it('User A cannot access public link from Workspace B', async () => {
-      const link = await prisma.forUser(userA.id, async (tx) => {
+    it('Workspace A context cannot access public link from Workspace B', async () => {
+      const link = await prisma.forWorkspace(workspaceA.id, async (tx) => {
         return tx.publicLink.findUnique({
           where: { id: publicLinkB.id },
         });

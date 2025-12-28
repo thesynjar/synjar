@@ -94,13 +94,11 @@ export class DocumentService {
       content = await this.chunkingService.parseFile(file.buffer, file.mimetype);
     }
 
-    // Create or find tags (system operation, no RLS needed for tags)
-    const tagRecords = await this.prisma.withoutRls(async (tx) => {
-      return this.ensureTagsWithTx(tx, dto.tags || []);
-    });
+    // Create or find tags (Tag table has no RLS - global entities)
+    const tagRecords = await this.ensureTags(dto.tags || []);
 
-    // Use forUser() to set RLS context for document creation
-    const document = await this.prisma.forUser(userId, async (tx) => {
+    // Use forWorkspace() to set RLS context for document creation
+    const document = await this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.document.create({
         data: {
           workspaceId,
@@ -127,7 +125,7 @@ export class DocumentService {
     });
 
     // Process document asynchronously (in real app, use queue)
-    this.processDocument(document.id).catch(console.error);
+    this.processDocument(document.id, workspaceId).catch(console.error);
 
     return document;
   }
@@ -159,7 +157,7 @@ export class DocumentService {
       };
     }
 
-    return this.prisma.forUser(userId, async (tx) => {
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
       const [documents, total] = await Promise.all([
         tx.document.findMany({
           where,
@@ -188,7 +186,7 @@ export class DocumentService {
   async findOne(workspaceId: string, documentId: string, userId: string) {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    const document = await this.prisma.forUser(userId, async (tx) => {
+    const document = await this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.document.findFirst({
         where: { id: documentId, workspaceId },
         include: {
@@ -220,15 +218,13 @@ export class DocumentService {
   ) {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    // Handle tags update (system operation)
+    // Handle tags update (Tag table has no RLS - global entities)
     let tagRecords: { id: string; name: string }[] = [];
     if (dto.tags !== undefined) {
-      tagRecords = await this.prisma.withoutRls(async (tx) => {
-        return this.ensureTagsWithTx(tx, dto.tags!);
-      });
+      tagRecords = await this.ensureTags(dto.tags!);
     }
 
-    const result = await this.prisma.forUser(userId, async (tx) => {
+    const result = await this.prisma.forWorkspace(workspaceId, async (tx) => {
       const document = await tx.document.findFirst({
         where: { id: documentId, workspaceId },
       });
@@ -271,7 +267,7 @@ export class DocumentService {
     });
 
     if (result.needsReprocessing) {
-      this.processDocument(documentId).catch(console.error);
+      this.processDocument(documentId, workspaceId).catch(console.error);
     }
 
     return result.updated;
@@ -280,7 +276,7 @@ export class DocumentService {
   async delete(workspaceId: string, documentId: string, userId: string) {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    const document = await this.prisma.forUser(userId, async (tx) => {
+    const document = await this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.document.findFirst({
         where: { id: documentId, workspaceId },
       });
@@ -310,40 +306,25 @@ export class DocumentService {
       }
     }
 
-    await this.prisma.forUser(userId, async (tx) => {
+    await this.prisma.forWorkspace(workspaceId, async (tx) => {
       await tx.document.delete({
         where: { id: documentId },
       });
     });
   }
 
-  private async processDocument(documentId: string) {
+  private async processDocument(documentId: string, workspaceId: string) {
     try {
-      // First, get document with workspace to find the owner for RLS context
-      // Using withoutRls to bypass RLS for initial lookup
-      const lookupResult = await this.prisma.withoutRls(async (tx) => {
-        const doc = await tx.document.findUnique({
+      // Get document content using workspace RLS context
+      const doc = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+        const document = await tx.document.findUnique({
           where: { id: documentId },
-          select: { id: true, workspaceId: true, content: true },
+          select: { id: true, content: true },
         });
 
-        if (!doc) return null;
+        if (!document) return null;
 
-        const workspace = await tx.workspace.findUnique({
-          where: { id: doc.workspaceId },
-          select: { createdById: true },
-        });
-
-        if (!workspace) return null;
-
-        return { doc, ownerId: workspace.createdById };
-      });
-
-      if (!lookupResult) return;
-      const { doc, ownerId } = lookupResult;
-
-      // Now process with proper RLS context using workspace owner
-      await this.prisma.forUser(ownerId, async (tx) => {
+        // Update status to PROCESSING
         await tx.document.update({
           where: { id: documentId },
           data: { processingStatus: ProcessingStatus.PROCESSING },
@@ -353,7 +334,11 @@ export class DocumentService {
         await tx.chunk.deleteMany({
           where: { documentId },
         });
+
+        return document;
       });
+
+      if (!doc) return;
 
       // Chunk the document
       const chunks = await this.chunkingService.chunk(doc.content);
@@ -364,7 +349,7 @@ export class DocumentService {
       );
 
       // Store chunks with embeddings using RLS context
-      await this.prisma.forUser(ownerId, async (tx) => {
+      await this.prisma.forWorkspace(workspaceId, async (tx) => {
         // Store chunks with embeddings using raw SQL (for vector type)
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
@@ -393,14 +378,16 @@ export class DocumentService {
       });
     } catch (error) {
       console.error('Document processing failed:', error);
-      // Error handling - update document directly
+      // Error handling - use workspace context
       try {
-        await this.prisma.document.update({
-          where: { id: documentId },
-          data: {
-            processingStatus: ProcessingStatus.FAILED,
-            processingError: error instanceof Error ? error.message : 'Unknown error',
-          },
+        await this.prisma.forWorkspace(workspaceId, async (tx) => {
+          await tx.document.update({
+            where: { id: documentId },
+            data: {
+              processingStatus: ProcessingStatus.FAILED,
+              processingError: error instanceof Error ? error.message : 'Unknown error',
+            },
+          });
         });
       } catch (updateError) {
         console.error('Failed to update document status:', updateError);
@@ -408,17 +395,18 @@ export class DocumentService {
     }
   }
 
-  private async ensureTagsWithTx(
-    tx: Parameters<Parameters<typeof this.prisma.forUser>[1]>[0],
-    tagNames: string[],
-  ) {
+  /**
+   * Ensure tags exist in the database.
+   * Tag table has no RLS - tags are global entities shared across workspaces.
+   */
+  private async ensureTags(tagNames: string[]) {
     const normalizedNames = tagNames.map((name) =>
       name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
     );
 
     const tags = await Promise.all(
       normalizedNames.map((name) =>
-        tx.tag.upsert({
+        this.prisma.tag.upsert({
           where: { name },
           update: {},
           create: { name },

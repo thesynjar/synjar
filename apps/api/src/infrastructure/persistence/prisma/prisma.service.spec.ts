@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { UserContext } from '../rls/user.context';
 
@@ -211,6 +212,115 @@ describe('PrismaService RLS Extensions', () => {
         // Then explicitly use a different user
         await prismaService.forUser(explicitUserId, async () => {
           // Both should work
+        });
+      });
+
+      expect(prismaService.$executeRaw).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('forWorkspace', () => {
+    const VALID_WORKSPACE_ID = '550e8400-e29b-41d4-a716-446655440000';
+    const INVALID_WORKSPACE_IDS = [
+      'not-a-uuid',
+      '550e8400-e29b-41d4-a716', // too short
+      '550e8400-e29b-41d4-a716-446655440000-extra', // too long
+      "'; DROP TABLE Document; --", // SQL injection attempt
+      '',
+      'null',
+      '../../../etc/passwd', // path traversal attempt
+    ];
+
+    it('should execute callback with workspaceId set in database session', async () => {
+      const mockExecuteRaw = jest
+        .spyOn(prismaService, '$executeRaw')
+        .mockResolvedValue(1);
+
+      jest
+        .spyOn(prismaService, '$transaction')
+        .mockImplementation(async (callback: any) => {
+          return callback(prismaService);
+        });
+
+      const result = await prismaService.forWorkspace(VALID_WORKSPACE_ID, async (tx) => {
+        expect(tx).toBe(prismaService);
+        return 'workspace-result';
+      });
+
+      expect(result).toBe('workspace-result');
+      expect(mockExecuteRaw).toHaveBeenCalled();
+      const callArgs = mockExecuteRaw.mock.calls[0];
+      expect(callArgs[0]).toEqual(expect.arrayContaining([
+        expect.stringContaining('set_config'),
+      ]));
+    });
+
+    it('should throw BadRequestException for invalid UUID formats', async () => {
+      for (const invalidId of INVALID_WORKSPACE_IDS) {
+        await expect(
+          prismaService.forWorkspace(invalidId, async () => 'should-not-execute'),
+        ).rejects.toThrow(BadRequestException);
+      }
+    });
+
+    it('should not execute callback when UUID validation fails', async () => {
+      const mockTransaction = jest.spyOn(prismaService, '$transaction');
+      const callback = jest.fn();
+
+      await expect(
+        prismaService.forWorkspace('invalid-uuid', callback),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockTransaction).not.toHaveBeenCalled();
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('should rollback on error', async () => {
+      const testError = new Error('Test error');
+
+      jest.spyOn(prismaService, '$executeRaw').mockResolvedValue(1);
+      jest
+        .spyOn(prismaService, '$transaction')
+        .mockImplementation(async (callback: any) => {
+          return callback(prismaService);
+        });
+
+      await expect(
+        prismaService.forWorkspace(VALID_WORKSPACE_ID, async () => {
+          throw testError;
+        }),
+      ).rejects.toThrow('Test error');
+    });
+
+    it('should work for scheduler/background jobs', async () => {
+      jest.spyOn(prismaService, '$executeRaw').mockResolvedValue(1);
+      jest
+        .spyOn(prismaService, '$transaction')
+        .mockImplementation(async (callback: any) => {
+          return callback(prismaService);
+        });
+
+      // Scheduler processes per workspace without user context
+      const result = await prismaService.forWorkspace(VALID_WORKSPACE_ID, async () => {
+        return { processed: 5 };
+      });
+
+      expect(result).toEqual({ processed: 5 });
+    });
+
+    it('should support mixing forWorkspace and forUser', async () => {
+      jest.spyOn(prismaService, '$executeRaw').mockResolvedValue(1);
+      jest
+        .spyOn(prismaService, '$transaction')
+        .mockImplementation(async (callback: any) => {
+          return callback(prismaService);
+        });
+
+      // First use workspace context
+      await prismaService.forWorkspace(VALID_WORKSPACE_ID, async () => {
+        // Then use user context
+        await prismaService.forUser('user-123', async () => {
+          // Both should work (e.g., for audit purposes)
         });
       });
 
