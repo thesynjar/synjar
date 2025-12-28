@@ -15,7 +15,9 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser());
 
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['health'],
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
