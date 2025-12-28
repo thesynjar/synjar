@@ -2,6 +2,7 @@ import { Module, DynamicModule, Logger, Type, NestModule, MiddlewareConsumer } f
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './infrastructure/persistence/prisma/prisma.module';
 import { AuthModule } from './application/auth/auth.module';
 import { WorkspaceModule } from './application/workspace/workspace.module';
@@ -42,6 +43,7 @@ function getCoreModules() {
         limit: 100,
       },
     ]),
+    ScheduleModule.forRoot(),
     PrismaModule,
     EventsModule,
     EmbeddingsModule,

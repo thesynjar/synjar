@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DocumentService } from './document.service';
 import { DocumentProcessorService } from './document-processor.service';
+import { DocumentProcessingScheduler } from './document-processing.scheduler';
 import { FileValidatorService } from './file-validator.service';
 import { DocumentController } from '../../interfaces/http/document.controller';
 import { WorkspaceModule } from '../workspace/workspace.module';
@@ -23,6 +24,7 @@ import { PrismaModule } from '../../infrastructure/persistence/prisma/prisma.mod
   providers: [
     DocumentService,
     DocumentProcessorService,
+    DocumentProcessingScheduler,
     FileValidatorService,
     {
       provide: DOCUMENT_REPOSITORY,
