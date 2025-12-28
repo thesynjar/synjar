@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { json, urlencoded } from 'express';
 import { Request, Response } from 'express';
 import { AppModule } from './app.module';
 
@@ -9,6 +10,9 @@ async function bootstrap() {
   const appModule = await AppModule.forRoot();
   const app = await NestFactory.create(appModule);
 
+  // Increase body size limits for document uploads
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser());
 
   app.setGlobalPrefix('api/v1');

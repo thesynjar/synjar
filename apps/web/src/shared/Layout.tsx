@@ -14,12 +14,11 @@ export function Layout() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-8">
-              <Link to="/dashboard" className="text-xl font-bold text-white">
-                Synjar
+              <Link to="/workspaces" className="flex items-center">
+                <img src="/logo.svg" alt="Synjar" className="h-8" />
               </Link>
               <div className="flex gap-4">
-                <NavLink to="/dashboard">Dashboard</NavLink>
-                <NavLink to="/documents">Documents</NavLink>
+                <NavLink to="/workspaces">Workspaces</NavLink>
                 <NavLink to="/settings">Settings</NavLink>
               </div>
             </div>

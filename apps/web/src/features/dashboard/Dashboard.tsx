@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { createApiClient } from '../../shared/api/client';
 import { useAuthStore } from '../auth/model/authStore';
 
@@ -12,6 +13,7 @@ interface Workspace {
 export function Dashboard() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
   const authStore = useAuthStore();
 
@@ -58,7 +60,11 @@ export function Dashboard() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {workspaces.map((workspace) => (
-            <WorkspaceCard key={workspace.id} workspace={workspace} />
+            <WorkspaceCard
+              key={workspace.id}
+              workspace={workspace}
+              onClick={() => navigate(`/workspaces/${workspace.id}`)}
+            />
           ))}
         </div>
       )}
@@ -66,9 +72,12 @@ export function Dashboard() {
   );
 }
 
-function WorkspaceCard({ workspace }: { workspace: Workspace }) {
+function WorkspaceCard({ workspace, onClick }: { workspace: Workspace; onClick: () => void }) {
   return (
-    <div className="p-6 bg-slate-800 rounded-xl border border-slate-700 hover:border-slate-600 transition-colors cursor-pointer">
+    <div
+      onClick={onClick}
+      className="p-6 bg-slate-800 rounded-xl border border-slate-700 hover:border-slate-600 transition-colors cursor-pointer"
+    >
       <h3 className="text-lg font-semibold text-white mb-2">{workspace.name}</h3>
       {workspace.description && (
         <p className="text-slate-400 text-sm mb-4">{workspace.description}</p>

@@ -26,9 +26,6 @@ export function createApiClient(tokenProvider?: TokenProvider) {
 
   return ky.create({
     prefixUrl: API_BASE_URL,
-    headers: {
-      'Content-Type': 'application/json',
-    },
     hooks: {
       beforeRequest: [
         async (request) => {
@@ -49,6 +46,11 @@ export function createApiClient(tokenProvider?: TokenProvider) {
             }
             // If no workspaceId, request goes without header (for resolve-workspace endpoint)
           }
+
+          // Do NOT set Content-Type header here - ky handles it automatically:
+          // - { json: {...} } → application/json
+          // - { body: FormData } → multipart/form-data with correct boundary
+          // Setting it manually breaks FormData uploads (see ky issue #204)
         },
       ],
       afterResponse: [
