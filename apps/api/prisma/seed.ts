@@ -2,37 +2,39 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // Generate random password for seed user
-  const seedPassword = crypto.randomBytes(16).toString('hex');
-  const passwordHash = await bcrypt.hash(seedPassword, 10);
+  // Dev user credentials
+  const devEmail = 'dev@example.com';
+  const devPassword = 'dev123';
+  const devPasswordHash = await bcrypt.hash(devPassword, 10);
 
-  // Create seed user
+  // Create dev user
   const user = await prisma.user.upsert({
-    where: { email: 'admin@synjar.local' },
+    where: { email: devEmail },
     update: {},
     create: {
-      email: 'admin@synjar.local',
-      passwordHash,
-      name: 'Admin User',
+      email: devEmail,
+      passwordHash: devPasswordHash,
+      name: 'Dev User',
+      isEmailVerified: true,
     },
   });
 
   console.log(`✅ Created user: ${user.email}`);
 
-  // Create default workspace
+  // Create workspace "General" for the dev user
+  // Each user should only see workspaces they are members of
   const workspace = await prisma.workspace.upsert({
-    where: { id: 'synjar-demo-workspace' },
+    where: { id: 'dev-general-workspace' },
     update: {},
     create: {
-      id: 'synjar-demo-workspace',
-      name: 'Synjar Demo',
+      id: 'dev-general-workspace',
+      name: 'General',
       createdById: user.id,
       members: {
         create: {
@@ -69,16 +71,16 @@ async function main() {
   const envSeedContent = `# Seed user credentials (generated ${new Date().toISOString()})
 # This file is git ignored - do not commit!
 
-SEED_USER_EMAIL=admin@synjar.local
-SEED_USER_PASSWORD=${seedPassword}
+SEED_USER_EMAIL=${devEmail}
+SEED_USER_PASSWORD=${devPassword}
 `;
 
   fs.writeFileSync(envSeedPath, envSeedContent);
   console.log(`✅ Saved credentials to .env.seed`);
 
   console.log('\n🎉 Seeding completed!');
-  console.log(`\n📧 Email: admin@synjar.local`);
-  console.log(`🔑 Password: ${seedPassword}`);
+  console.log(`\n📧 Email: ${devEmail}`);
+  console.log(`🔑 Password: ${devPassword}`);
   console.log(`\n💡 Credentials also saved to .env.seed`);
 }
 
