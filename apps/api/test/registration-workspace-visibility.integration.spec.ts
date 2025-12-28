@@ -12,9 +12,9 @@ import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.s
  *
  * Problem:
  * - User registers with workspace name "Michał Kukla"
- * - POST /api/v1/auth/register → 201 success, returns userId, tokens
+ * - POST /auth/register → 201 success, returns userId, tokens
  * - Workspace and WorkspaceMember are created in database (verified)
- * - GET /api/v1/workspaces → returns [] (empty array)
+ * - GET /workspaces → returns [] (empty array)
  * - Dashboard shows "No workspaces yet" instead of workspace card
  *
  * Root Cause (Hypothesis):
@@ -29,9 +29,9 @@ import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.s
  * User Flow:
  * 1. User navigates to /register
  * 2. Fills form: email, password, workspaceName
- * 3. POST /api/v1/auth/register → 201 success
- * 4. **EXPECTED**: Workspace is visible via GET /api/v1/workspaces
- * 5. **ACTUAL BUG**: GET /api/v1/workspaces returns [] (workspace is filtered by RLS)
+ * 3. POST /auth/register → 201 success
+ * 4. **EXPECTED**: Workspace is visible via GET /workspaces
+ * 5. **ACTUAL BUG**: GET /workspaces returns [] (workspace is filtered by RLS)
  * 6. Dashboard shows "No workspaces yet" EmptyState
  *
  * Test Strategy:
@@ -59,7 +59,7 @@ import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.s
  *   This is a regression test for existing bug. Test will:
  *   1. Register new user with workspace name
  *   2. Verify registration response (userId, tokens)
- *   3. Call GET /api/v1/workspaces with same user's JWT token
+ *   3. Call GET /workspaces with same user's JWT token
  *   4. Assert: workspace array is NOT empty (this will FAIL initially, confirming bug)
  *   5. After fix, test will PASS
  *
@@ -86,7 +86,6 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // Apply same middleware as production
     app.use(cookieParser());
-    app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -119,7 +118,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
    * This test reproduces the bug:
    * 1. User registers with workspace name
    * 2. Registration creates User + Workspace + WorkspaceMember in one transaction
-   * 3. User immediately calls GET /api/v1/workspaces (with auto-login token)
+   * 3. User immediately calls GET /workspaces (with auto-login token)
    * 4. **BUG**: Workspace is filtered out by RLS (empty array returned)
    * 5. **FIX**: After setting RLS context during registration, workspace is visible
    *
@@ -133,7 +132,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 1: Register user (creates User + Workspace + WorkspaceMember)
     const registerRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
+      .post('/auth/register')
       .send({
         email,
         password,
@@ -167,7 +166,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 2: Fetch workspaces (using JWT from registration - auto-login)
     const workspacesRes = await request(app.getHttpServer())
-      .get('/api/v1/workspaces')
+      .get('/workspaces')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -205,7 +204,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 1: Register user
     const registerRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
+      .post('/auth/register')
       .send({
         email,
         password,
@@ -229,7 +228,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 3: Login (get fresh JWT token)
     const loginRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/login')
+      .post('/auth/login')
       .send({
         email,
         password,
@@ -241,7 +240,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 4: Fetch workspaces (after full flow)
     const workspacesRes = await request(app.getHttpServer())
-      .get('/api/v1/workspaces')
+      .get('/workspaces')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -280,7 +279,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 1: Register first user (self-hosted mode)
     const registerRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
+      .post('/auth/register')
       .send({
         email,
         password,
@@ -299,7 +298,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 2: Fetch workspaces
     const workspacesRes = await request(app.getHttpServer())
-      .get('/api/v1/workspaces')
+      .get('/workspaces')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -329,7 +328,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 1: Register user
     const registerRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
+      .post('/auth/register')
       .send({
         email,
         password: 'SecurePass123!',
@@ -359,7 +358,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
     // ACT 2: Fetch workspaces via API (with RLS filtering)
     const workspacesRes = await request(app.getHttpServer())
-      .get('/api/v1/workspaces')
+      .get('/workspaces')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 

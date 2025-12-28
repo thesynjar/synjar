@@ -46,8 +46,8 @@ interface MailpitMessagesResponse {
  */
 async function getMailpitMessages(email?: string): Promise<MailpitMessage[]> {
   const url = email
-    ? `${MAILPIT_API_URL}/api/v1/search?query=to:${email}`
-    : `${MAILPIT_API_URL}/api/v1/messages`;
+    ? `${MAILPIT_API_URL}/search?query=to:${email}`
+    : `${MAILPIT_API_URL}/messages`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -62,7 +62,7 @@ async function getMailpitMessages(email?: string): Promise<MailpitMessage[]> {
  * Helper to get a specific message by ID
  */
 async function getMailpitMessage(id: string): Promise<MailpitMessage> {
-  const response = await fetch(`${MAILPIT_API_URL}/api/v1/message/${id}`);
+  const response = await fetch(`${MAILPIT_API_URL}/message/${id}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch Mailpit message: ${response.statusText}`);
   }
@@ -74,7 +74,7 @@ async function getMailpitMessage(id: string): Promise<MailpitMessage> {
  */
 async function clearMailpit(): Promise<void> {
   try {
-    await fetch(`${MAILPIT_API_URL}/api/v1/messages`, { method: 'DELETE' });
+    await fetch(`${MAILPIT_API_URL}/messages`, { method: 'DELETE' });
   } catch {
     // Ignore errors - Mailpit might not be available in some test environments
   }
@@ -133,7 +133,6 @@ describe('Registration E2E Integration Tests', () => {
 
     // Apply same middleware as production
     app.use(cookieParser());
-    app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -202,7 +201,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register new user
       const res = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'SecurePass123!',
@@ -226,7 +225,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 4. Verify immediate workspace access using cookies
       const workspacesRes = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', cookies)
         .expect(200);
 
@@ -250,7 +249,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register user (unverified)
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'SecurePass123!',
@@ -264,7 +263,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 3. Login immediately (within grace period) - should succeed
       const loginRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+        .post('/auth/login')
         .send({
           email,
           password: 'SecurePass123!',
@@ -284,7 +283,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register user
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'SecurePass123!',
@@ -300,7 +299,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 3. Try to login - should fail
       const loginRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+        .post('/auth/login')
         .send({
           email,
           password: 'SecurePass123!',
@@ -329,7 +328,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register first user
       const res = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'SecurePass123!',
@@ -394,7 +393,7 @@ describe('Registration E2E Integration Tests', () => {
       // 2. Try to register second user
       const email = `hacker-${Date.now()}@external.com`;
       const res = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'SecurePass123!',
@@ -419,7 +418,7 @@ describe('Registration E2E Integration Tests', () => {
       // Setup: Create workspace and owner
       const email = `owner-${Date.now()}@registration-e2e-test.com`;
       const registerRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'SecurePass123!',
@@ -431,7 +430,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // Get workspace ID
       const workspacesRes = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', ownerCookies)
         .expect(200);
 
@@ -444,7 +443,7 @@ describe('Registration E2E Integration Tests', () => {
       // 1. Owner invites user
       const cookiesArray = Array.isArray(ownerCookies) ? ownerCookies : [ownerCookies];
       const inviteRes = await request(app.getHttpServer())
-        .post(`/api/v1/workspaces/${workspaceId}/invite`)
+        .post(`/workspaces/${workspaceId}/invite`)
         .set('Cookie', cookiesArray)
         .send({
           email: invitedEmail,
@@ -457,7 +456,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 2. Invited user accepts invitation
       const acceptRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/accept-invite')
+        .post('/auth/accept-invite')
         .send({
           token: invitationToken,
           password: 'SecurePass123!',
@@ -483,7 +482,7 @@ describe('Registration E2E Integration Tests', () => {
       // 4. Verify workspace access
       const invitedCookies = acceptRes.headers['set-cookie'];
       const workspacesRes = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', invitedCookies)
         .expect(200);
 
@@ -504,7 +503,7 @@ describe('Registration E2E Integration Tests', () => {
       // Create one existing user
       const existingEmail = `existing-${Date.now()}@registration-e2e-test.com`;
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email: existingEmail,
           password: 'SecurePass123!',
@@ -524,7 +523,7 @@ describe('Registration E2E Integration Tests', () => {
         const start = Date.now();
 
         await request(app.getHttpServer())
-          .post('/api/v1/auth/register')
+          .post('/auth/register')
           .send({
             email,
             password: 'SecurePass123!',
@@ -573,7 +572,7 @@ describe('Registration E2E Integration Tests', () => {
 
       for (const { password, expectedError } of testCases) {
         const res = await request(app.getHttpServer())
-          .post('/api/v1/auth/register')
+          .post('/auth/register')
           .send({
             email: `weak-${Date.now()}@registration-e2e-test.com`,
             password,
@@ -598,7 +597,7 @@ describe('Registration E2E Integration Tests', () => {
       // Make 3 requests (should succeed)
       for (let i = 0; i < 3; i++) {
         await request(app.getHttpServer())
-          .post('/api/v1/auth/register')
+          .post('/auth/register')
           .send({
             email: `rate-limit-${Date.now()}-${i}@registration-e2e-test.com`,
             password: 'SecurePass123!',
@@ -609,7 +608,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 4th request should be rate limited
       const res = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email: `rate-limit-${Date.now()}-4@registration-e2e-test.com`,
           password: 'SecurePass123!',
@@ -684,7 +683,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // ACT: Register user in cloud mode (triggers email sending)
       const registerRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'SecurePass123!',
@@ -735,7 +734,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register user
       const registerRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -765,7 +764,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // Register user
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -776,7 +775,7 @@ describe('Registration E2E Integration Tests', () => {
       // Try to login - should work (login doesn't check email verification)
       // But workspace access will show unverified status
       const loginRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+        .post('/auth/login')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -791,7 +790,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register user
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -806,7 +805,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 3. Verify email
       const verifyRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/verify-email')
+        .post('/auth/verify-email')
         .send({ token })
         .expect(200);
 
@@ -825,7 +824,7 @@ describe('Registration E2E Integration Tests', () => {
 
     it('should reject verification with invalid token', async () => {
       await request(app.getHttpServer())
-        .post('/api/v1/auth/verify-email')
+        .post('/auth/verify-email')
         .send({ token: 'invalid-token-that-does-not-exist' })
         .expect(404);
     });
@@ -835,7 +834,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // First registration
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -845,7 +844,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // Second registration with same email
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'AnotherP@ss123!',
@@ -861,7 +860,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register user
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -883,7 +882,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 5. Request resend
       const resendRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/resend-verification')
+        .post('/auth/resend-verification')
         .send({ email })
         .expect(200);
 
@@ -901,7 +900,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register user
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -914,14 +913,14 @@ describe('Registration E2E Integration Tests', () => {
 
       // 3. Immediately try to resend (should fail due to cooldown)
       await request(app.getHttpServer())
-        .post('/api/v1/auth/resend-verification')
+        .post('/auth/resend-verification')
         .send({ email })
         .expect(429);
     });
 
     it('should return generic message for non-existent email', async () => {
       const resendRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/resend-verification')
+        .post('/auth/resend-verification')
         .send({ email: 'nonexistent@registration-e2e-test.com' })
         .expect(200);
 
@@ -939,7 +938,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 1. Register
       const registerRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -958,13 +957,13 @@ describe('Registration E2E Integration Tests', () => {
 
       // 3. Verify email
       await request(app.getHttpServer())
-        .post('/api/v1/auth/verify-email')
+        .post('/auth/verify-email')
         .send({ token })
         .expect(200);
 
       // 4. Login
       const loginRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+        .post('/auth/login')
         .send({
           email,
           password: 'MyP@ssw0rd123!',
@@ -977,7 +976,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 5. Access workspaces (should see the workspace created during registration)
       const workspacesRes = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', Array.isArray(cookies) ? cookies : [cookies])
         .expect(200);
 
@@ -992,7 +991,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // 6. Verify user is owner of workspace
       const membersRes = await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspace.id}/members`)
+        .get(`/workspaces/${workspace.id}/members`)
         .set('Cookie', Array.isArray(cookies) ? cookies : [cookies])
         .expect(200);
 
@@ -1008,7 +1007,7 @@ describe('Registration E2E Integration Tests', () => {
   describe('Validation', () => {
     it('should reject weak password', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email: 'weak@registration-e2e-test.com',
           password: 'weak', // Too short, no special chars
@@ -1023,7 +1022,7 @@ describe('Registration E2E Integration Tests', () => {
 
     it('should reject invalid email', async () => {
       await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email: 'not-an-email',
           password: 'MyP@ssw0rd123!',
@@ -1034,7 +1033,7 @@ describe('Registration E2E Integration Tests', () => {
 
     it('should reject short workspace name', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/auth/register')
+        .post('/auth/register')
         .send({
           email: 'short-ws@registration-e2e-test.com',
           password: 'MyP@ssw0rd123!',

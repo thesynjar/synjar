@@ -32,7 +32,6 @@ describe('RLS E2E Integration Tests', () => {
 
     // Apply same middleware as production
     app.use(cookieParser());
-    app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -109,7 +108,7 @@ describe('RLS E2E Integration Tests', () => {
   ): Promise<string[]> {
     // Register user
     await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
+      .post('/auth/register')
       .send({
         email,
         password: 'TestPass123!@#',
@@ -119,7 +118,7 @@ describe('RLS E2E Integration Tests', () => {
 
     // Login and get cookies
     const loginRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/login')
+      .post('/auth/login')
       .send({
         email,
         password: 'TestPass123!@#',
@@ -141,14 +140,14 @@ describe('RLS E2E Integration Tests', () => {
    */
   describe('Unauthenticated Access', () => {
     it('should reject unauthenticated workspace list request with 401', async () => {
-      const res = await request(app.getHttpServer()).get('/api/v1/workspaces');
+      const res = await request(app.getHttpServer()).get('/workspaces');
 
       expect(res.status).toBe(401);
     });
 
     it('should reject unauthenticated workspace creation request with 401', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .send({ name: 'Test Workspace' });
 
       expect(res.status).toBe(401);
@@ -156,7 +155,7 @@ describe('RLS E2E Integration Tests', () => {
 
     it('should reject unauthenticated document list request with 401', async () => {
       const res = await request(app.getHttpServer()).get(
-        '/api/v1/workspaces/test-id/documents',
+        '/workspaces/test-id/documents',
       );
 
       expect(res.status).toBe(401);
@@ -173,7 +172,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create workspace
       const createRes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookies)
         .send({ name: 'My Workspace' })
         .expect(201);
@@ -184,7 +183,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // List workspaces - should see the one we created
       const listRes = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', cookies)
         .expect(200);
 
@@ -204,7 +203,7 @@ describe('RLS E2E Integration Tests', () => {
       const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookiesA)
         .send({ name: 'Workspace A' })
         .expect(201);
@@ -217,7 +216,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User B lists workspaces - should NOT see Workspace A
       const listBRes = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', cookiesB)
         .expect(200);
 
@@ -235,7 +234,7 @@ describe('RLS E2E Integration Tests', () => {
       const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookiesA)
         .send({ name: 'Private Workspace A' })
         .expect(201);
@@ -248,7 +247,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User B tries to access Workspace A directly - should get 404
       await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspaceAId}`)
+        .get(`/workspaces/${workspaceAId}`)
         .set('Cookie', cookiesB)
         .expect(404);
     });
@@ -264,7 +263,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create workspace
       const createRes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookies)
         .send({ name: 'Workspace with CreatedBy' })
         .expect(201);
@@ -279,7 +278,7 @@ describe('RLS E2E Integration Tests', () => {
       // Verify the workspace is accessible (which proves createdById was set correctly,
       // as RLS policies check createdById = current_user_id() for INSERT)
       const getRes = await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspaceId}`)
+        .get(`/workspaces/${workspaceId}`)
         .set('Cookie', cookies)
         .expect(200);
 
@@ -292,7 +291,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create workspace
       const createRes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookies)
         .send({ name: 'Workspace with Members' })
         .expect(201);
@@ -301,7 +300,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // Get members
       const membersRes = await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspaceId}/members`)
+        .get(`/workspaces/${workspaceId}/members`)
         .set('Cookie', cookies)
         .expect(200);
 
@@ -329,7 +328,7 @@ describe('RLS E2E Integration Tests', () => {
       const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookiesA)
         .send({ name: 'Workspace A Docs' })
         .expect(201);
@@ -338,7 +337,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create a document in Workspace A
       await request(app.getHttpServer())
-        .post(`/api/v1/workspaces/${workspaceAId}/documents`)
+        .post(`/workspaces/${workspaceAId}/documents`)
         .set('Cookie', cookiesA)
         .send({
           title: 'Private Document A',
@@ -352,7 +351,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User B tries to list documents from Workspace A - should get 404 (workspace not found)
       await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspaceAId}/documents`)
+        .get(`/workspaces/${workspaceAId}/documents`)
         .set('Cookie', cookiesB)
         .expect(404);
     });
@@ -363,7 +362,7 @@ describe('RLS E2E Integration Tests', () => {
       const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookiesA)
         .send({ name: 'Workspace A Doc ID' })
         .expect(201);
@@ -372,7 +371,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create a document in Workspace A
       const docARes = await request(app.getHttpServer())
-        .post(`/api/v1/workspaces/${workspaceAId}/documents`)
+        .post(`/workspaces/${workspaceAId}/documents`)
         .set('Cookie', cookiesA)
         .send({
           title: 'Secret Document',
@@ -388,7 +387,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User B tries to access Document A directly - should get 404
       await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspaceAId}/documents/${docAId}`)
+        .get(`/workspaces/${workspaceAId}/documents/${docAId}`)
         .set('Cookie', cookiesB)
         .expect(404);
     });
@@ -399,7 +398,7 @@ describe('RLS E2E Integration Tests', () => {
       const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookiesA)
         .send({ name: 'Workspace A Own Docs' })
         .expect(201);
@@ -408,7 +407,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create a document in Workspace A
       const docARes = await request(app.getHttpServer())
-        .post(`/api/v1/workspaces/${workspaceAId}/documents`)
+        .post(`/workspaces/${workspaceAId}/documents`)
         .set('Cookie', cookiesA)
         .send({
           title: 'My Document',
@@ -420,7 +419,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User A lists documents - should see their document
       const listRes = await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspaceAId}/documents`)
+        .get(`/workspaces/${workspaceAId}/documents`)
         .set('Cookie', cookiesA)
         .expect(200);
 
@@ -433,7 +432,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User A accesses document by ID - should succeed
       const getRes = await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${workspaceAId}/documents/${docAId}`)
+        .get(`/workspaces/${workspaceAId}/documents/${docAId}`)
         .set('Cookie', cookiesA)
         .expect(200);
 
@@ -452,13 +451,13 @@ describe('RLS E2E Integration Tests', () => {
       const cookies1 = await createAuthenticatedUser(user1Email, 'User 1');
 
       const ws1Res = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookies1)
         .send({ name: 'User 1 Workspace 1' })
         .expect(201);
 
       const ws2Res = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookies1)
         .send({ name: 'User 1 Workspace 2' })
         .expect(201);
@@ -471,7 +470,7 @@ describe('RLS E2E Integration Tests', () => {
       const cookies2 = await createAuthenticatedUser(user2Email, 'User 2');
 
       const ws3Res = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookies2)
         .send({ name: 'User 2 Workspace 1' })
         .expect(201);
@@ -480,7 +479,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User 1 should see only their 2 workspaces
       const list1Res = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', cookies1)
         .expect(200);
 
@@ -492,7 +491,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User 2 should see only their 1 workspace
       const list2Res = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', cookies2)
         .expect(200);
 
@@ -513,7 +512,7 @@ describe('RLS E2E Integration Tests', () => {
       const cookies1 = await createAuthenticatedUser(user1Email, 'User 1');
 
       const ws1Res = await request(app.getHttpServer())
-        .post('/api/v1/workspaces')
+        .post('/workspaces')
         .set('Cookie', cookies1)
         .send({ name: 'System Test Workspace 1' })
         .expect(201);
@@ -525,7 +524,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User 2 should NOT see User 1's workspace (RLS enforced)
       const list2Res = await request(app.getHttpServer())
-        .get('/api/v1/workspaces')
+        .get('/workspaces')
         .set('Cookie', cookies2)
         .expect(200);
 
@@ -534,7 +533,7 @@ describe('RLS E2E Integration Tests', () => {
 
       // User 2 should NOT be able to access User 1's workspace by ID
       await request(app.getHttpServer())
-        .get(`/api/v1/workspaces/${ws1Id}`)
+        .get(`/workspaces/${ws1Id}`)
         .set('Cookie', cookies2)
         .expect(404);
     });
