@@ -38,6 +38,44 @@ services:
     networks:
       - synjar-test
 
+  # MinIO - S3-compatible storage for testing (like Mailpit for SMTP)
+  # Replaces Backblaze B2 in tests for real file upload/download verification
+  minio-test:
+    image: minio/minio
+    container_name: synjar-minio-test
+    ports:
+      - "6214:9000"   # S3 API (test port)
+      - "6215:9001"   # Console UI (test port)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - synjar-test
+
+  # MinIO bucket initialization
+  minio-init:
+    image: minio/mc
+    container_name: synjar-minio-init
+    depends_on:
+      minio-test:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio-test:9000 minioadmin minioadmin;
+      mc mb myminio/synjar-test --ignore-existing;
+      mc anonymous set download myminio/synjar-test;
+      echo 'Bucket synjar-test created successfully';
+      exit 0;
+      "
+    networks:
+      - synjar-test
+
 networks:
   synjar-test:
     driver: bridge

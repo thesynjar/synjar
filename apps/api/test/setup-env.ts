@@ -27,11 +27,12 @@ const testEnv: Record<string, string> = {
   // OpenAI (mock for tests that don't need it)
   OPENAI_API_KEY: 'sk-test-dummy-key-for-testing',
 
-  // Backblaze B2 (mock for tests that don't need it)
-  B2_KEY_ID: 'test-key',
-  B2_APPLICATION_KEY: 'test-app-key',
-  B2_BUCKET_NAME: 'test-bucket',
-  B2_ENDPOINT: 'https://s3.us-east-005.backblazeb2.com',
+  // MinIO S3-compatible storage (replaces Backblaze B2 in tests)
+  // Uses same ports as docker-compose.test.yml
+  B2_KEY_ID: 'minioadmin',
+  B2_APPLICATION_KEY: 'minioadmin',
+  B2_BUCKET_NAME: 'synjar-test',
+  B2_ENDPOINT: 'http://localhost:6214',
 };
 
 // Set environment variables for tests

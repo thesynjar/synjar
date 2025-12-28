@@ -7,11 +7,14 @@
 # - PostgreSQL + pgvector (port 6205)
 # - Mailpit SMTP server (SMTP: 6202, Web UI: 6203)
 # - Redis (port 6379, for future BullMQ)
+# - MinIO S3-compatible storage (API: 6204, Console: 6206)
 #
 # After containers are up, the dev:full script will:
 # - Run database migrations automatically
 # - Start API (port 6200)
 # - Start Web frontend (port 6210)
+#
+# MinIO Console: http://localhost:6206 (minioadmin/minioadmin)
 
 services:
   postgres:
@@ -60,9 +63,49 @@ services:
     networks:
       - synjar-dev
 
+  # MinIO - S3-compatible storage (replaces Backblaze B2 in development)
+  minio:
+    image: minio/minio
+    container_name: synjar-dev-minio
+    ports:
+      - "6204:9000"   # S3 API
+      - "6206:9001"   # Console UI (http://localhost:6206)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_dev_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - synjar-dev
+
+  # MinIO bucket initialization (creates bucket on startup)
+  minio-init:
+    image: minio/mc
+    container_name: synjar-dev-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc mb myminio/synjar-dev --ignore-existing;
+      mc anonymous set download myminio/synjar-dev;
+      echo 'Bucket synjar-dev created successfully';
+      exit 0;
+      "
+    networks:
+      - synjar-dev
+
 volumes:
   postgres_dev_data:
   redis_dev_data:
+  minio_dev_data:
 
 networks:
   synjar-dev:

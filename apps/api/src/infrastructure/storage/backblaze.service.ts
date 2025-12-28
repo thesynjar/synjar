@@ -15,18 +15,25 @@ export class BackblazeStorageService implements IStorageService {
   private readonly client: S3Client;
   private readonly bucketName: string;
   private readonly endpoint: string;
+  private readonly usePathStyle: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    this.endpoint = this.configService.getOrThrow('B2_ENDPOINT');
+    const rawEndpoint = this.configService.getOrThrow<string>('B2_ENDPOINT');
     this.bucketName = this.configService.getOrThrow('B2_BUCKET_NAME');
 
+    // Support both full URLs (http://localhost:6214) and hostnames (s3.backblazeb2.com)
+    // Full URLs indicate local/test environment (MinIO) using path-style access
+    this.usePathStyle = rawEndpoint.startsWith('http://') || rawEndpoint.startsWith('https://');
+    this.endpoint = this.usePathStyle ? rawEndpoint : `https://${rawEndpoint}`;
+
     this.client = new S3Client({
-      endpoint: `https://${this.endpoint}`,
-      region: 'eu-central-003',
+      endpoint: this.endpoint,
+      region: this.configService.get('B2_REGION', 'eu-central-003'),
       credentials: {
         accessKeyId: this.configService.getOrThrow('B2_KEY_ID'),
         secretAccessKey: this.configService.getOrThrow('B2_APPLICATION_KEY'),
       },
+      forcePathStyle: this.usePathStyle,
     });
   }
 
@@ -46,8 +53,14 @@ export class BackblazeStorageService implements IStorageService {
       }),
     );
 
+    // Path-style: http://localhost:6214/bucket/key (MinIO)
+    // Virtual-hosted: https://bucket.endpoint/key (Backblaze B2)
+    const url = this.usePathStyle
+      ? `${this.endpoint}/${this.bucketName}/${key}`
+      : `https://${this.bucketName}.${this.endpoint.replace('https://', '')}/${key}`;
+
     return {
-      url: `https://${this.bucketName}.${this.endpoint}/${key}`,
+      url,
       key,
       size: file.length,
     };
