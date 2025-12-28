@@ -1,7 +1,6 @@
 import ky from 'ky';
 
-const API_HOST = import.meta.env.VITE_API_URL || 'http://localhost:6200';
-const API_BASE_URL = `${API_HOST}/api/v1`;
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:6200';
 
 export interface TokenProvider {
   getAccessToken: () => string | null;

@@ -10,8 +10,7 @@ import type {
 } from './types';
 import { useAuthStore } from '../model/authStore';
 
-const BASE_URL = import.meta.env.VITE_API_URL || '';
-const API_URL = `${BASE_URL}/api/v1`;
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 class ApiError extends Error {
   constructor(

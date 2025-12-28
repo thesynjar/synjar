@@ -204,10 +204,10 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     await expect(page).toHaveURL('/dashboard', { timeout: 10000 });
 
     // ACT 9: Wait for workspaces API call to complete
-    // Dashboard fetches workspaces on mount via GET /api/v1/workspaces
+    // Dashboard fetches workspaces on mount via GET /workspaces
     await page.waitForResponse(
       (response) =>
-        response.url().includes('/api/v1/workspaces') && response.status() === 200,
+        response.url().includes('/workspaces') && response.status() === 200,
       { timeout: 5000 },
     );
 
@@ -270,7 +270,7 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     // ACT 3: Wait for workspaces API call
     await page.waitForResponse(
       (response) =>
-        response.url().includes('/api/v1/workspaces') && response.status() === 200,
+        response.url().includes('/workspaces') && response.status() === 200,
       { timeout: 5000 },
     );
 
@@ -306,7 +306,7 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
    *
    * This test verifies the bug at network level:
    * 1. User registers and logs in
-   * 2. Dashboard calls GET /api/v1/workspaces
+   * 2. Dashboard calls GET /workspaces
    * 3. Intercept API response
    * 4. Verify API returns [] (empty array) instead of workspace
    */
@@ -319,7 +319,7 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     // Setup network interception
     let workspacesApiResponse: any = null;
     page.on('response', async (response) => {
-      if (response.url().includes('/api/v1/workspaces') && response.status() === 200) {
+      if (response.url().includes('/workspaces') && response.status() === 200) {
         try {
           workspacesApiResponse = await response.json();
         } catch {
@@ -342,7 +342,7 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     // Wait for API call
     await page.waitForResponse(
       (response) =>
-        response.url().includes('/api/v1/workspaces') && response.status() === 200,
+        response.url().includes('/workspaces') && response.status() === 200,
     );
 
     // Small delay to ensure response is captured
