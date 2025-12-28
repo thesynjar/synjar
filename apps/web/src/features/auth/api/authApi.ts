@@ -9,8 +9,9 @@ import type {
   MessageResponse,
 } from './types';
 import { useAuthStore } from '../model/authStore';
+import { config } from '@/shared/config';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+const API_URL = config.apiUrl;
 
 class ApiError extends Error {
   constructor(
