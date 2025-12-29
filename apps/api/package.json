@@ -22,7 +22,13 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "prisma:reset": "PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION='dev:reset script - automatic database reset for development' prisma migrate reset --force --skip-seed",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "backup:create": "ts-node scripts/backup.ts create",
+    "backup:list": "ts-node scripts/backup.ts list",
+    "backup:restore": "ts-node scripts/backup.ts restore",
+    "backup:cleanup": "ts-node scripts/backup.ts cleanup",
+    "backup:download": "ts-node scripts/backup.ts download",
+    "scripts:build": "tsc -p scripts/tsconfig.scripts.json"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -46,6 +52,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.3",
     "file-type": "^21.1.1",
     "handlebars": "^4.7.8",
     "mammoth": "^1.8.0",
