@@ -1,5 +1,5 @@
 #!/usr/bin/env ts-node
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,7 +16,30 @@ import {
 // Load environment variables
 dotenv.config();
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Security: Validate PostgreSQL identifier (table/database names)
+// Only allow alphanumeric, underscore, and must start with letter or underscore
+function isValidPostgresIdentifier(name: string): boolean {
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) && name.length <= 63;
+}
+
+// Security: Escape shell argument for safe use (defense in depth)
+function escapeShellArg(arg: string): string {
+  // For execFile we don't need escaping, but validate for safety
+  if (arg.includes('\0')) {
+    throw new Error('Invalid argument: contains null byte');
+  }
+  return arg;
+}
+
+// SEC-H4: Validate B2 endpoint to prevent SSRF attacks
+// Only allow legitimate Backblaze B2 endpoints
+function isValidB2Endpoint(endpoint: string): boolean {
+  // Must be a Backblaze B2 endpoint (e.g., s3.eu-central-003.backblazeb2.com)
+  const b2EndpointPattern = /^s3\.[a-z0-9-]+\.backblazeb2\.com$/;
+  return b2EndpointPattern.test(endpoint);
+}
 
 interface BackupConfig {
   // PostgreSQL connection (parsed from DATABASE_URL)
@@ -109,6 +132,14 @@ export class BackupManager {
 
     // Initialize B2 client if credentials are available
     if (this.config.b2KeyId && this.config.b2AppKey) {
+      // SEC-H4: Validate B2 endpoint to prevent SSRF
+      if (!isValidB2Endpoint(this.config.b2Endpoint)) {
+        throw new Error(
+          `Invalid B2 endpoint: ${this.config.b2Endpoint}. ` +
+          'Must be a Backblaze B2 endpoint (e.g., s3.eu-central-003.backblazeb2.com)'
+        );
+      }
+
       this.s3Client = new S3Client({
         endpoint: `https://${this.config.b2Endpoint}`,
         credentials: {
@@ -124,13 +155,16 @@ export class BackupManager {
       fs.mkdirSync(this.config.backupDir, { recursive: true });
     }
 
-    // Warn if encryption key was auto-generated
+    // Warn if encryption key was auto-generated (SEC-H3: never log the actual key)
     if (!process.env.BACKUP_ENCRYPTION_KEY) {
-      console.log(
-        '  BACKUP_ENCRYPTION_KEY not set - generated temporary key for this session',
+      console.warn(
+        '⚠️  BACKUP_ENCRYPTION_KEY not set - generated temporary key for this session',
       );
-      console.log(
-        '   Add to .env: BACKUP_ENCRYPTION_KEY=' + this.config.encryptionKey,
+      console.warn(
+        '   Generate a permanent key with: openssl rand -hex 32',
+      );
+      console.warn(
+        '   Then add to .env: BACKUP_ENCRYPTION_KEY=<your-generated-key>',
       );
     }
   }
@@ -221,33 +255,47 @@ export class BackupManager {
     console.log(`Creating ${type} PostgreSQL backup...`);
 
     try {
-      // Create PostgreSQL dump
-      const pgDumpCommand = [
-        'pg_dump',
-        `--host=${this.config.host}`,
+      // Validate database name (SEC-C1: prevent injection)
+      if (!isValidPostgresIdentifier(this.config.database)) {
+        throw new Error(`Invalid database name: ${this.config.database}`);
+      }
+
+      // Create PostgreSQL dump using execFile (SEC-C2: prevent command injection)
+      const pgDumpArgs = [
+        `--host=${escapeShellArg(this.config.host)}`,
         `--port=${this.config.port}`,
-        `--username=${this.config.user}`,
+        `--username=${escapeShellArg(this.config.user)}`,
         '--verbose',
         '--clean',
         '--no-owner',
         '--no-privileges',
         '--format=plain',
-        `--file=${backupPath}`,
-        this.config.database,
-      ].join(' ');
+        `--file=${escapeShellArg(backupPath)}`,
+        escapeShellArg(this.config.database),
+      ];
 
-      // Set PGPASSWORD environment variable for pg_dump
+      // SEC-H2: Use PGPASSFILE instead of PGPASSWORD in environment
+      // PGPASSWORD in env is visible via `ps aux`, PGPASSFILE is more secure
+      const pgpassPath = path.join(this.config.backupDir, '.pgpass');
+      const pgpassContent = `${this.config.host}:${this.config.port}:${this.config.database}:${this.config.user}:${this.config.password}`;
+      fs.writeFileSync(pgpassPath, pgpassContent, { mode: 0o600 });
+
       const env = {
         ...process.env,
-        PGPASSWORD: this.config.password,
+        PGPASSFILE: pgpassPath,
       };
 
-      await execAsync(pgDumpCommand, { env });
+      try {
+        await execFileAsync('pg_dump', pgDumpArgs, { env });
+      } finally {
+        // Always clean up pgpass file
+        if (fs.existsSync(pgpassPath)) fs.unlinkSync(pgpassPath);
+      }
       console.log(`Backup created: ${backupPath}`);
 
-      // Compress backup
+      // Compress backup using execFile (SEC-C2: prevent command injection)
       const compressedPath = `${backupPath}.gz`;
-      await execAsync(`gzip "${backupPath}"`);
+      await execFileAsync('gzip', [escapeShellArg(backupPath)]);
       console.log(`Backup compressed: ${compressedPath}`);
 
       // Encrypt backup
@@ -533,27 +581,40 @@ export class BackupManager {
       this.decryptFile(encryptedPath, compressedPath);
 
       console.log('Decompressing backup...');
-      await execAsync(`gunzip "${compressedPath}"`);
+      await execFileAsync('gunzip', [escapeShellArg(compressedPath)]);
 
       console.log('Restoring PostgreSQL database...');
 
-      // Create restore command
-      const psqlCommand = [
-        'psql',
-        `--host=${this.config.host}`,
-        `--port=${this.config.port}`,
-        `--username=${this.config.user}`,
-        `--file="${sqlPath}"`,
-        this.config.database,
-      ].join(' ');
+      // Validate database name (SEC-C1: prevent injection)
+      if (!isValidPostgresIdentifier(this.config.database)) {
+        throw new Error(`Invalid database name: ${this.config.database}`);
+      }
 
-      // Set PGPASSWORD environment variable
+      // Create restore command using execFile (SEC-C2: prevent command injection)
+      const psqlArgs = [
+        `--host=${escapeShellArg(this.config.host)}`,
+        `--port=${this.config.port}`,
+        `--username=${escapeShellArg(this.config.user)}`,
+        `--file=${escapeShellArg(sqlPath)}`,
+        escapeShellArg(this.config.database),
+      ];
+
+      // SEC-H2: Use PGPASSFILE instead of PGPASSWORD
+      const pgpassPath = path.join(this.config.backupDir, '.pgpass');
+      const pgpassContent = `${this.config.host}:${this.config.port}:${this.config.database}:${this.config.user}:${this.config.password}`;
+      fs.writeFileSync(pgpassPath, pgpassContent, { mode: 0o600 });
+
       const env = {
         ...process.env,
-        PGPASSWORD: this.config.password,
+        PGPASSFILE: pgpassPath,
       };
 
-      await execAsync(psqlCommand, { env });
+      try {
+        await execFileAsync('psql', psqlArgs, { env });
+      } finally {
+        // Always clean up pgpass file
+        if (fs.existsSync(pgpassPath)) fs.unlinkSync(pgpassPath);
+      }
 
       console.log('Cleaning up temporary files...');
       if (fs.existsSync(sqlPath)) fs.unlinkSync(sqlPath);
@@ -572,53 +633,73 @@ export class BackupManager {
     console.log('Starting database cleanup...');
 
     try {
-      // Set PGPASSWORD environment variable
+      // Validate database name (SEC-C1: prevent injection)
+      if (!isValidPostgresIdentifier(this.config.database)) {
+        throw new Error(`Invalid database name: ${this.config.database}`);
+      }
+
+      // SEC-H2: Use PGPASSFILE instead of PGPASSWORD
+      const pgpassPath = path.join(this.config.backupDir, '.pgpass');
+      const pgpassContent = `${this.config.host}:${this.config.port}:${this.config.database}:${this.config.user}:${this.config.password}`;
+      fs.writeFileSync(pgpassPath, pgpassContent, { mode: 0o600 });
+
       const env = {
         ...process.env,
-        PGPASSWORD: this.config.password,
+        PGPASSFILE: pgpassPath,
       };
 
-      // Get list of all tables in public schema
-      console.log('Getting list of tables in public schema...');
-      const getTablesCommand = [
-        'psql',
-        `--host=${this.config.host}`,
-        `--port=${this.config.port}`,
-        `--username=${this.config.user}`,
-        '--tuples-only',
-        '--no-align',
-        `--command="SELECT tablename FROM pg_tables WHERE schemaname = 'public';"`,
-        this.config.database,
-      ].join(' ');
+      try {
+        // Get list of all tables in public schema using execFile (SEC-C2)
+        console.log('Getting list of tables in public schema...');
+        const getTablesArgs = [
+          `--host=${escapeShellArg(this.config.host)}`,
+          `--port=${this.config.port}`,
+          `--username=${escapeShellArg(this.config.user)}`,
+          '--tuples-only',
+          '--no-align',
+          '--command=SELECT tablename FROM pg_tables WHERE schemaname = \'public\';',
+          escapeShellArg(this.config.database),
+        ];
 
-      const { stdout } = await execAsync(getTablesCommand, { env });
-      const tables = stdout
-        .trim()
-        .split('\n')
-        .filter((table) => table.trim());
+        const { stdout } = await execFileAsync('psql', getTablesArgs, { env });
+        const tables = stdout
+          .trim()
+          .split('\n')
+          .filter((table) => table.trim());
 
-      console.log(
-        `Found ${tables.length} tables in public schema: ${tables.join(', ')}`,
-      );
+        console.log(
+          `Found ${tables.length} tables in public schema: ${tables.join(', ')}`,
+        );
 
-      // Drop all tables in public schema
-      if (tables.length > 0) {
-        console.log('Dropping all tables in public schema...');
+        // Drop all tables in public schema
+        if (tables.length > 0) {
+          console.log('Dropping all tables in public schema...');
 
-        // Drop tables one by one to avoid dependency issues
-        for (const table of tables) {
-          const dropCommand = [
-            'psql',
-            `--host=${this.config.host}`,
-            `--port=${this.config.port}`,
-            `--username=${this.config.user}`,
-            `--command="DROP TABLE IF EXISTS public.${table} CASCADE;"`,
-            this.config.database,
-          ].join(' ');
+          // Drop tables one by one to avoid dependency issues
+          for (const table of tables) {
+            // SEC-C1: CRITICAL - Validate table name before using in SQL
+            // Table names from pg_tables should always be valid, but defense in depth
+            if (!isValidPostgresIdentifier(table)) {
+              console.warn(`Skipping invalid table name: ${table}`);
+              continue;
+            }
 
-          await execAsync(dropCommand, { env });
+            // Use double-quoted identifier for safety (handles reserved words)
+            const dropArgs = [
+              `--host=${escapeShellArg(this.config.host)}`,
+              `--port=${this.config.port}`,
+              `--username=${escapeShellArg(this.config.user)}`,
+              `--command=DROP TABLE IF EXISTS public."${table}" CASCADE;`,
+              escapeShellArg(this.config.database),
+            ];
+
+            await execFileAsync('psql', dropArgs, { env });
+          }
+          console.log(`Dropped ${tables.length} tables in public schema`);
         }
-        console.log(`Dropped ${tables.length} tables in public schema`);
+      } finally {
+        // Always clean up pgpass file
+        if (fs.existsSync(pgpassPath)) fs.unlinkSync(pgpassPath);
       }
 
       console.log('Database cleanup completed successfully!');
