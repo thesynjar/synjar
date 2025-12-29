@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 
@@ -244,6 +244,7 @@ export function WorkspaceDetail() {
               <DocumentRow
                 key={doc.id}
                 document={doc}
+                workspaceId={workspaceId!}
                 onDelete={() => handleDeleteDocument(doc.id)}
               />
             ))}
@@ -262,7 +263,9 @@ export function WorkspaceDetail() {
   );
 }
 
-function DocumentRow({ document, onDelete }: { document: Document; onDelete: () => void }) {
+function DocumentRow({ document, workspaceId, onDelete }: { document: Document; workspaceId: string; onDelete: () => void }) {
+  const navigate = useNavigate();
+
   const formatFileSize = (bytes: number | null) => {
     if (!bytes) return '';
     if (bytes < 1024) return `${bytes} B`;
@@ -292,8 +295,23 @@ function DocumentRow({ document, onDelete }: { document: Document; onDelete: () 
     );
   };
 
+  const handleClick = () => {
+    navigate(`/workspaces/${workspaceId}/documents/${document.id}/edit`);
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    onDelete();
+  };
+
   return (
-    <div className="p-4 flex items-center gap-4 hover:bg-slate-700/50">
+    <div
+      className="p-4 flex items-center gap-4 hover:bg-slate-700/50 cursor-pointer transition-colors"
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+    >
       <div className="flex-shrink-0">
         {document.contentType === 'FILE' ? (
           <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -332,7 +350,7 @@ function DocumentRow({ document, onDelete }: { document: Document; onDelete: () 
           </div>
         )}
         <button
-          onClick={onDelete}
+          onClick={handleDeleteClick}
           className="p-1 text-slate-500 hover:text-red-400 transition-colors"
           title="Delete document"
         >

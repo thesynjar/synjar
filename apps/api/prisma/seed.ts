@@ -5,6 +5,9 @@ import * as path from 'path';
 
 const prisma = new PrismaClient();
 
+// Fixed UUIDs for dev environment (reproducible across seeds)
+const DEV_WORKSPACE_ID = '00000000-0000-4000-8000-000000000001';
+
 // Fixture document definitions
 interface FixtureDoc {
   filename: string;
@@ -69,10 +72,10 @@ async function main() {
 
   // Create workspace "General" for the dev user
   const workspace = await prisma.workspace.upsert({
-    where: { id: 'dev-general-workspace' },
+    where: { id: DEV_WORKSPACE_ID },
     update: {},
     create: {
-      id: 'dev-general-workspace',
+      id: DEV_WORKSPACE_ID,
       name: 'General',
       createdById: user.id,
       members: {

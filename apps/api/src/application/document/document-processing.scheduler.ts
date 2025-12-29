@@ -113,7 +113,8 @@ export class DocumentProcessingScheduler {
 
   /**
    * Process pending documents for a specific workspace.
-   * Uses forWorkspace() to enforce RLS context (tenant isolation).
+   * Uses forWorkspace() only to fetch documents (RLS isolation),
+   * then processes them outside the transaction to avoid timeout.
    */
   private async processWorkspaceDocuments(workspaceId: string): Promise<void> {
     const batchSize = this.configService.get<number>(
@@ -125,9 +126,9 @@ export class DocumentProcessingScheduler {
       60000,
     );
 
-    // Process with workspace-based RLS context (tenant isolation)
-    await this.prisma.forWorkspace(workspaceId, async (tx) => {
-      const pendingDocs = await tx.document.findMany({
+    // 1. Fetch pending documents with RLS context (short transaction)
+    const pendingDocs = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      return tx.document.findMany({
         where: {
           processingStatus: ProcessingStatus.PENDING,
         },
@@ -135,21 +136,22 @@ export class DocumentProcessingScheduler {
         take: batchSize,
         orderBy: { createdAt: 'asc' },
       });
-
-      for (const doc of pendingDocs) {
-        try {
-          await this.processWithTimeout(doc.id, timeoutMs);
-          this.logger.log(`Processed: ${doc.title} (workspace: ${workspaceId})`);
-        } catch (error) {
-          this.logger.error(
-            `Failed to process document ${doc.id}: ${error instanceof Error ? error.message : 'Unknown'}`,
-          );
-          // Continue with next document even if one fails
-        }
-      }
     });
 
-    // Update last processed timestamp in queue (outside of forWorkspace transaction)
+    // 2. Process documents OUTSIDE the transaction (can take a long time)
+    for (const doc of pendingDocs) {
+      try {
+        await this.processWithTimeout(doc.id, timeoutMs);
+        this.logger.log(`Processed: ${doc.title} (workspace: ${workspaceId})`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to process document ${doc.id}: ${error instanceof Error ? error.message : 'Unknown'}`,
+        );
+        // Continue with next document even if one fails
+      }
+    }
+
+    // 3. Update last processed timestamp in queue
     await this.prisma.workspaceProcessingQueue.update({
       where: { workspaceId },
       data: { lastProcessedAt: new Date() },

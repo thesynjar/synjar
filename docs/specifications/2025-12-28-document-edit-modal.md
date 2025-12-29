@@ -167,11 +167,26 @@ useEffect(() => {
 }, [title, content, tags]);
 ```
 
-### 4.4 Reprocessing
+### 4.4 Deferred Reprocessing
 
-- Zmiana `content` dla TEXT documents triggeruje reprocessing
-- Reprocessing jest async - nie blokuje auto-save
-- UI pokazuje "Processing..." badge gdy processingStatus === PROCESSING
+**WAŻNE:** Auto-save NIE triggeruje natychmiastowego reprocessingu embeddingów.
+
+- Zmiana `content` ustawia `processingStatus = PENDING` + `scheduledProcessingAt = NOW() + 1 hour`
+- Runner procesujący sprawdza: `processingStatus = PENDING AND scheduledProcessingAt <= NOW()`
+- Natychmiastowe procesowanie: przycisk "Zamknij i zaindeksuj" lub menu kontekstowe w liście dokumentów
+- UI pokazuje "Pending indexing" badge gdy `processingStatus === PENDING`
+- UI pokazuje "Processing..." badge gdy `processingStatus === PROCESSING`
+
+**Endpoint natychmiastowego procesowania:**
+```
+POST /workspaces/:workspaceId/documents/:documentId/process
+Response: 202 Accepted
+```
+
+**Workflow użytkownika:**
+1. Edytuje dokument → auto-save ustawia PENDING + scheduledProcessingAt za godzinę
+2. Kończy edycję → klika "Zamknij i zaindeksuj" → natychmiastowe procesowanie
+3. Alternatywnie: czeka godzinę → runner automatycznie przetwarza
 
 ---
 
@@ -381,27 +396,35 @@ Prosty editor dla content:
 
 ```prisma
 // Nowe pola w Document
-editLockedBy      String?   @db.Uuid
-editLockedUntil   DateTime? @db.Timestamptz
+editLockedBy          String?   @db.Uuid
+editLockedUntil       DateTime? @db.Timestamptz
+scheduledProcessingAt DateTime? @db.Timestamptz
 
 // Relacja
 editLockedByUser  User?     @relation("DocumentEditLock", fields: [editLockedBy], references: [id])
 
-// Index dla query "find locked documents"
+// Indexy
 @@index([editLockedUntil])
+@@index([processingStatus, scheduledProcessingAt])  // dla runnera procesującego
 ```
 
 **Migration jest backwards compatible** - nowe pola są nullable.
+
+**scheduledProcessingAt workflow:**
+- Ustawiane na `NOW() + 1 hour` przy zmianie content przez auto-save
+- Ustawiane na `NOW()` przy ręcznym wywołaniu `/process` endpoint
+- Runner sprawdza: `WHERE processingStatus = 'PENDING' AND scheduledProcessingAt <= NOW()`
 
 ---
 
 ## 12. Definition of Done
 
 ### Backend
-- [ ] Prisma migration: editLockedBy, editLockedUntil
+- [ ] Prisma migration: editLockedBy, editLockedUntil, scheduledProcessingAt
 - [ ] UpdateDocumentDto: originalFilename, lastKnownUpdatedAt, walidacje (@MaxLength, @Matches)
-- [ ] DocumentService.update: walidacja originalFilename, content read-only dla FILE, conflict detection
+- [ ] DocumentService.update: walidacja originalFilename, content read-only dla FILE, conflict detection, deferred processing
 - [ ] Lock endpoints: POST/PUT/DELETE /documents/:id/lock
+- [ ] Process endpoint: POST /documents/:id/process (natychmiastowe przetwarzanie)
 - [ ] LockService: acquire, refresh, release, cleanup expired
 - [ ] Rate limiting na PATCH endpoint (30 req/min)
 - [ ] Testy jednostkowe (10+)
@@ -417,6 +440,8 @@ editLockedByUser  User?     @relation("DocumentEditLock", fields: [editLockedBy]
 - [ ] Keyboard shortcuts (Ctrl+S, Escape)
 - [ ] Accessibility: labels, aria-live, focus management
 - [ ] DocumentRow: navigate to edit instead of modal
+- [ ] Przycisk "Zamknij i zaindeksuj" w edit page
+- [ ] Menu kontekstowe "Zaindeksuj teraz" dla dokumentów PENDING w liście
 
 ### Documentation
 - [ ] Ta specyfikacja zaktualizowana
@@ -469,6 +494,17 @@ editLockedByUser  User?     @relation("DocumentEditLock", fields: [editLockedBy]
 ---
 
 ## Review History
+
+### 2025-12-29 - Deferred Processing Update
+
+- Reviewed by: User + Claude
+- Status: Updated based on user feedback
+- Changes:
+  - Auto-save NIE triggeruje natychmiastowego reprocessingu embeddingów
+  - Dodano pole `scheduledProcessingAt` (timestamp + 1 godzina)
+  - Dodano endpoint `POST /documents/:id/process` dla ręcznego uruchomienia
+  - Dodano przycisk "Zamknij i zaindeksuj" w UI
+  - Dodano menu kontekstowe "Zaindeksuj teraz" w liście dokumentów
 
 ### 2025-12-28 - Pre-Implementation Review
 

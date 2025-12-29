@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -13,7 +14,10 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -35,6 +39,8 @@ import {
   ListDocumentsQueryDto,
   DocumentResponseDto,
   DocumentListResponseDto,
+  LockResponseDto,
+  LockErrorResponseDto,
 } from '../dto/document.dto';
 
 // Hard ceiling for multipart - actual limit is enforced by WorkspaceLimitsService from env
@@ -130,5 +136,74 @@ export class DocumentController {
     @CurrentUser() user: CurrentUserData,
   ) {
     await this.documentService.delete(workspaceId, id, user.id);
+  }
+
+  // ============ SPEC-018: Partial Update (Auto-save) ============
+
+  @Patch(':id')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 req/min for auto-save
+  @ApiOperation({ summary: 'Partial update document (for auto-save)' })
+  @ApiResponse({ status: 200, type: DocumentResponseDto })
+  @ApiResponse({ status: 409, description: 'Conflict - document was modified by another user' })
+  async partialUpdate(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: UpdateDocumentDto,
+  ) {
+    return this.documentService.update(workspaceId, id, user.id, dto);
+  }
+
+  // ============ SPEC-018: Edit Lock Endpoints ============
+
+  @Post(':id/lock')
+  @ApiOperation({ summary: 'Acquire edit lock on document' })
+  @ApiResponse({ status: 200, type: LockResponseDto })
+  @ApiResponse({ status: 409, type: LockErrorResponseDto, description: 'Document is locked by another user' })
+  async acquireLock(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.documentService.acquireLock(workspaceId, id, user.id);
+  }
+
+  @Put(':id/lock')
+  @ApiOperation({ summary: 'Refresh edit lock (heartbeat)' })
+  @ApiResponse({ status: 200, type: LockResponseDto })
+  @ApiResponse({ status: 409, description: 'Lock not held by this user' })
+  async refreshLock(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.documentService.refreshLock(workspaceId, id, user.id);
+  }
+
+  @Delete(':id/lock')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Release edit lock' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 409, description: 'Lock not held by this user' })
+  async releaseLock(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    await this.documentService.releaseLock(workspaceId, id, user.id);
+  }
+
+  // ============ SPEC-018: Trigger Processing ============
+
+  @Post(':id/process')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Trigger immediate document processing (indexing)' })
+  @ApiResponse({ status: 202, description: 'Processing triggered' })
+  async triggerProcessing(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.documentService.triggerProcessing(workspaceId, id, user.id);
   }
 }

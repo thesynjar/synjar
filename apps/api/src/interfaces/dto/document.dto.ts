@@ -7,6 +7,9 @@ import {
   IsInt,
   Min,
   Max,
+  MaxLength,
+  Matches,
+  IsDateString,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -49,15 +52,23 @@ export class CreateDocumentDto {
 }
 
 export class UpdateDocumentDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ maxLength: 200 })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   title?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   content?: string;
+
+  @ApiPropertyOptional({ description: 'Display filename for FILE documents', maxLength: 255 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  @Matches(/^[^/\\]*$/, { message: 'Filename cannot contain path separators' })
+  originalFilename?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -74,6 +85,11 @@ export class UpdateDocumentDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @ApiPropertyOptional({ description: 'For optimistic locking / conflict detection' })
+  @IsOptional()
+  @IsDateString()
+  lastKnownUpdatedAt?: string;
 }
 
 export class ListDocumentsQueryDto {
@@ -188,6 +204,17 @@ export class DocumentResponseDto {
   @ApiPropertyOptional()
   processingError!: string | null;
 
+  // Edit lock (SPEC-018)
+  @ApiPropertyOptional({ description: 'User ID who holds the edit lock' })
+  editLockedBy!: string | null;
+
+  @ApiPropertyOptional({ description: 'When the edit lock expires' })
+  editLockedUntil!: Date | null;
+
+  // Deferred processing (SPEC-018)
+  @ApiPropertyOptional({ description: 'When the document is scheduled for processing' })
+  scheduledProcessingAt!: Date | null;
+
   @ApiProperty()
   createdAt!: Date;
 
@@ -221,4 +248,32 @@ export class DocumentListResponseDto {
 
   @ApiProperty({ type: PaginationDto })
   pagination!: PaginationDto;
+}
+
+// Lock DTOs (SPEC-018)
+export class LockResponseDto {
+  @ApiProperty({ description: 'When the lock expires' })
+  lockedUntil!: Date;
+}
+
+export class LockErrorResponseDto {
+  @ApiProperty({ example: 'DOCUMENT_LOCKED' })
+  error!: string;
+
+  @ApiProperty({ description: 'Email of the user who holds the lock' })
+  lockedBy!: string;
+
+  @ApiProperty({ description: 'When the lock expires' })
+  lockedUntil!: Date;
+}
+
+export class ConflictErrorResponseDto {
+  @ApiProperty({ example: 'CONFLICT' })
+  error!: string;
+
+  @ApiProperty({ description: 'Server timestamp of the document' })
+  serverUpdatedAt!: Date;
+
+  @ApiProperty({ description: 'Error message' })
+  message!: string;
 }

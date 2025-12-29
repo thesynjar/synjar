@@ -30,9 +30,10 @@ model User {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
-  workspaces         WorkspaceMember[]
-  createdWorkspaces  Workspace[]
-  createdInvitations Invitation[]      @relation("InvitationsCreated")
+  workspaces          WorkspaceMember[]
+  createdWorkspaces   Workspace[]
+  createdInvitations  Invitation[]      @relation("InvitationsCreated")
+  editLockedDocuments Document[]        @relation("DocumentEditLock")
 
   @@index([emailVerificationToken])
   @@index([isEmailVerified, createdAt])
@@ -159,16 +160,26 @@ model Document {
   processingStatus   ProcessingStatus   @default(PENDING)
   processingError    String?
 
+  // Edit lock (SPEC-018)
+  editLockedBy    String?
+  editLockedUntil DateTime? @db.Timestamptz
+
+  // Deferred processing (SPEC-018)
+  scheduledProcessingAt DateTime? @db.Timestamptz
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
-  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  tags      DocumentTag[]
-  chunks    Chunk[]
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  editLockedByUser User?         @relation("DocumentEditLock", fields: [editLockedBy], references: [id])
+  tags             DocumentTag[]
+  chunks           Chunk[]
 
   @@index([workspaceId])
   @@index([verificationStatus])
   @@index([processingStatus])
+  @@index([editLockedUntil])
+  @@index([processingStatus, scheduledProcessingAt])
 }
 
 model Chunk {

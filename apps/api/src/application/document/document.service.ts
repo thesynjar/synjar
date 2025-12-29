@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Inject, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/persistence/prisma/prisma.service';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { ChunkingService } from '../chunking/chunking.service';
@@ -30,9 +30,11 @@ interface CreateDocumentDto {
 interface UpdateDocumentDto {
   title?: string;
   content?: string;
+  originalFilename?: string;
   sourceDescription?: string;
   verificationStatus?: VerificationStatus;
   tags?: string[];
+  lastKnownUpdatedAt?: string;
 }
 
 interface ListDocumentsQuery {
@@ -233,6 +235,30 @@ export class DocumentService {
         throw new NotFoundException('Document not found');
       }
 
+      // SPEC-018: Validate originalFilename for FILE documents
+      if (dto.originalFilename !== undefined) {
+        if (document.contentType === ContentType.FILE && dto.originalFilename.trim() === '') {
+          throw new BadRequestException('originalFilename cannot be empty for FILE documents');
+        }
+      }
+
+      // SPEC-018: Reject content edit for FILE documents
+      if (dto.content !== undefined && document.contentType === ContentType.FILE) {
+        throw new BadRequestException('Content is read-only for FILE documents');
+      }
+
+      // SPEC-018: Optimistic locking - conflict detection
+      if (dto.lastKnownUpdatedAt) {
+        const lastKnown = new Date(dto.lastKnownUpdatedAt);
+        if (document.updatedAt > lastKnown) {
+          throw new ConflictException({
+            error: 'CONFLICT',
+            serverUpdatedAt: document.updatedAt,
+            message: 'Document was modified by another user',
+          });
+        }
+      }
+
       // Handle tags update
       let tagsUpdate = {};
       if (dto.tags !== undefined) {
@@ -248,14 +274,21 @@ export class DocumentService {
 
       const needsReprocessing = dto.content !== undefined && dto.content !== document.content;
 
+      // SPEC-018: Deferred processing - schedule for 1 hour instead of immediate
+      const scheduledProcessingAt = needsReprocessing
+        ? new Date(Date.now() + 60 * 60 * 1000) // 1 hour from now
+        : undefined;
+
       const updated = await tx.document.update({
         where: { id: documentId },
         data: {
           title: dto.title,
           content: dto.content,
+          originalFilename: dto.originalFilename,
           sourceDescription: dto.sourceDescription,
           verificationStatus: dto.verificationStatus,
           processingStatus: needsReprocessing ? ProcessingStatus.PENDING : undefined,
+          scheduledProcessingAt,
           ...tagsUpdate,
         },
         include: {
@@ -266,9 +299,10 @@ export class DocumentService {
       return { updated, needsReprocessing };
     });
 
-    if (result.needsReprocessing) {
-      this.processDocument(documentId, workspaceId).catch(console.error);
-    }
+    // SPEC-018: Do NOT trigger immediate processing for auto-save
+    // Processing will happen when:
+    // 1. User clicks "Close and index" button (calls triggerProcessing)
+    // 2. Scheduled time passes (runner checks scheduledProcessingAt <= NOW())
 
     return result.updated;
   }
@@ -415,5 +449,143 @@ export class DocumentService {
     );
 
     return tags;
+  }
+
+  // ============ SPEC-018: Edit Lock Methods ============
+
+  private readonly LOCK_DURATION_MINUTES = 2;
+
+  async acquireLock(workspaceId: string, documentId: string, userId: string) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: { id: documentId, workspaceId },
+        include: {
+          editLockedByUser: { select: { email: true } },
+        },
+      });
+
+      if (!document) {
+        throw new NotFoundException('Document not found');
+      }
+
+      // Check if document is locked by another user
+      const isLocked = document.editLockedBy && document.editLockedUntil && document.editLockedUntil > new Date();
+      const isLockedByMe = document.editLockedBy === userId;
+
+      if (isLocked && !isLockedByMe) {
+        throw new ConflictException({
+          error: 'DOCUMENT_LOCKED',
+          lockedBy: document.editLockedByUser?.email || 'unknown',
+          lockedUntil: document.editLockedUntil,
+        });
+      }
+
+      const lockedUntil = new Date(Date.now() + this.LOCK_DURATION_MINUTES * 60 * 1000);
+
+      await tx.document.update({
+        where: { id: documentId },
+        data: {
+          editLockedBy: userId,
+          editLockedUntil: lockedUntil,
+        },
+      });
+
+      return { lockedUntil };
+    });
+  }
+
+  async refreshLock(workspaceId: string, documentId: string, userId: string) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: { id: documentId, workspaceId },
+      });
+
+      if (!document) {
+        throw new NotFoundException('Document not found');
+      }
+
+      // Check if lock is held by this user
+      if (document.editLockedBy !== userId) {
+        throw new ConflictException({
+          error: 'LOCK_NOT_HELD',
+          message: 'Cannot refresh lock - document is not locked by this user',
+        });
+      }
+
+      const lockedUntil = new Date(Date.now() + this.LOCK_DURATION_MINUTES * 60 * 1000);
+
+      await tx.document.update({
+        where: { id: documentId },
+        data: {
+          editLockedUntil: lockedUntil,
+        },
+      });
+
+      return { lockedUntil };
+    });
+  }
+
+  async releaseLock(workspaceId: string, documentId: string, userId: string) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: { id: documentId, workspaceId },
+      });
+
+      if (!document) {
+        throw new NotFoundException('Document not found');
+      }
+
+      // Only release if locked by this user
+      if (document.editLockedBy !== userId) {
+        throw new ConflictException({
+          error: 'LOCK_NOT_HELD',
+          message: 'Cannot release lock - document is not locked by this user',
+        });
+      }
+
+      await tx.document.update({
+        where: { id: documentId },
+        data: {
+          editLockedBy: null,
+          editLockedUntil: null,
+        },
+      });
+    });
+  }
+
+  // ============ SPEC-018: Trigger Processing ============
+
+  async triggerProcessing(workspaceId: string, documentId: string, userId: string) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const doc = await tx.document.findFirst({
+        where: { id: documentId, workspaceId },
+      });
+
+      if (!doc) {
+        throw new NotFoundException('Document not found');
+      }
+
+      // Set scheduledProcessingAt to now to trigger immediate processing
+      await tx.document.update({
+        where: { id: documentId },
+        data: {
+          processingStatus: ProcessingStatus.PENDING,
+          scheduledProcessingAt: new Date(),
+        },
+      });
+    });
+
+    // Trigger processing asynchronously
+    this.processDocument(documentId, workspaceId).catch(console.error);
+
+    return { message: 'Processing triggered' };
   }
 }

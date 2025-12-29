@@ -14,6 +14,11 @@ export interface DocumentProps {
   verificationStatus: VerificationStatus;
   processingStatus: ProcessingStatus;
   processingError?: string | null;
+  // Edit lock (SPEC-018)
+  editLockedBy?: string | null;
+  editLockedUntil?: Date | null;
+  // Deferred processing (SPEC-018)
+  scheduledProcessingAt?: Date | null;
   tags: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -23,12 +28,15 @@ export class DocumentEntity {
   private constructor(private props: DocumentProps) {}
 
   // Factory methods
-  static create(props: Omit<DocumentProps, 'id' | 'createdAt' | 'updatedAt' | 'processingStatus' | 'processingError'>): DocumentEntity {
+  static create(props: Omit<DocumentProps, 'id' | 'createdAt' | 'updatedAt' | 'processingStatus' | 'processingError' | 'editLockedBy' | 'editLockedUntil' | 'scheduledProcessingAt'>): DocumentEntity {
     return new DocumentEntity({
       ...props,
       id: '', // Will be set by repository
       processingStatus: 'PENDING',
       processingError: null,
+      editLockedBy: null,
+      editLockedUntil: null,
+      scheduledProcessingAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -142,6 +150,78 @@ export class DocumentEntity {
   // Validation
   canBeDeleted(): boolean {
     return this.props.processingStatus !== 'PROCESSING';
+  }
+
+  // Edit Lock (SPEC-018)
+  get editLockedBy(): string | null { return this.props.editLockedBy ?? null; }
+  get editLockedUntil(): Date | null { return this.props.editLockedUntil ?? null; }
+  get scheduledProcessingAt(): Date | null { return this.props.scheduledProcessingAt ?? null; }
+
+  isEditLocked(): boolean {
+    if (!this.props.editLockedBy || !this.props.editLockedUntil) {
+      return false;
+    }
+    return this.props.editLockedUntil > new Date();
+  }
+
+  isEditLockedBy(userId: string): boolean {
+    return this.isEditLocked() && this.props.editLockedBy === userId;
+  }
+
+  canAcquireEditLock(userId: string): boolean {
+    if (!this.isEditLocked()) {
+      return true;
+    }
+    return this.props.editLockedBy === userId;
+  }
+
+  acquireEditLock(userId: string, durationMinutes: number = 2): void {
+    if (!this.canAcquireEditLock(userId)) {
+      throw new Error(`Document is locked by another user until ${this.props.editLockedUntil?.toISOString()}`);
+    }
+    this.props.editLockedBy = userId;
+    this.props.editLockedUntil = new Date(Date.now() + durationMinutes * 60 * 1000);
+    this.props.updatedAt = new Date();
+  }
+
+  refreshEditLock(userId: string, durationMinutes: number = 2): void {
+    if (!this.isEditLockedBy(userId)) {
+      throw new Error('Cannot refresh lock - document is not locked by this user');
+    }
+    this.props.editLockedUntil = new Date(Date.now() + durationMinutes * 60 * 1000);
+    this.props.updatedAt = new Date();
+  }
+
+  releaseEditLock(userId: string): void {
+    if (this.props.editLockedBy !== userId) {
+      throw new Error('Cannot release lock - document is not locked by this user');
+    }
+    this.props.editLockedBy = null;
+    this.props.editLockedUntil = null;
+    this.props.updatedAt = new Date();
+  }
+
+  // Deferred Processing (SPEC-018)
+  scheduleProcessing(delayMinutes: number = 60): void {
+    this.props.processingStatus = 'PENDING';
+    this.props.scheduledProcessingAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+    this.props.updatedAt = new Date();
+  }
+
+  scheduleImmediateProcessing(): void {
+    this.props.processingStatus = 'PENDING';
+    this.props.scheduledProcessingAt = new Date();
+    this.props.updatedAt = new Date();
+  }
+
+  isReadyForProcessing(): boolean {
+    if (this.props.processingStatus !== 'PENDING') {
+      return false;
+    }
+    if (!this.props.scheduledProcessingAt) {
+      return true; // No scheduled time = ready immediately (backwards compatibility)
+    }
+    return this.props.scheduledProcessingAt <= new Date();
   }
 
   // Serialization
