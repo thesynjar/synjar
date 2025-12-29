@@ -37,7 +37,7 @@ System składa się z 5 głównych Bounded Contexts:
 │  ├─────────────────────┤  ├──────────────────────────────────┤ │
 │  │ - PublicLink        │  │ - TenantUserEmailLookup          │ │
 │  │ - Token validation  │  │ - Email hashing                  │ │
-│  │ - RLS bypass        │  │ - Workspace discovery            │ │
+│  │ - SECURITY DEFINER  │  │ - Workspace discovery            │ │
 │  └─────────────────────┘  └──────────────────────────────────┘ │
 │                                                                   │
 └──────────────────────────────────────────────────────────────────┘
@@ -125,10 +125,12 @@ System składa się z 5 głównych Bounded Contexts:
 
 **Infrastructure**:
 - `PublicController` - HTTP endpoints
-- `PrismaService.withoutRls()` - bypass RLS dla validated tokens
+- SQL SECURITY DEFINER function `lookup_public_link_by_token()` - secure token lookup
+- `PrismaService.forWorkspace()` - RLS-protected queries after validation
 
 **Security**:
-- Token validation PRZED bypass RLS
+- Token validation via SECURITY DEFINER function (validates isActive, expiresAt)
+- After validation: `forWorkspace(workspaceId)` for RLS-protected queries
 - Optional tag filtering (tylko dokumenty z określonymi tagami)
 - Optional expiry date
 - isActive flag (soft delete)
@@ -223,44 +225,47 @@ System składa się z 5 głównych Bounded Contexts:
 [ Scoped to specific user ]
 ```
 
-### 3. Public API Flow (RLS Bypass)
+### 3. Public API Flow (SECURITY DEFINER)
 
 ```
 ┌────────────┐  token   ┌──────────────────┐
 │   Client   │─────────>│ PublicController │
 └────────────┘          └────────┬─────────┘
                                  │ validate token
-                                 │ find PublicLink
                                  v
-                        ┌────────────────────┐
-                        │ withoutRls() check │
-                        │ - valid token?     │
-                        │ - not expired?     │
-                        │ - isActive?        │
-                        └────────┬───────────┘
-                                 │ if valid:
-                                 │ prisma.withoutRls()
+                        ┌─────────────────────────────┐
+                        │ lookup_public_link_by_token │
+                        │ (SECURITY DEFINER function) │
+                        │ - token exists?             │
+                        │ - isActive = true?          │
+                        │ - expiresAt > NOW()?        │
+                        └────────┬────────────────────┘
+                                 │ if valid: returns workspaceId
+                                 │ if invalid: returns empty
                                  v
-                        ┌──────────────────┐
-                        │  PrismaService   │
-                        │  withoutRls()    │
-                        └────────┬─────────┘
-                                 │ SET LOCAL app.current_user_id = 'SYSTEM'
+                        ┌──────────────────────────┐
+                        │    forWorkspace(id)      │
+                        │  set_config(..., true)   │
+                        │  RLS context enabled     │
+                        └────────┬─────────────────┘
                                  │ execute queries
                                  v
-                        ┌──────────────────┐
-                        │   PostgreSQL     │
-                        │   RLS bypassed   │
-                        └────────┬─────────┘
-                                 │ USING (current_setting(...) = 'SYSTEM')
-                                 │ returns all rows
-                                 v
-                        [ Apply filters in code ]
-                                 │ workspaceId = publicLink.workspaceId
+                        ┌──────────────────────────┐
+                        │      PostgreSQL          │
+                        │ workspaceId = context_id │
+                        │    RLS ENFORCED          │
+                        └────────┬─────────────────┘
+                                 │ filters by workspace
                                  │ optional: filter by allowedTags
                                  v
-                        [ Return filtered data ]
+                        [ Return workspace data ]
 ```
+
+**Key Security Improvements (2025-12-29):**
+- ❌ `withoutRls()` - REMOVED (dangerous, could bypass all RLS)
+- ✅ SECURITY DEFINER function - limited scope (token lookup only)
+- ✅ Validation at database level (isActive, expiresAt)
+- ✅ After validation: RLS enforced via `forWorkspace()`
 
 ---
 
@@ -452,18 +457,10 @@ export class PrismaService extends PrismaClient {
     return this.forUser(userId, callback);
   }
 
-  /**
-   * DANGEROUS: Bypass RLS (tylko dla Public API z token validation!)
-   */
-  async withoutRls<T>(
-    callback: (tx: TransactionClient) => Promise<T>,
-  ): Promise<T> {
-    return this.$transaction(async (tx) => {
-      // Set SYSTEM context - bypasses all RLS policies
-      await tx.$executeRaw`SELECT set_config('app.current_user_id', 'SYSTEM', true)`;
-      return callback(tx);
-    });
-  }
+  // NOTE: withoutRls() has been REMOVED (2025-12-29)
+  // For public API token lookups, use SQL SECURITY DEFINER function
+  // lookup_public_link_by_token() via $queryRaw
+  // See: migrations/20251229100000_add_public_link_token_lookup_function
 }
 ```
 
@@ -502,21 +499,27 @@ async processUserDocuments(userId: string) {
 }
 ```
 
-#### Pattern 3: Public API (with validation)
+#### Pattern 3: Public API (SECURITY DEFINER + forWorkspace)
 
 ```typescript
 // In PublicController
 async search(token: string, query: string) {
-  // 1. Validate token FIRST
-  const publicLink = await this.validatePublicLink(token);
+  // 1. Validate token via SECURITY DEFINER function
+  // This bypasses RLS safely for token lookup only
+  const publicLink = await this.publicLinkService.validateToken(token);
+  // validateToken() uses lookup_public_link_by_token() SQL function
+  // which validates isActive=true and expiresAt > NOW()
 
-  // 2. Then bypass RLS with filters
-  return this.prisma.withoutRls(async (tx) => {
+  // 2. Use forWorkspace() for RLS-protected queries
+  return this.prisma.forWorkspace(publicLink.workspaceId, async (tx) => {
     const results = await tx.chunk.findMany({
       where: {
         document: {
-          workspaceId: publicLink.workspaceId, // Filter by validated workspace
+          // RLS automatically filters by workspaceId context
           // Optional: filter by allowedTags
+          ...(publicLink.allowedTags?.length > 0 && {
+            tags: { some: { tag: { name: { in: publicLink.allowedTags } } } }
+          })
         }
       }
     });
@@ -530,8 +533,8 @@ async search(token: string, query: string) {
 1. **Database-level isolation**: PostgreSQL enforces RLS - nawet SQL injection nie zwróci obcych danych
 2. **Transaction-scoped context**: `SET LOCAL` jest aktywny tylko w ramach transakcji
 3. **Request isolation**: AsyncLocalStorage zapewnia, że concurrent requests nie mieszają context'ów
-4. **Non-superuser enforcement**: `knowledge_forge_app` role nie może ominąć RLS
-5. **SYSTEM bypass audited**: Public API używa `withoutRls()` tylko po walidacji tokena
+4. **Non-superuser enforcement**: `synjar_app` role nie może ominąć RLS
+5. **SECURITY DEFINER limited scope**: Token lookup via SQL function, RLS enforced after validation
 
 ---
 
@@ -547,15 +550,19 @@ async search(token: string, query: string) {
 
 | Method | Use Case | RLS Context |
 |--------|----------|-------------|
-| `forUser(userId, callback)` | Background jobs, system operations | Explicit user ID |
+| `forUser(userId, callback)` | Background jobs with user context | Explicit user ID |
+| `forWorkspace(workspaceId, callback)` | Background jobs, Public API after validation | Explicit workspace ID |
 | `withCurrentUser(callback)` | HTTP request handlers | From AsyncLocalStorage |
-| `withoutRls(callback)` | Public API (after token validation) | SYSTEM bypass |
+| `$queryRaw` | SECURITY DEFINER function calls | SQL function context |
 
 **Best Practices**:
 - HTTP handlers: **zawsze** używaj `withCurrentUser()`
-- Background jobs: **zawsze** używaj `forUser(userId, ...)`
-- Public API: **tylko** `withoutRls()` po walidacji tokena
+- Background jobs: **zawsze** używaj `forUser(userId, ...)` lub `forWorkspace(workspaceId, ...)`
+- Public API: `$queryRaw` dla token lookup, potem `forWorkspace()` dla queries
 - Migrations/Seeds: użyj `PrismaSystemService` (superuser)
+
+**REMOVED (2025-12-29):**
+- ❌ `withoutRls()` - zastąpione przez SECURITY DEFINER function
 
 ### 2. UserContext (AsyncLocalStorage)
 
@@ -901,26 +908,25 @@ async getDocuments() {
 }
 ```
 
-### 2. Public API: validate THEN bypass
+### 2. Public API: validate via SECURITY DEFINER THEN use forWorkspace
 
 ```typescript
-// GOOD
+// GOOD - SECURITY DEFINER for validation, forWorkspace for queries
 async search(token: string) {
-  const publicLink = await this.validateToken(token); // FIRST
+  // 1. Validate token via SECURITY DEFINER function (validates isActive, expiresAt)
+  const publicLink = await this.publicLinkService.validateToken(token);
 
-  return this.prisma.withoutRls(async (tx) => { // THEN
-    return tx.document.findMany({
-      where: { workspaceId: publicLink.workspaceId } // Filter by validated workspace
-    });
+  // 2. Use forWorkspace for RLS-protected queries
+  return this.prisma.forWorkspace(publicLink.workspaceId, async (tx) => {
+    return tx.document.findMany(); // RLS filters by workspace context
   });
 }
 
-// BAD - bypasses without validation!
+// BAD - raw $queryRaw without proper validation!
 async search(token: string) {
-  return this.prisma.withoutRls(async (tx) => {
-    // No validation - can access all workspaces!
-    return tx.document.findMany();
-  });
+  // Missing validation - should use lookup_public_link_by_token()
+  const link = await this.prisma.$queryRaw`SELECT * FROM "PublicLink" WHERE token = ${token}`;
+  // No isActive/expiresAt check at database level!
 }
 ```
 

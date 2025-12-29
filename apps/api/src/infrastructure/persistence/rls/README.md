@@ -72,32 +72,26 @@ async getDocuments(workspaceId: string) {
 }
 ```
 
-**`withoutRls(callback)`** - Bypass RLS (DANGEROUS - use with caution)
-```typescript
-// Only for Public API with token validation
-async searchPublic(token: string, query: string) {
-  // First validate token
-  const publicLink = await this.validateToken(token);
+#### 4. Public API Token Lookup (SQL SECURITY DEFINER)
 
-  // Then bypass RLS for public access
-  return this.prisma.withoutRls(async (tx) => {
-    return tx.document.findMany({
-      where: { workspaceId: publicLink.workspaceId }
-    });
-  });
+For public API endpoints that need to validate tokens without user context, we use
+a PostgreSQL SECURITY DEFINER function that safely bypasses RLS for the specific
+token lookup operation.
+
+```typescript
+// In PublicLinkRepository - uses lookup_public_link_by_token() function
+async findByTokenWithWorkspace(token: string): Promise<PublicLinkWithWorkspace | null> {
+  const results = await this.prisma.$queryRaw<Array<{...}>>`
+    SELECT * FROM lookup_public_link_by_token(${token})
+  `;
+  // Map results to domain model...
 }
 ```
 
-#### 4. RlsBypassService (`rls-bypass.service.ts`)
-
-Dedicated service for bypassing RLS in controlled scenarios. Provides explicit documentation about when bypass is appropriate.
-
-**Use Cases:**
-- Public API endpoints (with token-based authorization)
-- System background jobs requiring full access
-- Administrative operations (with proper authorization)
-
-**Security Warning:** This service should NEVER be used in regular user-facing endpoints as it bypasses workspace isolation.
+**Security Notes:**
+- The SECURITY DEFINER function runs with elevated privileges
+- The function only allows lookup by cryptographically secure token (not enumerable)
+- After token validation, subsequent queries use `forWorkspace()` with the resolved workspaceId
 
 ## Database Integration
 
@@ -135,9 +129,11 @@ The `true` parameter ensures the setting is transaction-scoped, preventing conte
 ### Public API
 ```
 1. Client → HTTP Request with public token
-2. PublicController → Validates token
-3. Service → Uses prisma.withoutRls(...)
-4. Database → RLS bypassed (token provides authorization)
+2. PublicController → Calls service.validateToken(token)
+3. Repository → Uses $queryRaw with lookup_public_link_by_token() (SECURITY DEFINER)
+4. Database → Function bypasses RLS to find token
+5. Service → Uses forWorkspace(workspaceId) for subsequent queries
+6. Database → RLS enforced with resolved workspace context
 ```
 
 ## Testing
@@ -165,8 +161,10 @@ AsyncLocalStorage ensures each request maintains its own user context, preventin
 ### Transaction Scoped
 Using `set_config(..., true)` ensures the user context is transaction-scoped and doesn't persist beyond the current transaction.
 
-### Bypass Controls
-The `withoutRls()` method is clearly marked as DANGEROUS and should only be used in specific, well-documented scenarios with proper authorization checks.
+### Secure Public Access
+For public API endpoints (like PublicLink token validation), we use PostgreSQL SECURITY DEFINER functions
+instead of application-level RLS bypass. This provides a more controlled, auditable approach where the
+bypass is limited to a specific operation (token lookup) rather than arbitrary queries.
 
 ## Common Patterns
 
@@ -205,34 +203,31 @@ export class DocumentProcessorService {
 }
 ```
 
-### Public API (Use with Caution)
+### Public API (Token-Based Access)
 ```typescript
 @Controller('public')
 export class PublicController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private publicLinkService: PublicLinkService,
+  ) {}
 
   @Get(':token/search')
-  async search(@Param('token') token: string) {
-    // MUST validate token first
-    const publicLink = await this.validateToken(token);
+  async search(@Param('token') token: string, @Query() dto: PublicSearchDto) {
+    // validateToken uses SECURITY DEFINER function to lookup token
+    // This safely bypasses RLS for the specific token lookup operation
+    const publicLink = await this.publicLinkService.validateToken(token);
 
-    // Then bypass RLS with validated authorization
-    return this.prisma.withoutRls(async (tx) => {
+    // After validation, use forWorkspace() for RLS-protected queries
+    return this.prisma.forWorkspace(publicLink.workspaceId, async (tx) => {
       return tx.document.findMany({
         where: {
-          workspaceId: publicLink.workspaceId,
           // Apply public link restrictions
+          processingStatus: 'COMPLETED',
+          verificationStatus: 'VERIFIED',
         },
       });
     });
-  }
-
-  private async validateToken(token: string) {
-    const link = await this.prisma.publicLink.findUnique({
-      where: { token },
-    });
-    if (!link) throw new UnauthorizedException();
-    return link;
   }
 }
 ```
@@ -266,13 +261,14 @@ export class PublicController {
 When migrating existing code to use RLS:
 
 1. Wrap all database queries in `withCurrentUser()` in service methods
-2. Use `forUser()` for background jobs and system operations
-3. Use `withoutRls()` only for Public API with proper token validation
-4. Test thoroughly to ensure RLS policies are working correctly
+2. Use `forUser()` for background jobs with user context
+3. Use `forWorkspace()` for scheduler/background jobs per workspace
+4. For public API token lookups, use SQL SECURITY DEFINER functions (see `lookup_public_link_by_token()`)
+5. Test thoroughly to ensure RLS policies are working correctly
 
 ## Future Enhancements
 
-- [ ] Integration tests with actual PostgreSQL RLS policies
-- [ ] Performance benchmarks (RLS overhead)
-- [ ] Monitoring/alerting for RLS bypass usage
-- [ ] Audit logging for all RLS bypass operations
+- [x] Integration tests with actual PostgreSQL RLS policies
+- [x] Performance benchmarks (RLS overhead)
+- [x] Removed withoutRls() in favor of SECURITY DEFINER functions
+- [ ] Monitoring/alerting for privileged function usage

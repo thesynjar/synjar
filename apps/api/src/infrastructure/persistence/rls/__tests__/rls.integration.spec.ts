@@ -370,8 +370,13 @@ describe('RLS Integration Tests', () => {
     });
   });
 
-  describe('5. Public API Bypass', () => {
-    it('withoutRls should bypass RLS and see all workspaces', async () => {
+  describe('5. Superuser (Privileged) Access', () => {
+    // These tests verify that the superuser client (used for setup/teardown
+    // and system operations like SECURITY DEFINER functions) can bypass RLS.
+    // This is NOT the application's withoutRls() method, but a separate
+    // PrismaClient with elevated privileges (DATABASE_URL_MIGRATE).
+
+    it('superuser client should bypass RLS and see all workspaces', async () => {
       const workspaces = await prismaSuperuser.$transaction(async (tx) => {
         return tx.workspace.findMany();
       });
@@ -382,7 +387,7 @@ describe('RLS Integration Tests', () => {
       expect(workspaceIds).toContain(workspaceB.id);
     });
 
-    it('withoutRls should bypass RLS and see all documents', async () => {
+    it('superuser client should bypass RLS and see all documents', async () => {
       const documents = await prismaSuperuser.$transaction(async (tx) => {
         return tx.document.findMany({
           where: {

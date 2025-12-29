@@ -27,7 +27,7 @@ describe('PublicLinkService', () => {
   beforeEach(async () => {
     prismaStub = {
       forUser: jest.fn(),
-      withoutRls: jest.fn(),
+      $queryRaw: jest.fn(),
     } as any;
 
     workspaceServiceStub = {

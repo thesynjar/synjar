@@ -8,6 +8,34 @@
 > **Note (2025-12-28):** Mechanizm RLS został zrefaktorowany z user-based na workspace-based context.
 > Szczegóły: [2025-12-28-rls-per-workspace-refactor.md](./2025-12-28-rls-per-workspace-refactor.md)
 
+### Refactorization Changes (2025-12-28 + 2025-12-29)
+
+**Breaking changes from SPEC-001 initial implementation:**
+
+| Component | SPEC-001 (user-based) | After Refactor (workspace-based) |
+|-----------|----------------------|----------------------------------|
+| **Context variable** | `app.current_user_id` | `app.current_workspace_id` |
+| **Helper function** | `get_user_workspace_ids()` | Removed (direct comparison) |
+| **Policies** | `workspaceId IN (SELECT get_user_workspace_ids())` | `workspaceId = current_workspace_id` |
+| **PrismaService** | `forUser(userId)` | `forWorkspace(workspaceId)` + `forUser()` (kept) |
+| **Public API** | `withoutRls()` | SECURITY DEFINER function `lookup_public_link_by_token()` |
+| **Performance** | ~15ms (JOIN through WorkspaceMember) | ~1ms (direct comparison) |
+
+**Non-breaking (still valid):**
+- RLS enabled on all workspace-scoped tables
+- Defense in depth principle
+- Transaction-scoped context (`set_config(..., true)`)
+
+**Security improvements (2025-12-29):**
+- `withoutRls()` removed - eliminated dangerous application-level RLS bypass
+- SECURITY DEFINER function - limited scope (only token lookup, not arbitrary queries)
+- Validation in SQL - `isActive` and `expiresAt` checked at database level
+- Principle of least privilege - function cannot be misused for other queries
+
+**See:**
+- [2025-12-28: RLS Per-Workspace Refactor](./2025-12-28-rls-per-workspace-refactor.md)
+- [2025-12-29: SECURITY DEFINER Fixes](./2025-12-29-00-27-rls-security-definer-fixes.md)
+
 ---
 
 ## 1. Cel biznesowy
@@ -47,7 +75,10 @@ SET LOCAL app.current_user_id = 'uuid-user-id';
 
 - Tabela `User` - brak RLS (użytkownik może widzieć tylko siebie przez JWT)
 - Tabela `Tag` - globalna (tagi są współdzielone między workspace'ami)
-- Public API - osobny mechanizm (token-based, bypass RLS)
+- Public API - SECURITY DEFINER function dla token lookup, potem RLS via `forWorkspace()`
+  - `lookup_public_link_by_token()` - bezpiecznie omija RLS tylko dla token lookup
+  - Waliduje `isActive=true` i `expiresAt > NOW()` na poziomie bazy
+  - Po walidacji: `forWorkspace(workspaceId)` dla queries z RLS
 
 ---
 

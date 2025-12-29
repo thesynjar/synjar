@@ -143,51 +143,8 @@ export class PrismaService
     return this.forUser(userId, callback);
   }
 
-  /**
-   * DANGEROUS: Executes a callback without Row Level Security restrictions.
-   * This bypasses all RLS policies by clearing the user context.
-   *
-   * USE WITH EXTREME CAUTION - Only for:
-   * - Public API endpoints (with proper token validation)
-   * - System operations
-   * - Administrative tasks
-   *
-   * @param callback - Async function to execute with the transaction client
-   * @returns Result of the callback
-   *
-   * @example
-   * // Public API endpoint with token validation
-   * async searchPublic(token: string, query: string) {
-   *   // First validate the token
-   *   const publicLink = await this.validatePublicLinkToken(token);
-   *
-   *   // Then bypass RLS for public access
-   *   return this.prisma.withoutRls(async (tx) => {
-   *     return tx.document.findMany({
-   *       where: {
-   *         workspaceId: publicLink.workspaceId,
-   *         // Additional filters based on public link configuration
-   *       }
-   *     });
-   *   });
-   * }
-   */
-  async withoutRls<T>(
-    callback: (tx: TransactionClient) => Promise<T>,
-  ): Promise<T> {
-    // SECURITY AUDIT: Log all RLS bypass operations
-    const stackTrace = new Error().stack;
-    this.logger.warn({
-      event: 'RLS_BYPASS',
-      message: 'withoutRls() called - bypassing Row Level Security',
-      timestamp: new Date().toISOString(),
-      stackTrace,
-    });
-
-    return this.$transaction(async (tx) => {
-      // Set SYSTEM context to bypass RLS (returns all workspaces)
-      await tx.$executeRaw`SELECT set_config('app.current_user_id', 'SYSTEM', true)`;
-      return callback(tx);
-    });
-  }
+  // NOTE: withoutRls() has been intentionally removed.
+  // For public API token lookups, use SQL SECURITY DEFINER functions
+  // like lookup_public_link_by_token() via $queryRaw.
+  // See: migrations/20251229100000_add_public_link_token_lookup_function
 }
