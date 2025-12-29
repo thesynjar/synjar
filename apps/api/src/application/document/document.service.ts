@@ -248,9 +248,13 @@ export class DocumentService {
       }
 
       // SPEC-018: Optimistic locking - conflict detection
+      // FIX: Skip conflict check for lock holders as a fallback defense
+      // Lock holder owns the document and can safely save even with stale lastKnownUpdatedAt
       if (dto.lastKnownUpdatedAt) {
         const lastKnown = new Date(dto.lastKnownUpdatedAt);
-        if (document.updatedAt > lastKnown) {
+        const isLockHolder = document.editLockedBy === userId;
+
+        if (!isLockHolder && document.updatedAt > lastKnown) {
           throw new ConflictException({
             error: 'CONFLICT',
             serverUpdatedAt: document.updatedAt,

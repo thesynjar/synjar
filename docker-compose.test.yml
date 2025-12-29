@@ -5,8 +5,8 @@ version: '3.8'
 # Then run: pnpm test:e2e -- --testPathPattern=registration-e2e
 #
 # IMPORTANT: Uses separate network and ports from dev environment
-# Dev: postgres 6201, mailpit 6202/6203
-# Test: postgres 6211, mailpit 6212/6213
+# Dev: 6200+ (API 6200, postgres 6201, mailpit 6202/6203)
+# Test: 6300+ (API 6300, web 6310, postgres 6311, mailpit 6312/6313, minio 6314/6315)
 
 services:
   postgres-test:
@@ -17,7 +17,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: synjar_test
     ports:
-      - "6211:5432"
+      - "6311:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -30,8 +30,8 @@ services:
     image: axllent/mailpit
     container_name: synjar-mailpit-test
     ports:
-      - "6212:1025"  # SMTP (dev uses 6202)
-      - "6213:8025"  # Web UI / API (dev uses 6203)
+      - "6312:1025"  # SMTP (dev uses 6202)
+      - "6313:8025"  # Web UI / API (dev uses 6203)
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
@@ -44,8 +44,8 @@ services:
     image: minio/minio
     container_name: synjar-minio-test
     ports:
-      - "6214:9000"   # S3 API (test port)
-      - "6215:9001"   # Console UI (test port)
+      - "6314:9000"   # S3 API (test port)
+      - "6315:9001"   # Console UI (test port)
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin

@@ -29,8 +29,9 @@ async function bootstrap() {
     'http://localhost:3000',
     'http://localhost:3100',
     'http://localhost:5173',
-    'http://localhost:6210',
+    'http://localhost:6210', // dev web
     'http://localhost:6211',
+    'http://localhost:6310', // test web (E2E tests)
   ].filter(Boolean) as string[];
 
   app.enableCors({

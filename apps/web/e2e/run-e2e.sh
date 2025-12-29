@@ -13,6 +13,10 @@ echo -e "${YELLOW}🚀 Starting E2E test environment for Playwright...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/../../.."
 
+# Kill any existing processes on test ports
+echo -e "${YELLOW}🧹 Cleaning up test ports...${NC}"
+lsof -ti:6300 -ti:6310 | xargs -r kill -9 2>/dev/null || true
+
 # Start test containers
 echo -e "${YELLOW}📦 Starting Docker containers...${NC}"
 docker compose -f docker-compose.test.yml up -d
@@ -26,7 +30,7 @@ echo -e "${GREEN}✓ PostgreSQL is ready${NC}"
 
 # Wait for Mailpit to be ready
 echo -e "${YELLOW}⏳ Waiting for Mailpit...${NC}"
-until curl -s http://localhost:6213/api/v1/messages > /dev/null 2>&1; do
+until curl -s http://localhost:6313/api/v1/messages > /dev/null 2>&1; do
   sleep 1
 done
 echo -e "${GREEN}✓ Mailpit is ready${NC}"
@@ -34,41 +38,57 @@ echo -e "${GREEN}✓ Mailpit is ready${NC}"
 # Apply migrations
 echo -e "${YELLOW}🔄 Applying database migrations...${NC}"
 cd apps/api
-DATABASE_URL="postgresql://postgres:postgres@localhost:6211/synjar_test?schema=public" \
-DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6211/synjar_test?schema=public" \
+DATABASE_URL="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
+DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
 npx prisma migrate deploy
 
 # Start API in background
 echo -e "${YELLOW}🚀 Starting API server...${NC}"
-DATABASE_URL="postgresql://postgres:postgres@localhost:6211/synjar_test?schema=public" \
+DATABASE_URL="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
 SMTP_HOST=localhost \
-SMTP_PORT=6212 \
+SMTP_PORT=6312 \
 SMTP_SECURE=false \
 JWT_SECRET=test-jwt-secret-for-e2e-tests \
-EMAIL_VERIFICATION_URL=http://localhost:6210/auth/verify \
-PORT=6200 \
+EMAIL_VERIFICATION_URL=http://localhost:6310/auth/verify \
+PORT=6300 \
 NODE_ENV=test \
+DEPLOYMENT_MODE=cloud \
 npm run start &
 API_PID=$!
 
 # Wait for API to be ready
 echo -e "${YELLOW}⏳ Waiting for API...${NC}"
-until curl -s http://localhost:6200/health > /dev/null 2>&1; do
+until curl -s http://localhost:6300/health > /dev/null 2>&1; do
   sleep 1
 done
 echo -e "${GREEN}✓ API is ready${NC}"
 
-# Run Playwright tests
+# Start web app in background
 cd ../web
+echo -e "${YELLOW}🚀 Starting web app...${NC}"
+VITE_API_URL=http://localhost:6300 \
+npm run dev -- --port 6310 &
+WEB_PID=$!
+
+# Wait for web app to be ready
+echo -e "${YELLOW}⏳ Waiting for web app...${NC}"
+until curl -s http://localhost:6310 > /dev/null 2>&1; do
+  sleep 1
+done
+echo -e "${GREEN}✓ Web app is ready${NC}"
+
+# Run Playwright tests (CI=true disables Playwright's webServer since we start it ourselves)
 echo -e "${YELLOW}🧪 Running Playwright E2E tests...${NC}"
 TEST_RESULT=0
-API_URL=http://localhost:6200 \
-MAILPIT_URL=http://localhost:6213 \
-BASE_URL=http://localhost:6210 \
-npx playwright test "$@" || TEST_RESULT=$?
+CI=true \
+API_URL=http://localhost:6300 \
+MAILPIT_URL=http://localhost:6313 \
+BASE_URL=http://localhost:6310 \
+npx playwright test --workers=1 "$@" || TEST_RESULT=$?
 
 # Cleanup
 echo -e "${YELLOW}🧹 Stopping services...${NC}"
+kill $WEB_PID 2>/dev/null || true
 kill $API_PID 2>/dev/null || true
 cd ../..
 docker compose -f docker-compose.test.yml down
