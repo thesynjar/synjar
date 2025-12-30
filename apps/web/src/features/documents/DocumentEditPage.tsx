@@ -7,6 +7,7 @@ import { useAutoSave } from './hooks/useAutoSave';
 import { SaveStatusIndicator } from './SaveStatusIndicator';
 import { LockStatusIndicator } from './LockStatusIndicator';
 import { InlineEditor } from './InlineEditor';
+import { TagInput } from './TagInput';
 
 interface Document {
   id: string;
@@ -35,6 +36,7 @@ export function DocumentEditPage() {
   const [content, setContent] = useState('');
   const [sourceDescription, setSourceDescription] = useState('');
   const [verificationStatus, setVerificationStatus] = useState<'VERIFIED' | 'UNVERIFIED'>('UNVERIFIED');
+  const [tags, setTags] = useState<string[]>([]);
   const [lastKnownUpdatedAt, setLastKnownUpdatedAt] = useState<string | null>(null);
 
   // Track if user has made changes
@@ -106,6 +108,7 @@ export function DocumentEditPage() {
         setContent(doc.content);
         setSourceDescription(doc.sourceDescription || '');
         setVerificationStatus(doc.verificationStatus);
+        setTags(doc.tags.map((t) => t.tag.name));
         setLastKnownUpdatedAt(doc.updatedAt);
       } catch (error) {
         console.error('Failed to fetch document:', error);
@@ -145,12 +148,13 @@ export function DocumentEditPage() {
             content: field === 'content' ? value : content,
             sourceDescription: field === 'sourceDescription' ? value : sourceDescription,
             verificationStatus,
+            tags,
           },
           lastKnownUpdatedAt || undefined
         );
       }
     },
-    [lockStatus, scheduleAutoSave, title, content, sourceDescription, verificationStatus, lastKnownUpdatedAt]
+    [lockStatus, scheduleAutoSave, title, content, sourceDescription, verificationStatus, tags, lastKnownUpdatedAt]
   );
 
   const handleVerificationChange = useCallback(
@@ -165,12 +169,34 @@ export function DocumentEditPage() {
             content,
             sourceDescription,
             verificationStatus: newStatus,
+            tags,
           },
           lastKnownUpdatedAt || undefined
         );
       }
     },
-    [lockStatus, scheduleAutoSave, title, content, sourceDescription, lastKnownUpdatedAt]
+    [lockStatus, scheduleAutoSave, title, content, sourceDescription, tags, lastKnownUpdatedAt]
+  );
+
+  const handleTagsChange = useCallback(
+    (newTags: string[]) => {
+      setTags(newTags);
+      setHasUnsavedChanges(true);
+
+      if (lockStatus === 'locked_by_me') {
+        scheduleAutoSave(
+          {
+            title,
+            content,
+            sourceDescription,
+            verificationStatus,
+            tags: newTags,
+          },
+          lastKnownUpdatedAt || undefined
+        );
+      }
+    },
+    [lockStatus, scheduleAutoSave, title, content, sourceDescription, verificationStatus, lastKnownUpdatedAt]
   );
 
   // Handle keyboard shortcuts
@@ -344,6 +370,17 @@ export function DocumentEditPage() {
             </label>
           </div>
         </div>
+      </div>
+
+      {/* Tags */}
+      <div className="mb-6">
+        <TagInput
+          workspaceId={workspaceId!}
+          selectedTags={tags}
+          onTagsChange={handleTagsChange}
+          disabled={isReadOnly}
+          apiClient={apiClient}
+        />
       </div>
 
       {/* Processing status */}

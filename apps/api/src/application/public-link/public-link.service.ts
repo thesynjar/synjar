@@ -206,16 +206,25 @@ export class PublicLinkService {
       ]);
 
       // Generate signed URLs for files
+      // Filter returned tags by allowedTags (security-critical)
       const documentsWithSignedUrls = await Promise.all(
-        documents.map(async (doc) => ({
-          id: doc.id,
-          title: doc.title,
-          content: doc.content,
-          tags: doc.tags.map((t) => t.tag.name),
-          verificationStatus: doc.verificationStatus,
-          fileUrl: await this.getSignedFileUrl(doc.fileUrl),
-          createdAt: doc.createdAt,
-        })),
+        documents.map(async (doc) => {
+          const docTags = doc.tags.map((t) => t.tag.name);
+          const filteredTags =
+            link.allowedTags.length > 0
+              ? docTags.filter((tag) => link.allowedTags.includes(tag))
+              : docTags;
+
+          return {
+            id: doc.id,
+            title: doc.title,
+            content: doc.content,
+            tags: filteredTags,
+            verificationStatus: doc.verificationStatus,
+            fileUrl: await this.getSignedFileUrl(doc.fileUrl),
+            createdAt: doc.createdAt,
+          };
+        }),
       );
 
       return {
@@ -328,11 +337,15 @@ export class PublicLinkService {
           })
         : [];
 
+      // Build map and filter by allowedTags (security-critical)
       const tagsByDocument = new Map<string, string[]>();
       for (const dt of documentTags) {
-        const tags = tagsByDocument.get(dt.documentId) || [];
-        tags.push(dt.tag.name);
-        tagsByDocument.set(dt.documentId, tags);
+        // Only include tag if no allowedTags restriction OR tag is in allowedTags
+        if (link.allowedTags.length === 0 || link.allowedTags.includes(dt.tag.name)) {
+          const tags = tagsByDocument.get(dt.documentId) || [];
+          tags.push(dt.tag.name);
+          tagsByDocument.set(dt.documentId, tags);
+        }
       }
 
       // Generate signed URLs for files

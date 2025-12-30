@@ -180,18 +180,18 @@ describe('DocumentService', () => {
         updatedAt: new Date(),
       };
 
-      // Mock tag.upsert for tag creation (Tag table has no RLS)
-      (prismaStub.tag as any).upsert = jest.fn()
-        .mockResolvedValueOnce({ id: 'tag-test', name: 'test' })
-        .mockResolvedValueOnce({ id: 'tag-example', name: 'example' });
-
-      // Mock forWorkspace for document creation
+      // Mock forWorkspace for document creation (includes tag.upsert for workspace-scoped tags)
       prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             create: jest.fn().mockResolvedValue(expectedDocument),
             findUnique: jest.fn().mockResolvedValue(null),
             update: jest.fn().mockResolvedValue({}),
+          },
+          tag: {
+            upsert: jest.fn()
+              .mockResolvedValueOnce({ id: 'tag-test', name: 'test' })
+              .mockResolvedValueOnce({ id: 'tag-example', name: 'example' }),
           },
           chunk: {
             deleteMany: jest.fn(),
@@ -338,18 +338,18 @@ describe('DocumentService', () => {
         chunks: [],
       };
 
-      // Mock tag.upsert for tag creation (Tag table has no RLS)
-      (prismaStub.tag as any).upsert = jest.fn()
-        .mockResolvedValueOnce({ id: 'tag-1', name: 'test-tag' })
-        .mockResolvedValueOnce({ id: 'tag-2', name: 'another-tag' });
-
-      // Mock forWorkspace for document creation
+      // Mock forWorkspace for document creation (includes tag.upsert for workspace-scoped tags)
       prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
             create: jest.fn().mockResolvedValue(expectedDocument),
             findUnique: jest.fn().mockResolvedValue(null),
             update: jest.fn().mockResolvedValue({}),
+          },
+          tag: {
+            upsert: jest.fn()
+              .mockResolvedValueOnce({ id: 'tag-1', name: 'test-tag' })
+              .mockResolvedValueOnce({ id: 'tag-2', name: 'another-tag' }),
           },
           chunk: {
             deleteMany: jest.fn(),

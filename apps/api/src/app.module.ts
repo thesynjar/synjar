@@ -7,6 +7,7 @@ import { PrismaModule } from './infrastructure/persistence/prisma/prisma.module'
 import { AuthModule } from './application/auth/auth.module';
 import { WorkspaceModule } from './application/workspace/workspace.module';
 import { DocumentModule } from './application/document/document.module';
+import { TagModule } from './application/tag/tag.module';
 import { SearchModule } from './application/search/search.module';
 import { PublicLinkModule } from './application/public-link/public-link.module';
 import { WorkspaceLookupModule } from './application/workspace-lookup/workspace-lookup.module';
@@ -53,6 +54,7 @@ function getCoreModules() {
     AuthModule,
     WorkspaceModule,
     DocumentModule,
+    TagModule,
     SearchModule,
     PublicLinkModule,
     WorkspaceLookupModule,

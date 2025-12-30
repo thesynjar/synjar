@@ -96,8 +96,8 @@ export class DocumentService {
       content = await this.chunkingService.parseFile(file.buffer, file.mimetype);
     }
 
-    // Create or find tags (Tag table has no RLS - global entities)
-    const tagRecords = await this.ensureTags(dto.tags || []);
+    // Create or find tags (now workspace-scoped)
+    const tagRecords = await this.ensureTags(workspaceId, dto.tags || []);
 
     // Use forWorkspace() to set RLS context for document creation
     const document = await this.prisma.forWorkspace(workspaceId, async (tx) => {
@@ -220,10 +220,10 @@ export class DocumentService {
   ) {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    // Handle tags update (Tag table has no RLS - global entities)
+    // Handle tags update (now workspace-scoped)
     let tagRecords: { id: string; name: string }[] = [];
     if (dto.tags !== undefined) {
-      tagRecords = await this.ensureTags(dto.tags!);
+      tagRecords = await this.ensureTags(workspaceId, dto.tags!);
     }
 
     const result = await this.prisma.forWorkspace(workspaceId, async (tx) => {
@@ -435,24 +435,42 @@ export class DocumentService {
 
   /**
    * Ensure tags exist in the database.
-   * Tag table has no RLS - tags are global entities shared across workspaces.
+   * Tags are workspace-scoped - unique per (workspaceId, name).
    */
-  private async ensureTags(tagNames: string[]) {
+  private async ensureTags(
+    workspaceId: string,
+    tagNames: string[],
+  ): Promise<{ id: string; name: string }[]> {
+    // Normalize tag names: lowercase, alphanumeric + hyphen, trim dashes
     const normalizedNames = tagNames.map((name) =>
-      name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+      name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, ''),
     );
 
-    const tags = await Promise.all(
-      normalizedNames.map((name) =>
-        this.prisma.tag.upsert({
-          where: { name },
-          update: {},
-          create: { name },
-        }),
-      ),
-    );
+    // Filter out empty strings and too short names
+    const validNames = normalizedNames.filter((name) => name.length >= 2);
 
-    return tags;
+    if (validNames.length === 0) {
+      return [];
+    }
+
+    // Use workspace context for RLS
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+      return Promise.all(
+        validNames.map((name) =>
+          tx.tag.upsert({
+            where: {
+              workspaceId_name: { workspaceId, name },
+            },
+            update: {},
+            create: { name, workspaceId },
+          }),
+        ),
+      );
+    });
   }
 
   // ============ SPEC-018: Edit Lock Methods ============

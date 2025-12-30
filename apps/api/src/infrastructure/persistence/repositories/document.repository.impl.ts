@@ -69,16 +69,21 @@ export class PrismaDocumentRepository implements IDocumentRepository {
   }
 
   async create(data: CreateDocumentData): Promise<DocumentWithRelations> {
-    // Create or find tags
+    const { workspaceId } = data;
+
+    // Create or find workspace-scoped tags
     const tagRecords = data.tags?.length
       ? await Promise.all(
-          data.tags.map((tagName) =>
-            this.prisma.tag.upsert({
-              where: { name: tagName.toLowerCase() },
+          data.tags.map((tagName) => {
+            const normalizedName = this.normalizeTagName(tagName);
+            return this.prisma.tag.upsert({
+              where: {
+                workspaceId_name: { workspaceId, name: normalizedName },
+              },
               update: {},
-              create: { name: tagName.toLowerCase() },
-            }),
-          ),
+              create: { name: normalizedName, workspaceId },
+            });
+          }),
         )
       : [];
 
@@ -112,17 +117,22 @@ export class PrismaDocumentRepository implements IDocumentRepository {
     id: string,
     data: UpdateDocumentData,
   ): Promise<DocumentWithRelations> {
-    // Handle tags update
+    const { workspaceId } = data;
+
+    // Handle tags update with workspace-scoped tags
     let tagsUpdate = {};
     if (data.tags !== undefined) {
       const tagRecords = await Promise.all(
-        data.tags.map((tagName) =>
-          this.prisma.tag.upsert({
-            where: { name: tagName.toLowerCase() },
+        data.tags.map((tagName) => {
+          const normalizedName = this.normalizeTagName(tagName);
+          return this.prisma.tag.upsert({
+            where: {
+              workspaceId_name: { workspaceId, name: normalizedName },
+            },
             update: {},
-            create: { name: tagName.toLowerCase() },
-          }),
-        ),
+            create: { name: normalizedName, workspaceId },
+          });
+        }),
       );
 
       tagsUpdate = {
@@ -155,5 +165,13 @@ export class PrismaDocumentRepository implements IDocumentRepository {
 
   async delete(id: string): Promise<void> {
     await this.prisma.document.delete({ where: { id } });
+  }
+
+  private normalizeTagName(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 }

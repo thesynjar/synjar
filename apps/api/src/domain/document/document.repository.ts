@@ -15,6 +15,7 @@ export interface CreateDocumentData {
 }
 
 export interface UpdateDocumentData {
+  workspaceId: string; // Required for workspace-scoped tags
   title?: string;
   content?: string;
   sourceDescription?: string;

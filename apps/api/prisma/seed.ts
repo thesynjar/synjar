@@ -89,7 +89,7 @@ async function main() {
 
   console.log(`✅ Created workspace: ${workspace.name}`);
 
-  // Create all tags (including additional ones for documents)
+  // Create all workspace-scoped tags
   const allTags = [
     'getting-started',
     'api',
@@ -107,9 +107,11 @@ async function main() {
   const tagMap = new Map<string, string>();
   for (const tagName of allTags) {
     const tag = await prisma.tag.upsert({
-      where: { name: tagName },
+      where: {
+        workspaceId_name: { workspaceId: workspace.id, name: tagName },
+      },
       update: {},
-      create: { name: tagName },
+      create: { name: tagName, workspaceId: workspace.id },
     });
     tagMap.set(tagName, tag.id);
   }

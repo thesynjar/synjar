@@ -57,6 +57,7 @@ model Workspace {
   publicLinks     PublicLink[]
   userLookups     UserWorkspaceLookup[]
   processingQueue WorkspaceProcessingQueue?
+  tags            Tag[]
 
   @@index([createdById])
 }
@@ -203,10 +204,16 @@ model Chunk {
 }
 
 model Tag {
-  id   String @id @default(uuid())
-  name String @unique
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime @default(now()) @db.Timestamptz
 
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   documents DocumentTag[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
 }
 
 model DocumentTag {
