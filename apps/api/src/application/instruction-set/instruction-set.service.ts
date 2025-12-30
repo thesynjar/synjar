@@ -34,6 +34,7 @@ interface UpdateInstructionSetDto {
   name?: string;
   description?: string;
   isPublic?: boolean;
+  expectedUpdatedAt?: string;
 }
 
 interface AddDocumentDto {
@@ -154,6 +155,24 @@ export class InstructionSetService {
     }
 
     await this.workspaceService.ensureMember(set.workspaceId, userId);
+
+    // Optimistic locking check
+    if (dto.expectedUpdatedAt) {
+      const expectedTime = new Date(dto.expectedUpdatedAt).getTime();
+      const actualTime = set.updatedAt.getTime();
+      if (actualTime !== expectedTime) {
+        throw new ConflictException({
+          error: {
+            code: 'CONFLICT',
+            message: 'Ten zestaw został zmodyfikowany przez innego użytkownika.',
+            details: {
+              lastModifiedAt: set.updatedAt.toISOString(),
+            },
+            suggestion: 'Odśwież stronę, aby zobaczyć zmiany.',
+          },
+        });
+      }
+    }
 
     try {
       if (dto.name !== undefined) {

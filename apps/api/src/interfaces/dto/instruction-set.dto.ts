@@ -8,6 +8,7 @@ import {
   MaxLength,
   MinLength,
   ArrayMaxSize,
+  IsDateString,
 } from 'class-validator';
 
 // ============ Request DTOs ============
@@ -72,6 +73,15 @@ export class UpdateInstructionSetDto {
   @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
+
+  @ApiPropertyOptional({
+    example: '2025-12-30T12:00:00.000Z',
+    description:
+      'Expected updatedAt timestamp for optimistic locking. If provided and does not match current updatedAt, returns 409 Conflict.',
+  })
+  @IsOptional()
+  @IsDateString()
+  expectedUpdatedAt?: string;
 }
 
 export class AddDocumentDto {

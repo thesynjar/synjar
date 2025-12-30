@@ -100,6 +100,7 @@ export function AvailableDocumentsList({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search documents..."
+            maxLength={200}
             aria-label="Search documents by title"
             className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
           />
