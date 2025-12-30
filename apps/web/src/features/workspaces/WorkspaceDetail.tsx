@@ -4,6 +4,8 @@ import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { SearchLinksTab } from '@/features/search-links';
 import { InstructionSetsTab } from '@/features/instruction-sets';
+import { useLastWorkspace } from './hooks';
+import { useWorkspaceUI } from '@/shared/contexts';
 
 type TabType = 'documents' | 'search-links' | 'instruction-sets';
 
@@ -42,8 +44,11 @@ interface Workspace {
 
 export function WorkspaceDetail() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const activeTab = (searchParams.get('tab') as TabType) || 'documents';
+
+  // Use WorkspaceUIContext for workspace count (provides isMultiWorkspace)
+  const { isMultiWorkspace } = useWorkspaceUI();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -52,10 +57,7 @@ export function WorkspaceDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [showNewDocModal, setShowNewDocModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const setActiveTab = (tab: TabType) => {
-    setSearchParams({ tab });
-  };
+  const { setLastWorkspace } = useLastWorkspace();
 
   const authStore = useAuthStore();
 
@@ -69,6 +71,8 @@ export function WorkspaceDetail() {
 
   useEffect(() => {
     if (workspaceId) {
+      // Save last visited workspace
+      setLastWorkspace(workspaceId);
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,6 +81,7 @@ export function WorkspaceDetail() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      // Only fetch workspace and documents - workspace count comes from WorkspaceUIContext
       const [wsData, docsData] = await Promise.all([
         apiClient.get(`workspaces/${workspaceId}`).json<Workspace>(),
         apiClient.get(`workspaces/${workspaceId}/documents`).json<DocumentListResponse>(),
@@ -181,69 +186,37 @@ export function WorkspaceDetail() {
 
   return (
     <div>
-      <div className="mb-6">
-        <Link to="/workspaces" className="text-slate-400 hover:text-white text-sm mb-2 inline-block">
-          ← Back to workspaces
-        </Link>
-        <h1 className="text-2xl font-bold text-white">{workspace.name}</h1>
-        {workspace.description && (
-          <p className="text-slate-400 mt-1">{workspace.description}</p>
-        )}
-      </div>
+      {/* Workspace header - name is now in Layout header (WorkspaceSwitcher) */}
+      {(isMultiWorkspace || workspace.description) && (
+        <div className="mb-6">
+          {isMultiWorkspace && (
+            <Link
+              to="/workspaces"
+              className="text-slate-400 hover:text-white text-sm mb-2 inline-flex items-center gap-1"
+              aria-label="Return to workspaces list"
+            >
+              <span aria-hidden="true">←</span>
+              Back to workspaces
+            </Link>
+          )}
+          {workspace.description && (
+            <p className="text-slate-400">{workspace.description}</p>
+          )}
+        </div>
+      )}
 
-      {/* Tab navigation */}
-      <div className="border-b border-slate-700 mb-6">
-        <nav className="flex gap-6">
-          <button
-            onClick={() => setActiveTab('documents')}
-            className={`pb-3 px-1 text-sm font-medium transition-colors relative cursor-pointer ${
-              activeTab === 'documents'
-                ? 'text-white'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Documents
-            {activeTab === 'documents' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('search-links')}
-            className={`pb-3 px-1 text-sm font-medium transition-colors relative cursor-pointer ${
-              activeTab === 'search-links'
-                ? 'text-white'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Search Links
-            {activeTab === 'search-links' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('instruction-sets')}
-            className={`pb-3 px-1 text-sm font-medium transition-colors relative cursor-pointer ${
-              activeTab === 'instruction-sets'
-                ? 'text-white'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Instruction Sets
-            {activeTab === 'instruction-sets' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
-            )}
-          </button>
-        </nav>
-      </div>
-
-      {/* Tab content */}
-      {activeTab === 'search-links' ? (
+      {/* Content sections - controlled by URL via MainNav in header */}
+      {activeTab === 'search-links' && (
         <SearchLinksTab workspaceId={workspaceId!} workspaceName={workspace.name} />
-      ) : activeTab === 'instruction-sets' ? (
+      )}
+
+      {activeTab === 'instruction-sets' && (
         <InstructionSetsTab workspaceId={workspaceId!} />
-      ) : (
-        <>
-          {/* Upload area */}
+      )}
+
+      {activeTab === 'documents' && (
+        <div>
+            {/* Upload area */}
       <div
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -322,7 +295,7 @@ export function WorkspaceDetail() {
               onCreate={handleCreateTextDocument}
             />
           )}
-        </>
+        </div>
       )}
     </div>
   );
