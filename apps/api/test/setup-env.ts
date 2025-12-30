@@ -7,11 +7,11 @@
 
 // Default test environment configuration
 // Note: Test ports are different from dev to avoid conflicts
-// Dev: postgres 6201, mailpit 6202/6203
-// Test: postgres 6211, mailpit 6212/6213
+// Dev: postgres 6205
+// Test: postgres 6311, mailpit 6312/6313, minio 6314/6315
 const testEnv: Record<string, string> = {
   // Database
-  DATABASE_URL: 'postgresql://postgres:postgres@localhost:6211/synjar_test?schema=public',
+  DATABASE_URL: 'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public',
 
   // JWT
   JWT_SECRET: 'test-jwt-secret-for-e2e-tests',
