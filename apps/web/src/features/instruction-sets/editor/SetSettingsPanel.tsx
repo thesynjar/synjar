@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { sanitizeText } from '@/shared/utils';
 
 interface SetSettingsPanelProps {
   name: string;
@@ -45,7 +46,7 @@ export function SetSettingsPanel({
             id="set-name"
             type="text"
             value={name}
-            onChange={(e) => onNameChange(e.target.value)}
+            onChange={(e) => onNameChange(sanitizeText(e.target.value))}
             disabled={disabled}
             maxLength={200}
             required
@@ -63,7 +64,7 @@ export function SetSettingsPanel({
           <textarea
             id="set-description"
             value={description}
-            onChange={(e) => onDescriptionChange(e.target.value)}
+            onChange={(e) => onDescriptionChange(sanitizeText(e.target.value))}
             disabled={disabled}
             maxLength={500}
             rows={3}

@@ -1,0 +1,1 @@
+export { sanitizeText } from './sanitize';

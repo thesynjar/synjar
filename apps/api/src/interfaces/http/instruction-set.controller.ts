@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiTags,
   ApiOperation,
@@ -76,6 +77,7 @@ export class InstructionSetController {
   }
 
   @Patch(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 req/min
   @ApiOperation({ summary: 'Update instruction set' })
   @ApiResponse({ status: 200, type: InstructionSetDetailResponseDto })
   @ApiResponse({ status: 404, description: 'Instruction set not found' })
@@ -102,6 +104,7 @@ export class InstructionSetController {
   // ============ Document Management ============
 
   @Post(':id/documents')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 req/min
   @ApiOperation({ summary: 'Add document to instruction set' })
   @ApiResponse({ status: 201, type: AddDocumentResponseDto })
   @ApiResponse({ status: 400, type: ErrorResponseDto, description: 'Size or document limit exceeded' })
@@ -116,6 +119,7 @@ export class InstructionSetController {
   }
 
   @Delete(':id/documents/:docId')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 req/min
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove document from instruction set' })
   @ApiResponse({ status: 204 })
@@ -129,6 +133,7 @@ export class InstructionSetController {
   }
 
   @Patch(':id/documents/reorder')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 req/min
   @ApiOperation({ summary: 'Reorder documents in instruction set' })
   @ApiResponse({ status: 200, type: ReorderDocumentsResponseDto })
   @ApiResponse({ status: 400, type: ErrorResponseDto, description: 'Invalid document IDs' })

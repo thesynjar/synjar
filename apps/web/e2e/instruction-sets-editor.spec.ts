@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 /**
  * Instruction Sets Editor E2E Tests
@@ -81,7 +81,7 @@ async function clearMailpit() {
 /**
  * Helper: Register, verify email, login, navigate to workspace
  */
-async function setupUserAndWorkspace(page: any) {
+async function setupUserAndWorkspace(page: Page) {
   const user = generateTestUser();
 
   // Register
@@ -118,7 +118,7 @@ async function setupUserAndWorkspace(page: any) {
  * Helper: Create a test document
  */
 async function createDocument(
-  page: any,
+  page: Page,
   title: string,
   content: string,
   purpose: 'KNOWLEDGE' | 'INSTRUCTION' = 'KNOWLEDGE',
@@ -143,7 +143,7 @@ async function createDocument(
 /**
  * Helper: Navigate to Instruction Sets tab
  */
-async function navigateToInstructionSets(page: any) {
+async function navigateToInstructionSets(page: Page) {
   const instructionSetsTab = page.getByRole('button', { name: /instruction sets/i });
   if (await instructionSetsTab.isVisible().catch(() => false)) {
     await instructionSetsTab.click();
@@ -153,7 +153,7 @@ async function navigateToInstructionSets(page: any) {
 /**
  * Helper: Create an instruction set
  */
-async function createInstructionSet(page: any, name: string, description = '') {
+async function createInstructionSet(page: Page, name: string, description = '') {
   await navigateToInstructionSets(page);
 
   const createButton = page.getByRole('button', { name: /new instruction set/i });
@@ -176,7 +176,7 @@ async function createInstructionSet(page: any, name: string, description = '') {
 /**
  * Helper: Setup instruction set with document for testing
  */
-async function setupInstructionSetWithDocument(page: any) {
+async function setupInstructionSetWithDocument(page: Page) {
   await setupUserAndWorkspace(page);
 
   // Create a test document
@@ -579,7 +579,7 @@ test.describe('Instruction Sets Editor', () => {
     expect(updatedValue).not.toBe(initialValue);
   });
 
-  test('should show conflict error on concurrent edit (409)', async ({ page }) => {
+  test('should show conflict error on concurrent edit (409)', async () => {
     // This test simulates a 409 conflict error
     // In a real scenario, this would require two users editing simultaneously
     // For E2E testing, we can mock the response or skip this test

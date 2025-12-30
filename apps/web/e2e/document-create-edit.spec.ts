@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 /**
  * Document Create and Edit E2E Tests
@@ -76,7 +76,7 @@ async function clearMailpit() {
 /**
  * Helper: Register, verify email, login, navigate to workspace
  */
-async function setupUserAndWorkspace(page: any) {
+async function setupUserAndWorkspace(page: Page) {
   const user = generateTestUser();
 
   // Register

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { HTTPError } from 'ky';
 import { createApiClient } from '@/shared/api/client';
+import { handleApiError } from '@/shared/api';
 import { InstructionSetDetail } from '../../types';
 import { toast } from '@/shared/ui';
 
@@ -99,7 +100,7 @@ export function useSetForm({
     } catch (error: unknown) {
       console.error('Failed to save:', error);
 
-      // Check for conflict error (HTTP 409)
+      // Check for conflict error (HTTP 409) - special handling to update conflict state
       if (error instanceof HTTPError && error.response.status === 409) {
         try {
           const errorBody = await error.response.json() as {
@@ -111,23 +112,14 @@ export function useSetForm({
           const lastModifiedAt = errorBody?.error?.details?.lastModifiedAt;
           if (lastModifiedAt) {
             setConflictDetails({ lastModifiedAt });
-          } else {
-            toast.error('This set was modified by another user. Please refresh to see changes.');
+            return;
           }
         } catch {
-          toast.error('This set was modified by another user. Please refresh to see changes.');
+          // Fall through to generic error handling
         }
-      } else if (error instanceof HTTPError) {
-        try {
-          const errorBody = await error.response.json() as {
-            error?: { message?: string };
-          };
-          toast.error(errorBody?.error?.message || 'Failed to save changes');
-        } catch {
-          toast.error('Failed to save changes');
-        }
+        toast.error('This set was modified by another user. Please refresh to see changes.');
       } else {
-        toast.error('Failed to save changes');
+        await handleApiError(error, 'Failed to save changes');
       }
     } finally {
       setIsSaving(false);

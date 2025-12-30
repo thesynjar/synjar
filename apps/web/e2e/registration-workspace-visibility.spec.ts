@@ -61,7 +61,6 @@ import { test, expect } from '@playwright/test';
  */
 
 // Environment variables (from Playwright config or process.env)
-const API_URL = process.env.API_URL || 'http://localhost:6300';
 const MAILPIT_URL = process.env.MAILPIT_URL || 'http://localhost:6313';
 
 /**
@@ -292,9 +291,7 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
    * Since Playwright tests run against shared backend, we skip this test.
    * It's covered by backend integration test instead.
    */
-  test.skip('REGRESSION: Workspace should be visible in self-hosted mode (first user)', async ({
-    page,
-  }) => {
+  test.skip('REGRESSION: Workspace should be visible in self-hosted mode (first user)', async () => {
     // Skipped: Backend mode (cloud/self-hosted) is shared across all tests
     // Cannot toggle mode in Playwright test without restarting backend
     // This scenario is covered by backend integration test:

@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 
-const API_URL = process.env.API_URL || 'http://localhost:6200';
 const MAILPIT_URL = process.env.MAILPIT_URL || 'http://localhost:6203';
 
 // Helper to generate unique test data

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { HTTPError } from 'ky';
 import { createApiClient } from '@/shared/api/client';
+import { handleApiError } from '@/shared/api';
 import { InstructionSetDetail, InstructionSetDocument } from '../../types';
 import { AvailableDocument, MAX_SIZE_BYTES, MAX_DOCUMENTS } from './useInstructionSetEditor';
 import { toast } from '@/shared/ui';
@@ -73,19 +73,7 @@ export function useDocumentOperations({
         setHasUnsavedChanges(true);
       } catch (error: unknown) {
         console.error('Failed to add document:', error);
-
-        if (error instanceof HTTPError) {
-          try {
-            const errorBody = await error.response.json() as {
-              error?: { message?: string; code?: string };
-            };
-            toast.error(errorBody?.error?.message || 'Failed to add document');
-          } catch {
-            toast.error('Failed to add document');
-          }
-        } else {
-          toast.error('Failed to add document');
-        }
+        await handleApiError(error, 'Failed to add document');
       }
     },
     [apiClient, workspaceId, setId, availableDocuments, selectedDocuments.length, totalSizeBytes, setSelectedDocuments, setHasUnsavedChanges]

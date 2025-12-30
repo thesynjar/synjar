@@ -9,10 +9,58 @@ export class ApiError extends Error {
   }
 }
 
+interface ApiErrorBody {
+  code: string;
+  message: string;
+  details?: unknown;
+  suggestion?: string;
+}
+
+interface ApiErrorResponse {
+  error: ApiErrorBody;
+}
+
+interface HTTPErrorLike {
+  response: {
+    json(): Promise<unknown>;
+  };
+}
+
+function isApiErrorBody(value: unknown): value is ApiErrorBody {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'code' in value &&
+    'message' in value &&
+    typeof (value as ApiErrorBody).code === 'string' &&
+    typeof (value as ApiErrorBody).message === 'string'
+  );
+}
+
+function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'error' in value &&
+    isApiErrorBody((value as ApiErrorResponse).error)
+  );
+}
+
+function isHTTPErrorLike(error: unknown): error is HTTPErrorLike {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'response' in error &&
+    typeof (error as HTTPErrorLike).response === 'object' &&
+    (error as HTTPErrorLike).response !== null &&
+    typeof (error as HTTPErrorLike).response.json === 'function'
+  );
+}
+
 export function parseApiError(error: unknown): ApiError {
   // Parse structured error from response
-  if (error && typeof error === 'object' && 'error' in error) {
-    const e = (error as any).error;
+  if (isApiErrorResponse(error)) {
+    const e = error.error;
     return new ApiError(e.code, e.message, e.details, e.suggestion);
   }
   // Handle HTTPError from ky
@@ -25,12 +73,21 @@ export function parseApiError(error: unknown): ApiError {
 
 // Async version for ky HTTPError
 export async function parseApiErrorAsync(error: unknown): Promise<ApiError> {
-  if (error && typeof error === 'object' && 'response' in error) {
+  if (isHTTPErrorLike(error)) {
     try {
-      const httpError = error as any;
-      const body = await httpError.response.json();
-      if (body.error) {
-        return new ApiError(body.error.code, body.error.message, body.error.details, body.error.suggestion);
+      const body = await error.response.json();
+      // Handle direct error format { code, message, ... }
+      if (isApiErrorBody(body)) {
+        return new ApiError(body.code, body.message, body.details, body.suggestion);
+      }
+      // Handle wrapped error format { error: { code, message, ... } }
+      if (isApiErrorResponse(body)) {
+        return new ApiError(
+          body.error.code,
+          body.error.message,
+          body.error.details,
+          body.error.suggestion,
+        );
       }
     } catch {
       // Couldn't parse response

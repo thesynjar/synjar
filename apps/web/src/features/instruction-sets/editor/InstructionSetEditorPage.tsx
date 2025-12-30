@@ -17,12 +17,16 @@ import {
   MAX_DOCUMENTS,
 } from './hooks';
 import { toast } from '@/shared/ui';
+import { useWorkspaceMember } from '@/features/workspaces/hooks';
 
 type MobileTab = 'available' | 'selected';
 
 export function InstructionSetEditorPage() {
   const { workspaceId, setId } = useParams<{ workspaceId: string; setId: string }>();
   const navigate = useNavigate();
+
+  // RBAC check for editing permissions
+  const { canEdit, isLoading: memberLoading, error: memberError } = useWorkspaceMember({ workspaceId });
 
   // Search/filter state (kept local as it's UI-only state)
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,10 +98,29 @@ export function InstructionSetEditorPage() {
     window.location.reload();
   };
 
-  if (editorData.isLoading) {
+  if (editorData.isLoading || memberLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  // RBAC check - only OWNER and ADMIN can edit instruction sets
+  if (!canEdit) {
+    return (
+      <div className="max-w-4xl mx-auto p-4">
+        <div className="p-4 bg-yellow-500/10 border border-yellow-500/50 rounded-lg text-yellow-400">
+          {memberError
+            ? 'Failed to verify your permissions. Please try again.'
+            : "You don't have permission to edit instruction sets. Only workspace owners and admins can edit."}
+        </div>
+        <button
+          onClick={() => navigate(`/workspaces/${workspaceId}?tab=instruction-sets`)}
+          className="mt-4 text-blue-400 hover:underline"
+        >
+          Back to instruction sets
+        </button>
       </div>
     );
   }
