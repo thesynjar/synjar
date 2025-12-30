@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
+import { SearchLinksTab } from '@/features/search-links';
+
+type TabType = 'documents' | 'search-links';
 
 type ContentType = 'TEXT' | 'FILE';
 type VerificationStatus = 'VERIFIED' | 'UNVERIFIED';
@@ -38,6 +41,9 @@ interface Workspace {
 
 export function WorkspaceDetail() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as TabType) || 'documents';
+
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -45,6 +51,10 @@ export function WorkspaceDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [showNewDocModal, setShowNewDocModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const setActiveTab = (tab: TabType) => {
+    setSearchParams({ tab });
+  };
 
   const authStore = useAuthStore();
 
@@ -180,7 +190,44 @@ export function WorkspaceDetail() {
         )}
       </div>
 
-      {/* Upload area */}
+      {/* Tab navigation */}
+      <div className="border-b border-slate-700 mb-6">
+        <nav className="flex gap-6">
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`pb-3 px-1 text-sm font-medium transition-colors relative cursor-pointer ${
+              activeTab === 'documents'
+                ? 'text-white'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Documents
+            {activeTab === 'documents' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('search-links')}
+            className={`pb-3 px-1 text-sm font-medium transition-colors relative cursor-pointer ${
+              activeTab === 'search-links'
+                ? 'text-white'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Search Links
+            {activeTab === 'search-links' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+            )}
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab content */}
+      {activeTab === 'search-links' ? (
+        <SearchLinksTab workspaceId={workspaceId!} workspaceName={workspace.name} />
+      ) : (
+        <>
+          {/* Upload area */}
       <div
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -252,12 +299,14 @@ export function WorkspaceDetail() {
         )}
       </div>
 
-      {/* New Document Modal */}
-      {showNewDocModal && (
-        <NewDocumentModal
-          onClose={() => setShowNewDocModal(false)}
-          onCreate={handleCreateTextDocument}
-        />
+          {/* New Document Modal */}
+          {showNewDocModal && (
+            <NewDocumentModal
+              onClose={() => setShowNewDocModal(false)}
+              onCreate={handleCreateTextDocument}
+            />
+          )}
+        </>
       )}
     </div>
   );
