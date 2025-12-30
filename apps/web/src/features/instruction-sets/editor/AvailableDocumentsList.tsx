@@ -1,3 +1,5 @@
+import { useState, useEffect, useMemo, useCallback } from 'react';
+
 interface AvailableDocument {
   id: string;
   title: string;
@@ -20,6 +22,8 @@ interface AvailableDocumentsListProps {
   isLoading?: boolean;
 }
 
+const SEARCH_DEBOUNCE_MS = 150;
+
 export function AvailableDocumentsList({
   documents,
   selectedIds,
@@ -34,6 +38,36 @@ export function AvailableDocumentsList({
   maxSize,
   isLoading = false,
 }: AvailableDocumentsListProps) {
+  // Local input state for immediate feedback
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+
+  // Sync local state when external searchQuery changes
+  useEffect(() => {
+    setLocalSearchQuery(searchQuery);
+  }, [searchQuery]);
+
+  // Debounced search - update parent after delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearchQuery !== searchQuery) {
+        onSearchChange(localSearchQuery);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [localSearchQuery, searchQuery, onSearchChange]);
+
+  // Handle search input change
+  const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalSearchQuery(e.target.value);
+  }, []);
+
+  // Clear search handler
+  const handleClearSearch = useCallback(() => {
+    setLocalSearchQuery('');
+    onSearchChange('');
+    onFilterChange('ALL');
+  }, [onSearchChange, onFilterChange]);
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -41,35 +75,54 @@ export function AvailableDocumentsList({
   };
 
   // Filter documents: exclude already selected, apply search and purpose filter
-  const filteredDocuments = documents.filter((doc) => {
-    // Exclude already selected
-    if (selectedIds.includes(doc.id)) return false;
+  // Use localSearchQuery for immediate filtering feedback
+  const filteredDocuments = useMemo(() => {
+    return documents.filter((doc) => {
+      // Exclude already selected
+      if (selectedIds.includes(doc.id)) return false;
 
-    // Apply search filter (case-insensitive)
-    if (searchQuery && !doc.title.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
+      // Apply search filter (case-insensitive) - use local state for immediate feedback
+      if (localSearchQuery && !doc.title.toLowerCase().includes(localSearchQuery.toLowerCase())) {
+        return false;
+      }
 
-    // Apply purpose filter
-    if (filterPurpose !== 'ALL' && doc.purpose !== filterPurpose) {
-      return false;
-    }
+      // Apply purpose filter
+      if (filterPurpose !== 'ALL' && doc.purpose !== filterPurpose) {
+        return false;
+      }
 
-    return true;
-  });
+      return true;
+    });
+  }, [documents, selectedIds, localSearchQuery, filterPurpose]);
 
   const canAddMore = currentDocumentCount < maxDocuments;
 
-  const wouldExceedSize = (docSize: number) => {
+  const wouldExceedSize = useCallback((docSize: number) => {
     return currentSize + docSize > maxSize;
-  };
+  }, [currentSize, maxSize]);
 
   if (isLoading) {
     return (
       <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 h-full">
         <h3 className="text-lg font-medium text-white mb-4">Available Documents</h3>
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
+        {/* Skeleton loaders */}
+        <div className="space-y-3 mb-4">
+          {/* Search skeleton */}
+          <div className="h-10 bg-slate-700 rounded-lg animate-pulse" />
+          {/* Filter skeleton */}
+          <div className="h-10 bg-slate-700 rounded-lg animate-pulse" />
+        </div>
+        {/* Document skeletons */}
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="p-3 bg-slate-900 rounded-lg border border-slate-700">
+              <div className="h-5 bg-slate-700 rounded w-3/4 animate-pulse mb-2" />
+              <div className="flex items-center gap-2">
+                <div className="h-4 bg-slate-700 rounded w-16 animate-pulse" />
+                <div className="h-4 bg-slate-700 rounded w-20 animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -97,8 +150,8 @@ export function AvailableDocumentsList({
           </svg>
           <input
             type="search"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
+            value={localSearchQuery}
+            onChange={handleSearchInputChange}
             placeholder="Search documents..."
             maxLength={200}
             aria-label="Search documents by title"
@@ -122,7 +175,7 @@ export function AvailableDocumentsList({
       <div className="flex-1 overflow-y-auto space-y-2">
         {filteredDocuments.length === 0 ? (
           <div className="text-center py-8">
-            {searchQuery || filterPurpose !== 'ALL' ? (
+            {localSearchQuery || filterPurpose !== 'ALL' ? (
               <>
                 <svg
                   className="mx-auto h-12 w-12 text-slate-600 mb-3"
@@ -141,10 +194,7 @@ export function AvailableDocumentsList({
                 <p className="text-slate-400 mb-2">No documents found</p>
                 <p className="text-slate-500 text-sm">Try different keywords or clear the filter</p>
                 <button
-                  onClick={() => {
-                    onSearchChange('');
-                    onFilterChange('ALL');
-                  }}
+                  onClick={handleClearSearch}
                   className="mt-3 text-blue-400 hover:text-blue-300 text-sm"
                   aria-label="Clear search and show all documents"
                 >

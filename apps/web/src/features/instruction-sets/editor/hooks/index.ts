@@ -4,3 +4,4 @@ export { useDocumentOperations } from './useDocumentOperations';
 export { useSetForm } from './useSetForm';
 export { useUnsavedChanges } from './useUnsavedChanges';
 export { useKeyboardShortcuts } from './useKeyboardShortcuts';
+export { useContentPreview } from './useContentPreview';

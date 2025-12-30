@@ -1,8 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
+import { HTTPError } from 'ky';
 import { createApiClient } from '@/shared/api/client';
 import { InstructionSetDetail } from '../../types';
+import { toast } from '@/shared/ui';
+
+export interface ConflictDetails {
+  lastModifiedAt: string;
+}
 
 interface UseSetFormParams {
+  workspaceId: string | undefined;
   setId: string | undefined;
   apiClient: ReturnType<typeof createApiClient>;
   instructionSet: InstructionSetDetail | null;
@@ -21,6 +28,7 @@ interface UseSetFormResult {
   isSaving: boolean;
   saveError: string | null;
   hasUnsavedChanges: boolean;
+  conflictDetails: ConflictDetails | null;
 
   // Handlers
   handleNameChange: (value: string) => void;
@@ -29,9 +37,11 @@ interface UseSetFormResult {
   handleSave: () => Promise<void>;
   setSaveError: (error: string | null) => void;
   setHasUnsavedChanges: (value: boolean) => void;
+  clearConflict: () => void;
 }
 
 export function useSetForm({
+  workspaceId,
   setId,
   apiClient,
   instructionSet,
@@ -48,6 +58,7 @@ export function useSetForm({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [conflictDetails, setConflictDetails] = useState<ConflictDetails | null>(null);
 
   // Initialize form state when instruction set is loaded
   useEffect(() => {
@@ -61,16 +72,17 @@ export function useSetForm({
   // Handle save
   const handleSave = useCallback(async () => {
     if (!name.trim()) {
-      setSaveError('Name is required');
+      toast.error('Name is required');
       return;
     }
 
     try {
       setIsSaving(true);
       setSaveError(null);
+      setConflictDetails(null);
 
       const response = await apiClient
-        .patch(`instruction-sets/${setId}`, {
+        .patch(`workspaces/${workspaceId}/instruction-sets/${setId}`, {
           json: {
             name: name.trim(),
             description: description.trim() || null,
@@ -83,19 +95,44 @@ export function useSetForm({
       setInstructionSet(response);
       setLastKnownUpdatedAt(response.updatedAt);
       setHasUnsavedChanges(false);
+      toast.success('Changes saved successfully');
     } catch (error: unknown) {
       console.error('Failed to save:', error);
 
-      // Check for conflict error
-      if (error instanceof Error && error.message.includes('409')) {
-        setSaveError('This set was modified by another user. Please refresh to see changes.');
+      // Check for conflict error (HTTP 409)
+      if (error instanceof HTTPError && error.response.status === 409) {
+        try {
+          const errorBody = await error.response.json() as {
+            error?: {
+              code?: string;
+              details?: { lastModifiedAt?: string };
+            };
+          };
+          const lastModifiedAt = errorBody?.error?.details?.lastModifiedAt;
+          if (lastModifiedAt) {
+            setConflictDetails({ lastModifiedAt });
+          } else {
+            toast.error('This set was modified by another user. Please refresh to see changes.');
+          }
+        } catch {
+          toast.error('This set was modified by another user. Please refresh to see changes.');
+        }
+      } else if (error instanceof HTTPError) {
+        try {
+          const errorBody = await error.response.json() as {
+            error?: { message?: string };
+          };
+          toast.error(errorBody?.error?.message || 'Failed to save changes');
+        } catch {
+          toast.error('Failed to save changes');
+        }
       } else {
-        setSaveError('Failed to save changes');
+        toast.error('Failed to save changes');
       }
     } finally {
       setIsSaving(false);
     }
-  }, [apiClient, setId, name, description, isPublic, lastKnownUpdatedAt, setInstructionSet, setLastKnownUpdatedAt]);
+  }, [apiClient, workspaceId, setId, name, description, isPublic, lastKnownUpdatedAt, setInstructionSet, setLastKnownUpdatedAt]);
 
   // Mark changes when form fields change
   const handleNameChange = useCallback((value: string) => {
@@ -113,6 +150,10 @@ export function useSetForm({
     setHasUnsavedChanges(true);
   }, []);
 
+  const clearConflict = useCallback(() => {
+    setConflictDetails(null);
+  }, []);
+
   return {
     name,
     description,
@@ -120,11 +161,13 @@ export function useSetForm({
     isSaving,
     saveError,
     hasUnsavedChanges,
+    conflictDetails,
     handleNameChange,
     handleDescriptionChange,
     handlePublicChange,
     handleSave,
     setSaveError,
     setHasUnsavedChanges,
+    clearConflict,
   };
 }

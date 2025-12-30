@@ -133,6 +133,7 @@ export function InstructionSetsTab({ workspaceId }: InstructionSetsTabProps) {
               <InstructionSetCard
                 key={set.id}
                 set={set}
+                workspaceId={workspaceId}
                 onDelete={() => handleDelete(set.id)}
                 onTogglePublic={(isPublic) => handleTogglePublic(set.id, isPublic)}
               />

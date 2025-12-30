@@ -8,6 +8,7 @@ import { VerifyEmail } from '@/features/auth/VerifyEmail';
 import { Dashboard } from '@/features/dashboard/Dashboard';
 import { WorkspaceDetail } from '@/features/workspaces/WorkspaceDetail';
 import { DocumentEditPage } from '@/features/documents';
+import { InstructionSetEditorPage } from '@/features/instruction-sets';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/workspaces" element={<Dashboard />} />
         <Route path="/workspaces/:workspaceId" element={<WorkspaceDetail />} />
         <Route path="/workspaces/:workspaceId/documents/:documentId/edit" element={<DocumentEditPage />} />
+        <Route path="/workspaces/:workspaceId/instruction-sets/:setId/edit" element={<InstructionSetEditorPage />} />
         {/* Redirect old dashboard route */}
         <Route path="/dashboard" element={<Navigate to="/workspaces" replace />} />
       </Route>

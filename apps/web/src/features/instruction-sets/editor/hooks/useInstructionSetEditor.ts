@@ -18,7 +18,7 @@ interface DocumentsResponse {
   documents: Array<{
     id: string;
     title: string;
-    contentSize: number;
+    content: string;
     purpose: 'KNOWLEDGE' | 'INSTRUCTION';
     verificationStatus: 'VERIFIED' | 'UNVERIFIED';
   }>;
@@ -101,7 +101,7 @@ export function useInstructionSetEditor({
         setLoadError(null);
 
         const [setData, docsData] = await Promise.all([
-          apiClient.get(`instruction-sets/${setId}`).json<InstructionSetDetail>(),
+          apiClient.get(`workspaces/${workspaceId}/instruction-sets/${setId}`).json<InstructionSetDetail>(),
           apiClient
             .get(`workspaces/${workspaceId}/documents?verificationStatus=VERIFIED`)
             .json<DocumentsResponse>()
@@ -117,7 +117,7 @@ export function useInstructionSetEditor({
         const available: AvailableDocument[] = docsData.documents.map((doc) => ({
           id: doc.id,
           title: doc.title,
-          sizeBytes: doc.contentSize || 0,
+          sizeBytes: doc.content ? new TextEncoder().encode(doc.content).length : 0,
           purpose: doc.purpose || 'KNOWLEDGE',
           verificationStatus: doc.verificationStatus,
         }));

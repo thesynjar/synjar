@@ -1,9 +1,12 @@
 import { useCallback } from 'react';
+import { HTTPError } from 'ky';
 import { createApiClient } from '@/shared/api/client';
 import { InstructionSetDetail, InstructionSetDocument } from '../../types';
 import { AvailableDocument, MAX_SIZE_BYTES, MAX_DOCUMENTS } from './useInstructionSetEditor';
+import { toast } from '@/shared/ui';
 
 interface UseDocumentOperationsParams {
+  workspaceId: string | undefined;
   setId: string | undefined;
   apiClient: ReturnType<typeof createApiClient>;
   availableDocuments: AvailableDocument[];
@@ -11,7 +14,6 @@ interface UseDocumentOperationsParams {
   totalSizeBytes: number;
   instructionSet: InstructionSetDetail | null;
   setSelectedDocuments: React.Dispatch<React.SetStateAction<InstructionSetDocument[]>>;
-  setSaveError: (error: string | null) => void;
   setHasUnsavedChanges: (value: boolean) => void;
 }
 
@@ -22,6 +24,7 @@ interface UseDocumentOperationsResult {
 }
 
 export function useDocumentOperations({
+  workspaceId,
   setId,
   apiClient,
   availableDocuments,
@@ -29,7 +32,6 @@ export function useDocumentOperations({
   totalSizeBytes,
   instructionSet,
   setSelectedDocuments,
-  setSaveError,
   setHasUnsavedChanges,
 }: UseDocumentOperationsParams): UseDocumentOperationsResult {
   // Handle adding document
@@ -42,19 +44,18 @@ export function useDocumentOperations({
       // Source of truth: InstructionSetEntity.addDocument() enforces these invariants
       // Backend will reject if limits exceeded (defense in depth)
       if (selectedDocuments.length >= MAX_DOCUMENTS) {
-        setSaveError(`Maximum ${MAX_DOCUMENTS} documents allowed`);
+        toast.error(`Maximum ${MAX_DOCUMENTS} documents allowed`);
         return;
       }
 
       if (totalSizeBytes + doc.sizeBytes > MAX_SIZE_BYTES) {
-        setSaveError('Adding this document would exceed the 100 KB limit');
+        toast.error('Adding this document would exceed the 100 KB limit');
         return;
       }
 
       try {
-        setSaveError(null);
         const response = await apiClient
-          .post(`instruction-sets/${setId}/documents`, {
+          .post(`workspaces/${workspaceId}/instruction-sets/${setId}/documents`, {
             json: { documentId },
           })
           .json<{ id: string; documentId: string; order: number; sizeBytes: number }>();
@@ -72,28 +73,38 @@ export function useDocumentOperations({
         setHasUnsavedChanges(true);
       } catch (error: unknown) {
         console.error('Failed to add document:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Failed to add document';
-        setSaveError(errorMessage);
+
+        if (error instanceof HTTPError) {
+          try {
+            const errorBody = await error.response.json() as {
+              error?: { message?: string; code?: string };
+            };
+            toast.error(errorBody?.error?.message || 'Failed to add document');
+          } catch {
+            toast.error('Failed to add document');
+          }
+        } else {
+          toast.error('Failed to add document');
+        }
       }
     },
-    [apiClient, setId, availableDocuments, selectedDocuments.length, totalSizeBytes, setSaveError, setSelectedDocuments, setHasUnsavedChanges]
+    [apiClient, workspaceId, setId, availableDocuments, selectedDocuments.length, totalSizeBytes, setSelectedDocuments, setHasUnsavedChanges]
   );
 
   // Handle removing document
   const handleRemoveDocument = useCallback(
     async (documentId: string) => {
       try {
-        setSaveError(null);
-        await apiClient.delete(`instruction-sets/${setId}/documents/${documentId}`);
+        await apiClient.delete(`workspaces/${workspaceId}/instruction-sets/${setId}/documents/${documentId}`);
 
         setSelectedDocuments((prev) => prev.filter((d) => d.documentId !== documentId));
         setHasUnsavedChanges(true);
       } catch (error) {
         console.error('Failed to remove document:', error);
-        setSaveError('Failed to remove document');
+        toast.error('Failed to remove document');
       }
     },
-    [apiClient, setId, setSaveError, setSelectedDocuments, setHasUnsavedChanges]
+    [apiClient, workspaceId, setId, setSelectedDocuments, setHasUnsavedChanges]
   );
 
   // Handle reordering documents
@@ -111,20 +122,19 @@ export function useDocumentOperations({
       setHasUnsavedChanges(true);
 
       try {
-        setSaveError(null);
-        await apiClient.patch(`instruction-sets/${setId}/documents/reorder`, {
+        await apiClient.patch(`workspaces/${workspaceId}/instruction-sets/${setId}/documents/reorder`, {
           json: { documentIds },
         });
       } catch (error) {
         console.error('Failed to reorder documents:', error);
-        setSaveError('Failed to reorder documents');
+        toast.error('Failed to reorder documents');
         // Revert on error
         if (instructionSet) {
           setSelectedDocuments(instructionSet.documents);
         }
       }
     },
-    [apiClient, setId, selectedDocuments, instructionSet, setSaveError, setSelectedDocuments, setHasUnsavedChanges]
+    [apiClient, workspaceId, setId, selectedDocuments, instructionSet, setSelectedDocuments, setHasUnsavedChanges]
   );
 
   return {

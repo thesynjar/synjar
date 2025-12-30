@@ -1,14 +1,17 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { InstructionSet } from './types';
 
 interface InstructionSetCardProps {
   set: InstructionSet;
+  workspaceId: string;
   onDelete: () => void;
   onTogglePublic: (isPublic: boolean) => void;
 }
 
-export function InstructionSetCard({ set, onDelete, onTogglePublic }: InstructionSetCardProps) {
+export function InstructionSetCard({ set, workspaceId, onDelete, onTogglePublic }: InstructionSetCardProps) {
   const [copied, setCopied] = useState(false);
+  const navigate = useNavigate();
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -32,8 +35,29 @@ export function InstructionSetCard({ set, onDelete, onTogglePublic }: Instructio
     }
   };
 
+  const handleCardClick = () => {
+    navigate(`/workspaces/${workspaceId}/instruction-sets/${set.id}/edit`);
+  };
+
+  const handleActionClick = (e: React.MouseEvent, action: () => void) => {
+    e.stopPropagation();
+    action();
+  };
+
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+    <div
+      className="bg-slate-800 rounded-xl border border-slate-700 p-4 cursor-pointer hover:border-slate-600 transition-colors"
+      onClick={handleCardClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCardClick();
+        }
+      }}
+      aria-label={`Edit instruction set: ${set.name}`}
+    >
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-3">
@@ -61,7 +85,7 @@ export function InstructionSetCard({ set, onDelete, onTogglePublic }: Instructio
         <div className="flex items-center gap-2">
           {/* Toggle Public */}
           <button
-            onClick={() => onTogglePublic(!set.isPublic)}
+            onClick={(e) => handleActionClick(e, () => onTogglePublic(!set.isPublic))}
             className={`p-2 rounded-lg transition-colors ${
               set.isPublic
                 ? 'text-green-400 hover:bg-green-500/20'
@@ -83,7 +107,7 @@ export function InstructionSetCard({ set, onDelete, onTogglePublic }: Instructio
           {/* Copy Link (only if public) */}
           {set.isPublic && set.publicUrl && (
             <button
-              onClick={handleCopyLink}
+              onClick={(e) => handleActionClick(e, handleCopyLink)}
               className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
               title="Copy public link"
             >
@@ -101,7 +125,7 @@ export function InstructionSetCard({ set, onDelete, onTogglePublic }: Instructio
 
           {/* Delete */}
           <button
-            onClick={onDelete}
+            onClick={(e) => handleActionClick(e, onDelete)}
             className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
             title="Delete instruction set"
           >
