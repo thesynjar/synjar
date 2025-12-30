@@ -40,11 +40,11 @@ import { test, expect } from '@playwright/test';
  *   cd community/apps/web && pnpm test:e2e -- registration-workspace-visibility
  *
  * Environment (from playwright.config.ts + .env.test):
- *   - Frontend: http://localhost:6210 (auto-started by Playwright)
- *   - Backend: http://localhost:6200 (must be running separately)
- *   - Mailpit: http://localhost:6203 (API) / http://localhost:6202 (SMTP)
+ *   - Frontend: http://localhost:6310 (auto-started by Playwright)
+ *   - Backend: http://localhost:6300 (must be running separately)
+ *   - Mailpit: http://localhost:6313 (API) / http://localhost:6312 (SMTP)
  *   - DEPLOYMENT_MODE=cloud (set by backend)
- *   - Database: PostgreSQL on localhost:6211 (test database)
+ *   - Database: PostgreSQL on localhost:6311 (test database)
  *
  * Test MUST FAIL initially:
  *   This is a regression test for existing bug. Test will:
@@ -61,8 +61,8 @@ import { test, expect } from '@playwright/test';
  */
 
 // Environment variables (from Playwright config or process.env)
-const API_URL = process.env.API_URL || 'http://localhost:6200';
-const MAILPIT_URL = process.env.MAILPIT_URL || 'http://localhost:6203';
+const API_URL = process.env.API_URL || 'http://localhost:6300';
+const MAILPIT_URL = process.env.MAILPIT_URL || 'http://localhost:6313';
 
 /**
  * Helper to generate unique test user data

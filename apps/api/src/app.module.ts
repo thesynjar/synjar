@@ -40,7 +40,8 @@ function getCoreModules() {
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
-        limit: 100,
+        // Higher limit for tests to avoid ThrottlerException during E2E
+        limit: isTest ? 10000 : 100,
       },
     ]),
     ScheduleModule.forRoot(),
