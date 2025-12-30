@@ -11,6 +11,7 @@ import { TagModule } from './application/tag/tag.module';
 import { SearchModule } from './application/search/search.module';
 import { PublicLinkModule } from './application/public-link/public-link.module';
 import { WorkspaceLookupModule } from './application/workspace-lookup/workspace-lookup.module';
+import { InstructionSetModule } from './application/instruction-set/instruction-set.module';
 import { EmbeddingsModule } from './infrastructure/embeddings/embeddings.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
 import { LLMModule } from './infrastructure/llm/llm.module';
@@ -58,6 +59,7 @@ function getCoreModules() {
     SearchModule,
     PublicLinkModule,
     WorkspaceLookupModule,
+    InstructionSetModule,
   ];
 }
 

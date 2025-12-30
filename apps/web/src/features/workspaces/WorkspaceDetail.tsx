@@ -3,8 +3,9 @@ import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { SearchLinksTab } from '@/features/search-links';
+import { InstructionSetsTab } from '@/features/instruction-sets';
 
-type TabType = 'documents' | 'search-links';
+type TabType = 'documents' | 'search-links' | 'instruction-sets';
 
 type ContentType = 'TEXT' | 'FILE';
 type VerificationStatus = 'VERIFIED' | 'UNVERIFIED';
@@ -219,12 +220,27 @@ export function WorkspaceDetail() {
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
             )}
           </button>
+          <button
+            onClick={() => setActiveTab('instruction-sets')}
+            className={`pb-3 px-1 text-sm font-medium transition-colors relative cursor-pointer ${
+              activeTab === 'instruction-sets'
+                ? 'text-white'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Instruction Sets
+            {activeTab === 'instruction-sets' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+            )}
+          </button>
         </nav>
       </div>
 
       {/* Tab content */}
       {activeTab === 'search-links' ? (
         <SearchLinksTab workspaceId={workspaceId!} workspaceName={workspace.name} />
+      ) : activeTab === 'instruction-sets' ? (
+        <InstructionSetsTab workspaceId={workspaceId!} />
       ) : (
         <>
           {/* Upload area */}

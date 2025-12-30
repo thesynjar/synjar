@@ -12,8 +12,8 @@ datasource db {
 // ============ AUTH ============
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String  @id @default(uuid())
+  email        String  @unique
   passwordHash String
   name         String?
 
@@ -58,6 +58,7 @@ model Workspace {
   userLookups     UserWorkspaceLookup[]
   processingQueue WorkspaceProcessingQueue?
   tags            Tag[]
+  instructionSets InstructionSet[]
 
   @@index([createdById])
 }
@@ -88,16 +89,16 @@ enum Role {
 // ============ INVITATIONS ============
 
 model Invitation {
-  id          String   @id @default(uuid())
+  id          String @id @default(uuid())
   workspaceId String
   email       String
-  role        Role     @default(MEMBER)
+  role        Role   @default(MEMBER)
 
-  token       String   @unique @db.VarChar(256)
+  token String @unique @db.VarChar(256)
 
-  status      InvitationStatus @default(PENDING)
-  acceptedAt  DateTime?        @db.Timestamptz
-  revokedAt   DateTime?        @db.Timestamptz
+  status     InvitationStatus @default(PENDING)
+  acceptedAt DateTime?        @db.Timestamptz
+  revokedAt  DateTime?        @db.Timestamptz
 
   expiresAt   DateTime @db.Timestamptz
   createdAt   DateTime @default(now()) @db.Timestamptz
@@ -146,7 +147,7 @@ model Document {
   workspaceId String
 
   title       String
-  content     String @db.Text
+  content     String      @db.Text
   contentType ContentType @default(TEXT)
 
   // File storage
@@ -161,6 +162,9 @@ model Document {
   processingStatus   ProcessingStatus   @default(PENDING)
   processingError    String?
 
+  // Document purpose: KNOWLEDGE (RAG + Sets) or INSTRUCTION (Sets only)
+  purpose DocumentPurpose @default(KNOWLEDGE)
+
   // Edit lock (SPEC-018)
   editLockedBy    String?
   editLockedUntil DateTime? @db.Timestamptz
@@ -171,16 +175,18 @@ model Document {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
-  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  editLockedByUser User?         @relation("DocumentEditLock", fields: [editLockedBy], references: [id])
+  workspace        Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  editLockedByUser User?                    @relation("DocumentEditLock", fields: [editLockedBy], references: [id])
   tags             DocumentTag[]
   chunks           Chunk[]
+  instructionSets  InstructionSetDocument[]
 
   @@index([workspaceId])
   @@index([verificationStatus])
   @@index([processingStatus])
   @@index([editLockedUntil])
   @@index([processingStatus, scheduledProcessingAt])
+  @@index([purpose])
 }
 
 model Chunk {
@@ -244,6 +250,14 @@ enum ProcessingStatus {
   FAILED
 }
 
+// ============ DOCUMENT PURPOSE ============
+// Distinguishes document usage: RAG indexing vs Instruction Sets only
+
+enum DocumentPurpose {
+  KNOWLEDGE // Indexed in RAG, can also be in Sets
+  INSTRUCTION // NOT indexed in RAG, only for Instruction Sets
+}
+
 // ============ PUBLIC ACCESS ============
 
 model PublicLink {
@@ -279,4 +293,36 @@ model WorkspaceProcessingQueue {
 
   @@index([pendingDocumentsCount])
   @@map("WorkspaceProcessingQueue")
+}
+
+// ============ INSTRUCTION SETS ============
+// Curated collections of documents for LLM context
+
+model InstructionSet {
+  id          String  @id @default(uuid())
+  workspaceId String
+  name        String
+  description String?
+  isPublic    Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents InstructionSetDocument[]
+
+  @@index([workspaceId])
+}
+
+model InstructionSetDocument {
+  id               String @id @default(uuid())
+  instructionSetId String
+  documentId       String
+  order            Int    @default(0) // Position in list (0 = first, 1 = second...)
+
+  instructionSet InstructionSet @relation(fields: [instructionSetId], references: [id], onDelete: Cascade)
+  document       Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([instructionSetId, documentId])
+  @@index([instructionSetId, order])
 }
