@@ -4,10 +4,22 @@ import { Type, Transform } from 'class-transformer';
 import { VerificationStatus } from '@prisma/client';
 
 export class PublicSearchDto {
-  @ApiPropertyOptional({ example: 'How to handle complaints?' })
+  @ApiPropertyOptional({
+    example: 'How to handle complaints?',
+    description: 'Search query. Alias: q',
+  })
   @IsOptional()
   @IsString()
+  @Transform(({ obj }) => obj.query || obj.q)
   query?: string;
+
+  @ApiPropertyOptional({
+    example: 'refund policy',
+    description: 'Short alias for query parameter',
+  })
+  @IsOptional()
+  @IsString()
+  q?: string;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
