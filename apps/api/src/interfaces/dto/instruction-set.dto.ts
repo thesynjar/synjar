@@ -91,6 +91,15 @@ export class AddDocumentDto {
   })
   @IsUUID('4')
   documentId!: string;
+
+  @ApiPropertyOptional({
+    example: '2025-12-30T12:00:00.000Z',
+    description:
+      'Expected updatedAt timestamp for optimistic locking. If provided and does not match current updatedAt, returns 409 Conflict.',
+  })
+  @IsOptional()
+  @IsDateString()
+  expectedUpdatedAt?: string;
 }
 
 export class ReorderDocumentsDto {
@@ -103,6 +112,26 @@ export class ReorderDocumentsDto {
   @IsUUID('4', { each: true })
   @ArrayMaxSize(20)
   documentIds!: string[];
+
+  @ApiPropertyOptional({
+    example: '2025-12-30T12:00:00.000Z',
+    description:
+      'Expected updatedAt timestamp for optimistic locking. If provided and does not match current updatedAt, returns 409 Conflict.',
+  })
+  @IsOptional()
+  @IsDateString()
+  expectedUpdatedAt?: string;
+}
+
+export class RemoveDocumentDto {
+  @ApiPropertyOptional({
+    example: '2025-12-30T12:00:00.000Z',
+    description:
+      'Expected updatedAt timestamp for optimistic locking. If provided and does not match current updatedAt, returns 409 Conflict.',
+  })
+  @IsOptional()
+  @IsDateString()
+  expectedUpdatedAt?: string;
 }
 
 // ============ Response DTOs ============
@@ -153,6 +182,8 @@ export class AddDocumentResponseDto {
   @ApiProperty() documentId!: string;
   @ApiProperty() order!: number;
   @ApiProperty() sizeBytes!: number;
+  @ApiProperty({ description: 'Updated timestamp of the instruction set after operation' })
+  updatedAt!: Date;
 }
 
 export class ReorderDocumentsResponseDto {
@@ -167,6 +198,9 @@ export class ReorderDocumentsResponseDto {
     },
   })
   documents!: { documentId: string; order: number }[];
+
+  @ApiProperty({ description: 'Updated timestamp of the instruction set after operation' })
+  updatedAt!: Date;
 }
 
 // ============ Public Response DTOs ============

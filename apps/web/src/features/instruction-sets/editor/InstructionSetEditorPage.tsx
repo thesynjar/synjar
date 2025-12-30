@@ -6,6 +6,8 @@ import { SelectedDocumentsList } from './SelectedDocumentsList';
 import { SetSettingsPanel } from './SetSettingsPanel';
 import { ContentPreviewModal } from './ContentPreviewModal';
 import { ConflictModal } from './ConflictModal';
+import { EditorHeader } from './EditorHeader';
+import { MobileTabs, type MobileTab } from './MobileTabs';
 import {
   useInstructionSetEditor,
   useDocumentOperations,
@@ -18,8 +20,6 @@ import {
 } from './hooks';
 import { toast } from '@/shared/ui';
 import { useWorkspaceMember } from '@/features/workspaces/hooks';
-
-type MobileTab = 'available' | 'selected';
 
 export function InstructionSetEditorPage() {
   const { workspaceId, setId } = useParams<{ workspaceId: string; setId: string }>();
@@ -61,15 +61,19 @@ export function InstructionSetEditorPage() {
     selectedDocuments: editorData.selectedDocuments,
     totalSizeBytes: editorData.totalSizeBytes,
     instructionSet: editorData.instructionSet,
+    lastKnownUpdatedAt: editorData.lastKnownUpdatedAt,
     setSelectedDocuments: editorData.setSelectedDocuments,
     setHasUnsavedChanges: formOps.setHasUnsavedChanges,
+    setLastKnownUpdatedAt: editorData.setLastKnownUpdatedAt,
   });
 
-  // Content preview
+  // Content preview (client-side generation)
   const preview = useContentPreview({
     setId,
-    isPublic: formOps.isPublic,
-    apiClient: editorData.apiClient,
+    formName: formOps.name,
+    formDescription: formOps.description,
+    selectedDocuments: editorData.selectedDocuments,
+    availableDocuments: editorData.availableDocuments,
   });
 
   // Unsaved changes navigation warning
@@ -84,13 +88,12 @@ export function InstructionSetEditorPage() {
     onBack: navigation.handleBack,
   });
 
-  // Handle preview button click
-  const handlePreviewClick = async () => {
-    if (!formOps.isPublic) {
-      toast.warning('Make the instruction set public to preview content');
-      return;
+  // Handle preview button click (client-side, works for private sets too)
+  const handlePreviewClick = () => {
+    preview.generatePreview();
+    if (preview.previewError) {
+      toast.error(preview.previewError);
     }
-    await preview.fetchPreview();
   };
 
   // Handle conflict refresh
@@ -144,61 +147,17 @@ export function InstructionSetEditorPage() {
   return (
     <div className="max-w-7xl mx-auto p-4">
       {/* Header - Responsive */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4 min-w-0">
-          <button
-            onClick={navigation.handleBack}
-            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors shrink-0"
-            aria-label="Back to workspace"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            <span className="hidden sm:inline">Back to Workspace</span>
-          </button>
-          <span className="text-slate-600 hidden sm:inline">|</span>
-          <h1 className="text-lg sm:text-xl font-semibold text-white truncate">
-            <span className="sm:hidden">Edit</span>
-            <span className="hidden sm:inline">Edit: {editorData.instructionSet.name}</span>
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-3">
-          {formOps.hasUnsavedChanges && (
-            <span className="text-xs sm:text-sm text-yellow-400 hidden sm:inline">Unsaved changes</span>
-          )}
-          <button
-            onClick={handlePreviewClick}
-            disabled={preview.isLoadingPreview || editorData.selectedDocuments.length === 0}
-            className="px-3 sm:px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
-            aria-label="Preview content"
-          >
-            {preview.isLoadingPreview ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            )}
-            <span className="hidden sm:inline">Preview</span>
-          </button>
-          <button
-            onClick={formOps.handleSave}
-            disabled={formOps.isSaving || !formOps.name.trim()}
-            className="px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
-          >
-            {formOps.isSaving ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                <span className="hidden sm:inline">Saving...</span>
-              </>
-            ) : (
-              'Save'
-            )}
-          </button>
-        </div>
-      </div>
+      <EditorHeader
+        instructionSetName={editorData.instructionSet.name}
+        hasUnsavedChanges={formOps.hasUnsavedChanges}
+        isSaving={formOps.isSaving}
+        isLoadingPreview={preview.isLoadingPreview}
+        selectedDocumentsCount={editorData.selectedDocuments.length}
+        canSave={!!formOps.name.trim()}
+        onBack={navigation.handleBack}
+        onSave={formOps.handleSave}
+        onPreview={handlePreviewClick}
+      />
 
       {/* Token Meter - Sticky on mobile */}
       <div className="md:hidden sticky top-0 z-10 bg-slate-900 -mx-4 px-4 py-2 mb-4 border-b border-slate-700">
@@ -209,34 +168,11 @@ export function InstructionSetEditorPage() {
       </div>
 
       {/* Mobile Tabs */}
-      <div className="md:hidden mb-4">
-        <div className="flex bg-slate-800 rounded-lg p-1" role="tablist">
-          <button
-            role="tab"
-            aria-selected={mobileTab === 'available'}
-            onClick={() => setMobileTab('available')}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-              mobileTab === 'available'
-                ? 'bg-slate-700 text-white'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Available
-          </button>
-          <button
-            role="tab"
-            aria-selected={mobileTab === 'selected'}
-            onClick={() => setMobileTab('selected')}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-              mobileTab === 'selected'
-                ? 'bg-slate-700 text-white'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Selected ({editorData.selectedDocuments.length})
-          </button>
-        </div>
-      </div>
+      <MobileTabs
+        activeTab={mobileTab}
+        selectedCount={editorData.selectedDocuments.length}
+        onTabChange={setMobileTab}
+      />
 
       {/* Two-column layout (desktop) / Tabbed layout (mobile) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mb-6">

@@ -579,13 +579,56 @@ test.describe('Instruction Sets Editor', () => {
     expect(updatedValue).not.toBe(initialValue);
   });
 
-  test('should show conflict error on concurrent edit (409)', async () => {
-    // This test simulates a 409 conflict error
-    // In a real scenario, this would require two users editing simultaneously
-    // For E2E testing, we can mock the response or skip this test
+  test('should show conflict modal when concurrent edit detected (409)', async ({ page }) => {
+    await setupInstructionSetWithDocument(page);
+    await navigateToInstructionSets(page);
 
-    // TODO: Implement with mocked API response for 409 error
-    test.skip();
+    // Open editor
+    const setCard = page.getByText('Test Instruction Set').locator('..');
+    await setCard.click();
+    await page.waitForURL(/\/instruction-sets\/[a-f0-9-]+\/edit/, {
+      timeout: 10000,
+    });
+
+    // Mock API to return 409 Conflict for PATCH requests
+    await page.route('**/instruction-sets/**', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: {
+              code: 'CONFLICT',
+              message: 'Instruction set was modified by another user',
+              details: {
+                lastModifiedAt: new Date().toISOString(),
+              },
+            },
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Make a change to enable save
+    const nameInput = page.getByLabel(/name/i);
+    await nameInput.fill('Changed Name to Trigger Save');
+
+    // Trigger save via Ctrl+S
+    await page.keyboard.press('Control+s');
+
+    // Verify conflict modal appears
+    await expect(page.getByRole('alertdialog')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/was modified by another user/i)).toBeVisible();
+    await expect(page.getByText(/Changes Conflict/i)).toBeVisible();
+
+    // Verify Refresh Page button is present
+    await expect(page.getByRole('button', { name: /refresh page/i })).toBeVisible();
+
+    // Test closing the modal via Cancel button
+    await page.getByRole('button', { name: /cancel/i }).click();
+    await expect(page.getByRole('alertdialog')).not.toBeVisible({ timeout: 3000 });
   });
 
   test('should prevent adding document when size limit reached', async ({

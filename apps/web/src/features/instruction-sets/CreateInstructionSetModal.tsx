@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { INSTRUCTION_SET_LIMITS } from '@synjar/shared';
 import { Document } from './types';
 
 interface CreateInstructionSetModalProps {
@@ -7,7 +8,7 @@ interface CreateInstructionSetModalProps {
   onCreate: (data: { name: string; description?: string; documentIds?: string[] }) => Promise<void>;
 }
 
-const MAX_DOCUMENTS = 20;
+const { MAX_DOCUMENTS } = INSTRUCTION_SET_LIMITS;
 
 export function CreateInstructionSetModal({ documents, onClose, onCreate }: CreateInstructionSetModalProps) {
   const [step, setStep] = useState(1);

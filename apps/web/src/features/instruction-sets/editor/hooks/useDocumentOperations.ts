@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
+import { HTTPError } from 'ky';
 import { createApiClient } from '@/shared/api/client';
-import { handleApiError } from '@/shared/api';
+import { getUserFriendlyMessage } from '@/shared/api/errorMessages';
 import { InstructionSetDetail, InstructionSetDocument } from '../../types';
 import { AvailableDocument, MAX_SIZE_BYTES, MAX_DOCUMENTS } from './useInstructionSetEditor';
 import { toast } from '@/shared/ui';
@@ -13,8 +14,10 @@ interface UseDocumentOperationsParams {
   selectedDocuments: InstructionSetDocument[];
   totalSizeBytes: number;
   instructionSet: InstructionSetDetail | null;
+  lastKnownUpdatedAt: string | null;
   setSelectedDocuments: React.Dispatch<React.SetStateAction<InstructionSetDocument[]>>;
   setHasUnsavedChanges: (value: boolean) => void;
+  setLastKnownUpdatedAt: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
 interface UseDocumentOperationsResult {
@@ -31,8 +34,10 @@ export function useDocumentOperations({
   selectedDocuments,
   totalSizeBytes,
   instructionSet,
+  lastKnownUpdatedAt,
   setSelectedDocuments,
   setHasUnsavedChanges,
+  setLastKnownUpdatedAt,
 }: UseDocumentOperationsParams): UseDocumentOperationsResult {
   // Handle adding document
   const handleAddDocument = useCallback(
@@ -56,9 +61,12 @@ export function useDocumentOperations({
       try {
         const response = await apiClient
           .post(`workspaces/${workspaceId}/instruction-sets/${setId}/documents`, {
-            json: { documentId },
+            json: {
+              documentId,
+              expectedUpdatedAt: lastKnownUpdatedAt,
+            },
           })
-          .json<{ id: string; documentId: string; order: number; sizeBytes: number }>();
+          .json<{ id: string; documentId: string; order: number; sizeBytes: number; updatedAt: string }>();
 
         // Add to selected documents
         const newDoc: InstructionSetDocument = {
@@ -71,28 +79,66 @@ export function useDocumentOperations({
 
         setSelectedDocuments((prev) => [...prev, newDoc]);
         setHasUnsavedChanges(true);
+        setLastKnownUpdatedAt(response.updatedAt);
       } catch (error: unknown) {
-        console.error('Failed to add document:', error);
-        await handleApiError(error, 'Failed to add document');
+        if (error instanceof HTTPError) {
+          try {
+            const errorBody = await error.response.json() as {
+              error?: { code?: string };
+              code?: string;
+            };
+            const errorCode = errorBody?.error?.code || errorBody?.code;
+            const userMessage = getUserFriendlyMessage(errorCode);
+            toast.error(userMessage);
+            console.error('API Error:', { code: errorCode, setId }); // Log without PII
+          } catch {
+            toast.error(getUserFriendlyMessage());
+            console.error('API Error:', { setId }); // Log without PII
+          }
+        } else {
+          toast.error(getUserFriendlyMessage());
+          console.error('Unknown error:', { setId }); // Log without PII
+        }
       }
     },
-    [apiClient, workspaceId, setId, availableDocuments, selectedDocuments.length, totalSizeBytes, setSelectedDocuments, setHasUnsavedChanges]
+    [apiClient, workspaceId, setId, availableDocuments, selectedDocuments.length, totalSizeBytes, lastKnownUpdatedAt, setSelectedDocuments, setHasUnsavedChanges, setLastKnownUpdatedAt]
   );
 
   // Handle removing document
   const handleRemoveDocument = useCallback(
     async (documentId: string) => {
       try {
-        await apiClient.delete(`workspaces/${workspaceId}/instruction-sets/${setId}/documents/${documentId}`);
+        // Build URL with optional expectedUpdatedAt query parameter
+        const url = lastKnownUpdatedAt
+          ? `workspaces/${workspaceId}/instruction-sets/${setId}/documents/${documentId}?expectedUpdatedAt=${encodeURIComponent(lastKnownUpdatedAt)}`
+          : `workspaces/${workspaceId}/instruction-sets/${setId}/documents/${documentId}`;
+
+        await apiClient.delete(url);
 
         setSelectedDocuments((prev) => prev.filter((d) => d.documentId !== documentId));
         setHasUnsavedChanges(true);
-      } catch (error) {
-        console.error('Failed to remove document:', error);
-        toast.error('Failed to remove document');
+      } catch (error: unknown) {
+        if (error instanceof HTTPError) {
+          try {
+            const errorBody = await error.response.json() as {
+              error?: { code?: string };
+              code?: string;
+            };
+            const errorCode = errorBody?.error?.code || errorBody?.code;
+            const userMessage = getUserFriendlyMessage(errorCode);
+            toast.error(userMessage);
+            console.error('API Error:', { code: errorCode, setId }); // Log without PII
+          } catch {
+            toast.error(getUserFriendlyMessage());
+            console.error('API Error:', { setId }); // Log without PII
+          }
+        } else {
+          toast.error(getUserFriendlyMessage());
+          console.error('Unknown error:', { setId }); // Log without PII
+        }
       }
     },
-    [apiClient, workspaceId, setId, setSelectedDocuments, setHasUnsavedChanges]
+    [apiClient, workspaceId, setId, lastKnownUpdatedAt, setSelectedDocuments, setHasUnsavedChanges]
   );
 
   // Handle reordering documents
@@ -110,19 +156,41 @@ export function useDocumentOperations({
       setHasUnsavedChanges(true);
 
       try {
-        await apiClient.patch(`workspaces/${workspaceId}/instruction-sets/${setId}/documents/reorder`, {
-          json: { documentIds },
-        });
-      } catch (error) {
-        console.error('Failed to reorder documents:', error);
-        toast.error('Failed to reorder documents');
+        const response = await apiClient.patch(`workspaces/${workspaceId}/instruction-sets/${setId}/documents/reorder`, {
+          json: {
+            documentIds,
+            expectedUpdatedAt: lastKnownUpdatedAt,
+          },
+        }).json<{ documents: { documentId: string; order: number }[]; updatedAt: string }>();
+
+        setLastKnownUpdatedAt(response.updatedAt);
+      } catch (error: unknown) {
         // Revert on error
         if (instructionSet) {
           setSelectedDocuments(instructionSet.documents);
         }
+
+        if (error instanceof HTTPError) {
+          try {
+            const errorBody = await error.response.json() as {
+              error?: { code?: string };
+              code?: string;
+            };
+            const errorCode = errorBody?.error?.code || errorBody?.code;
+            const userMessage = getUserFriendlyMessage(errorCode);
+            toast.error(userMessage);
+            console.error('API Error:', { code: errorCode, setId }); // Log without PII
+          } catch {
+            toast.error(getUserFriendlyMessage());
+            console.error('API Error:', { setId }); // Log without PII
+          }
+        } else {
+          toast.error(getUserFriendlyMessage());
+          console.error('Unknown error:', { setId }); // Log without PII
+        }
       }
     },
-    [apiClient, workspaceId, setId, selectedDocuments, instructionSet, setSelectedDocuments, setHasUnsavedChanges]
+    [apiClient, workspaceId, setId, selectedDocuments, instructionSet, lastKnownUpdatedAt, setSelectedDocuments, setHasUnsavedChanges, setLastKnownUpdatedAt]
   );
 
   return {

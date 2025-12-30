@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { HTTPError } from 'ky';
 import { createApiClient } from '@/shared/api/client';
-import { handleApiError } from '@/shared/api';
+import { getUserFriendlyMessage } from '@/shared/api/errorMessages';
 import { InstructionSetDetail } from '../../types';
 import { toast } from '@/shared/ui';
 
@@ -98,28 +98,38 @@ export function useSetForm({
       setHasUnsavedChanges(false);
       toast.success('Changes saved successfully');
     } catch (error: unknown) {
-      console.error('Failed to save:', error);
-
       // Check for conflict error (HTTP 409) - special handling to update conflict state
-      if (error instanceof HTTPError && error.response.status === 409) {
+      if (error instanceof HTTPError) {
         try {
           const errorBody = await error.response.json() as {
             error?: {
               code?: string;
               details?: { lastModifiedAt?: string };
             };
+            code?: string;
           };
-          const lastModifiedAt = errorBody?.error?.details?.lastModifiedAt;
-          if (lastModifiedAt) {
-            setConflictDetails({ lastModifiedAt });
-            return;
+          const errorCode = errorBody?.error?.code || errorBody?.code;
+
+          // Handle conflict with lastModifiedAt details
+          if (error.response.status === 409) {
+            const lastModifiedAt = errorBody?.error?.details?.lastModifiedAt;
+            if (lastModifiedAt) {
+              setConflictDetails({ lastModifiedAt });
+              return;
+            }
           }
+
+          const userMessage = getUserFriendlyMessage(errorCode);
+          toast.error(userMessage);
+          console.error('API Error:', { code: errorCode, setId }); // Log without PII
         } catch {
-          // Fall through to generic error handling
+          // Couldn't parse response, use generic message
+          toast.error(getUserFriendlyMessage());
+          console.error('API Error:', { setId }); // Log without PII
         }
-        toast.error('This set was modified by another user. Please refresh to see changes.');
       } else {
-        await handleApiError(error, 'Failed to save changes');
+        toast.error(getUserFriendlyMessage());
+        console.error('Unknown error:', { setId }); // Log without PII
       }
     } finally {
       setIsSaving(false);

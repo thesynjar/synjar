@@ -7,6 +7,7 @@
  * - Unique documents (no duplicates)
  */
 
+import { INSTRUCTION_SET_LIMITS } from '@synjar/shared';
 import { InstructionSetDocumentEntity, InstructionSetDocumentProps } from './instruction-set-document.entity';
 import {
   DocumentAlreadyInSetError,
@@ -16,10 +17,8 @@ import {
   SizeLimitExceededError,
 } from './errors';
 
-// Limits from specification
-export const MAX_SIZE_BYTES = 100 * 1024; // 100 KB
-export const MAX_DOCUMENTS = 20;
-export const MAX_SETS_PER_WORKSPACE = 50;
+// Re-export limits from shared package for backward compatibility
+export const { MAX_SIZE_BYTES, MAX_DOCUMENTS, MAX_SETS_PER_WORKSPACE } = INSTRUCTION_SET_LIMITS;
 
 // Size status thresholds
 export type SizeStatus = 'ok' | 'warning' | 'near_limit' | 'exceeded';

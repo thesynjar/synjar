@@ -39,10 +39,16 @@ interface UpdateInstructionSetDto {
 
 interface AddDocumentDto {
   documentId: string;
+  expectedUpdatedAt?: string;
 }
 
 interface ReorderDocumentsDto {
   documentIds: string[];
+  expectedUpdatedAt?: string;
+}
+
+interface RemoveDocumentDto {
+  expectedUpdatedAt?: string;
 }
 
 @Injectable()
@@ -54,6 +60,30 @@ export class InstructionSetService {
     @Inject(INSTRUCTION_SET_REPOSITORY)
     private readonly repository: IInstructionSetRepository,
   ) {}
+
+  /**
+   * Check for optimistic locking conflict.
+   * If expectedUpdatedAt is provided and does not match current updatedAt, throws 409 Conflict.
+   * If expectedUpdatedAt is not provided, allows the operation (backward compatibility).
+   */
+  private checkOptimisticLock(set: InstructionSetEntity, expectedUpdatedAt?: string): void {
+    if (expectedUpdatedAt) {
+      const expectedTime = new Date(expectedUpdatedAt).getTime();
+      const actualTime = set.updatedAt.getTime();
+      if (actualTime !== expectedTime) {
+        throw new ConflictException({
+          error: {
+            code: 'CONFLICT',
+            message: 'Ten zestaw został zmodyfikowany przez innego użytkownika.',
+            details: {
+              lastModifiedAt: set.updatedAt.toISOString(),
+            },
+            suggestion: 'Odśwież stronę, aby zobaczyć zmiany.',
+          },
+        });
+      }
+    }
+  }
 
   /**
    * List all instruction sets in a workspace
@@ -157,22 +187,7 @@ export class InstructionSetService {
     await this.workspaceService.ensureMember(set.workspaceId, userId);
 
     // Optimistic locking check
-    if (dto.expectedUpdatedAt) {
-      const expectedTime = new Date(dto.expectedUpdatedAt).getTime();
-      const actualTime = set.updatedAt.getTime();
-      if (actualTime !== expectedTime) {
-        throw new ConflictException({
-          error: {
-            code: 'CONFLICT',
-            message: 'Ten zestaw został zmodyfikowany przez innego użytkownika.',
-            details: {
-              lastModifiedAt: set.updatedAt.toISOString(),
-            },
-            suggestion: 'Odśwież stronę, aby zobaczyć zmiany.',
-          },
-        });
-      }
-    }
+    this.checkOptimisticLock(set, dto.expectedUpdatedAt);
 
     try {
       if (dto.name !== undefined) {
@@ -226,14 +241,21 @@ export class InstructionSetService {
 
     await this.workspaceService.ensureMember(set.workspaceId, userId);
 
+    // Optimistic locking check
+    this.checkOptimisticLock(set, dto.expectedUpdatedAt);
+
     try {
       const docEntity = await this.addDocumentInternal(set, dto.documentId, set.documentCount);
+
+      // Reload to get updated timestamp
+      const updatedSet = await this.repository.findById(set.id);
 
       return {
         id: docEntity.id,
         documentId: docEntity.documentId,
         order: docEntity.order,
         sizeBytes: docEntity.sizeBytes,
+        updatedAt: updatedSet?.updatedAt ?? new Date(),
       };
     } catch (error) {
       if (error instanceof DocumentAlreadyInSetError) {
@@ -299,13 +321,21 @@ export class InstructionSetService {
   /**
    * Remove a document from an instruction set
    */
-  async removeDocument(instructionSetId: string, documentId: string, userId: string) {
+  async removeDocument(
+    instructionSetId: string,
+    documentId: string,
+    userId: string,
+    dto?: RemoveDocumentDto,
+  ) {
     const set = await this.repository.findById(instructionSetId);
     if (!set) {
       throw new NotFoundException('Instruction set not found');
     }
 
     await this.workspaceService.ensureMember(set.workspaceId, userId);
+
+    // Optimistic locking check
+    this.checkOptimisticLock(set, dto?.expectedUpdatedAt);
 
     try {
       set.removeDocument(documentId);
@@ -344,6 +374,9 @@ export class InstructionSetService {
 
     await this.workspaceService.ensureMember(set.workspaceId, userId);
 
+    // Optimistic locking check
+    this.checkOptimisticLock(set, dto.expectedUpdatedAt);
+
     try {
       set.reorderDocuments(dto.documentIds);
 
@@ -354,8 +387,12 @@ export class InstructionSetService {
 
       await this.repository.updateDocumentOrders(instructionSetId, documentOrders);
 
+      // Reload to get updated timestamp
+      const updatedSet = await this.repository.findById(instructionSetId);
+
       return {
         documents: documentOrders,
+        updatedAt: updatedSet?.updatedAt ?? new Date(),
       };
     } catch (error) {
       if (error instanceof DocumentNotInSetError) {

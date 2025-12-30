@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import FocusTrap from 'focus-trap-react';
 import { sanitizeText } from '@/shared/utils';
+import { toast } from '@/shared/ui';
 
 interface ContentPreviewModalProps {
   content: string;
@@ -29,6 +30,7 @@ export function ContentPreviewModal({
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+      toast.error('Failed to copy to clipboard. Please try again.');
     }
   };
 

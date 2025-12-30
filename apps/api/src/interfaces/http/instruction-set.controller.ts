@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -27,6 +28,7 @@ import {
   CreateInstructionSetDto,
   UpdateInstructionSetDto,
   AddDocumentDto,
+  RemoveDocumentDto,
   ReorderDocumentsDto,
   InstructionSetResponseDto,
   InstructionSetDetailResponseDto,
@@ -124,12 +126,14 @@ export class InstructionSetController {
   @ApiOperation({ summary: 'Remove document from instruction set' })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 404, description: 'Instruction set or document not found' })
+  @ApiResponse({ status: 409, type: ErrorResponseDto, description: 'Conflict - set modified by another user' })
   async removeDocument(
     @Param('id') id: string,
     @Param('docId') docId: string,
     @CurrentUser() user: CurrentUserData,
+    @Query() dto: RemoveDocumentDto,
   ) {
-    await this.instructionSetService.removeDocument(id, docId, user.id);
+    await this.instructionSetService.removeDocument(id, docId, user.id, dto);
   }
 
   @Patch(':id/documents/reorder')
@@ -138,6 +142,7 @@ export class InstructionSetController {
   @ApiResponse({ status: 200, type: ReorderDocumentsResponseDto })
   @ApiResponse({ status: 400, type: ErrorResponseDto, description: 'Invalid document IDs' })
   @ApiResponse({ status: 404, description: 'Instruction set not found' })
+  @ApiResponse({ status: 409, type: ErrorResponseDto, description: 'Conflict - set modified by another user' })
   async reorderDocuments(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,

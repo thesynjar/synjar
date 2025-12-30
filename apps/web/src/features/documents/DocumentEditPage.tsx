@@ -199,6 +199,16 @@ export function DocumentEditPage() {
     [lockStatus, scheduleAutoSave, title, content, sourceDescription, verificationStatus, lastKnownUpdatedAt]
   );
 
+  const handleBack = useCallback(async () => {
+    if (hasUnsavedChanges) {
+      const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave?');
+      if (!confirmed) return;
+    }
+
+    await releaseLock();
+    navigate(`/workspaces/${workspaceId}`);
+  }, [hasUnsavedChanges, releaseLock, navigate, workspaceId]);
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -216,17 +226,7 @@ export function DocumentEditPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [forceSave, hasUnsavedChanges]);
-
-  const handleBack = useCallback(async () => {
-    if (hasUnsavedChanges) {
-      const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave?');
-      if (!confirmed) return;
-    }
-
-    await releaseLock();
-    navigate(`/workspaces/${workspaceId}`);
-  }, [hasUnsavedChanges, releaseLock, navigate, workspaceId]);
+  }, [forceSave, handleBack]);
 
   const handleCloseAndIndex = useCallback(async () => {
     // Force save first

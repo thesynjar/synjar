@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
+import { INSTRUCTION_SET_LIMITS } from '@synjar/shared';
 import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { InstructionSetDetail, InstructionSetDocument } from '../../types';
 
-export const MAX_SIZE_BYTES = 102400; // 100 KB
-export const MAX_DOCUMENTS = 20;
+// Re-export limits from shared package for backward compatibility
+export const { MAX_SIZE_BYTES, MAX_DOCUMENTS } = INSTRUCTION_SET_LIMITS;
 
 export interface AvailableDocument {
   id: string;
@@ -12,6 +13,7 @@ export interface AvailableDocument {
   sizeBytes: number;
   purpose: 'KNOWLEDGE' | 'INSTRUCTION';
   verificationStatus: 'VERIFIED' | 'UNVERIFIED';
+  content: string;
 }
 
 interface DocumentsResponse {
@@ -113,13 +115,14 @@ export function useInstructionSetEditor({
         setSelectedDocuments(setData.documents);
         setLastKnownUpdatedAt(setData.updatedAt);
 
-        // Transform available documents
+        // Transform available documents (including content for client-side preview)
         const available: AvailableDocument[] = docsData.documents.map((doc) => ({
           id: doc.id,
           title: doc.title,
           sizeBytes: doc.content ? new TextEncoder().encode(doc.content).length : 0,
           purpose: doc.purpose || 'KNOWLEDGE',
           verificationStatus: doc.verificationStatus,
+          content: doc.content || '',
         }));
         setAvailableDocuments(available);
       } catch (error) {
