@@ -20,6 +20,9 @@ import {
 } from './hooks';
 import { toast } from '@/shared/ui';
 import { useWorkspaceMember } from '@/features/workspaces/hooks';
+import { DocumentPurpose } from '@/shared/types/document.types';
+
+type DocumentPurposeFilter = 'ALL' | DocumentPurpose;
 
 export function InstructionSetEditorPage() {
   const { workspaceId, setId } = useParams<{ workspaceId: string; setId: string }>();
@@ -30,7 +33,7 @@ export function InstructionSetEditorPage() {
 
   // Search/filter state (kept local as it's UI-only state)
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterPurpose, setFilterPurpose] = useState<'ALL' | 'KNOWLEDGE' | 'INSTRUCTION'>('ALL');
+  const [filterPurpose, setFilterPurpose] = useState<DocumentPurposeFilter>('ALL');
 
   // Mobile tab state
   const [mobileTab, setMobileTab] = useState<MobileTab>('available');

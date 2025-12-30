@@ -14,9 +14,12 @@ import {
   ContentType,
   VerificationStatus,
   ProcessingStatus,
+  DocumentPurpose,
   Prisma,
 } from '@prisma/client';
 import { WorkspaceLimitsService } from '../workspace/workspace-limits.service';
+import { DOMAIN_EVENT_PUBLISHER, IDomainEventPublisher } from '@/domain/shared/domain-event';
+import { DocumentPurposeChangedEvent } from '@/domain/document/events';
 
 interface CreateDocumentDto {
   title: string;
@@ -25,6 +28,7 @@ interface CreateDocumentDto {
   sourceDescription?: string;
   verificationStatus?: VerificationStatus;
   tags?: string[];
+  purpose?: DocumentPurpose;
 }
 
 interface UpdateDocumentDto {
@@ -34,6 +38,7 @@ interface UpdateDocumentDto {
   sourceDescription?: string;
   verificationStatus?: VerificationStatus;
   tags?: string[];
+  purpose?: DocumentPurpose;
   lastKnownUpdatedAt?: string;
 }
 
@@ -58,6 +63,8 @@ export class DocumentService {
     private readonly embeddingsService: IEmbeddingsService,
     @Inject(STORAGE_SERVICE)
     private readonly storageService: IStorageService,
+    @Inject(DOMAIN_EVENT_PUBLISHER)
+    private readonly eventPublisher: IDomainEventPublisher,
   ) {}
 
   async create(
@@ -114,6 +121,7 @@ export class DocumentService {
           sourceDescription: dto.sourceDescription,
           verificationStatus: dto.verificationStatus || VerificationStatus.UNVERIFIED,
           processingStatus: ProcessingStatus.PENDING,
+          purpose: dto.purpose || DocumentPurpose.KNOWLEDGE,
           tags: {
             create: tagRecords.map((tag) => ({
               tagId: tag.id,
@@ -278,6 +286,10 @@ export class DocumentService {
 
       const needsReprocessing = dto.content !== undefined && dto.content !== document.content;
 
+      // Track purpose change for audit log
+      const purposeChanged = dto.purpose !== undefined && dto.purpose !== document.purpose;
+      const oldPurpose = purposeChanged ? document.purpose : null;
+
       // SPEC-018: Deferred processing - schedule for 1 hour instead of immediate
       const scheduledProcessingAt = needsReprocessing
         ? new Date(Date.now() + 60 * 60 * 1000) // 1 hour from now
@@ -291,6 +303,7 @@ export class DocumentService {
           originalFilename: dto.originalFilename,
           sourceDescription: dto.sourceDescription,
           verificationStatus: dto.verificationStatus,
+          purpose: dto.purpose,
           processingStatus: needsReprocessing ? ProcessingStatus.PENDING : undefined,
           scheduledProcessingAt,
           ...tagsUpdate,
@@ -300,13 +313,29 @@ export class DocumentService {
         },
       });
 
-      return { updated, needsReprocessing };
+      return { updated, needsReprocessing, purposeChanged, oldPurpose };
     });
 
     // SPEC-018: Do NOT trigger immediate processing for auto-save
     // Processing will happen when:
     // 1. User clicks "Close and index" button (calls triggerProcessing)
     // 2. Scheduled time passes (runner checks scheduledProcessingAt <= NOW())
+
+    // M3: Audit log for purpose changes
+    // Emit domain event after transaction commits successfully
+    if (result.purposeChanged && result.oldPurpose !== null) {
+      const event = new DocumentPurposeChangedEvent(
+        documentId,
+        workspaceId,
+        result.oldPurpose,
+        result.updated.purpose,
+        userId,
+      );
+      await this.eventPublisher.publish(event);
+      this.logger.log(
+        `Document purpose changed: ${documentId} from ${result.oldPurpose} to ${result.updated.purpose} by ${userId}`,
+      );
+    }
 
     return result.updated;
   }
@@ -357,10 +386,24 @@ export class DocumentService {
       const doc = await this.prisma.forWorkspace(workspaceId, async (tx) => {
         const document = await tx.document.findUnique({
           where: { id: documentId },
-          select: { id: true, content: true },
+          select: { id: true, content: true, purpose: true },
         });
 
         if (!document) return null;
+
+        // BUSINESS RULE: Only process KNOWLEDGE documents for RAG indexing
+        // INSTRUCTION documents are used in Instruction Sets without semantic search
+        if (document.purpose === DocumentPurpose.INSTRUCTION) {
+          this.logger.debug(
+            `Skipping RAG indexing for INSTRUCTION document ${document.id}`,
+          );
+          // Mark as completed without processing - no chunks needed for instructions
+          await tx.document.update({
+            where: { id: documentId },
+            data: { processingStatus: ProcessingStatus.COMPLETED },
+          });
+          return null; // Signal to skip further processing
+        }
 
         // Update status to PROCESSING
         await tx.document.update({

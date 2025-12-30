@@ -3,6 +3,7 @@ import { INSTRUCTION_SET_LIMITS } from '@synjar/shared';
 import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { InstructionSetDetail, InstructionSetDocument } from '../../types';
+import { DocumentPurpose, DEFAULT_DOCUMENT_PURPOSE } from '@/shared/types/document.types';
 
 // Re-export limits from shared package for backward compatibility
 export const { MAX_SIZE_BYTES, MAX_DOCUMENTS } = INSTRUCTION_SET_LIMITS;
@@ -11,7 +12,7 @@ export interface AvailableDocument {
   id: string;
   title: string;
   sizeBytes: number;
-  purpose: 'KNOWLEDGE' | 'INSTRUCTION';
+  purpose: DocumentPurpose;
   verificationStatus: 'VERIFIED' | 'UNVERIFIED';
   content: string;
 }
@@ -21,7 +22,7 @@ interface DocumentsResponse {
     id: string;
     title: string;
     content: string;
-    purpose: 'KNOWLEDGE' | 'INSTRUCTION';
+    purpose: DocumentPurpose;
     verificationStatus: 'VERIFIED' | 'UNVERIFIED';
   }>;
 }
@@ -120,7 +121,7 @@ export function useInstructionSetEditor({
           id: doc.id,
           title: doc.title,
           sizeBytes: doc.content ? new TextEncoder().encode(doc.content).length : 0,
-          purpose: doc.purpose || 'KNOWLEDGE',
+          purpose: doc.purpose || DEFAULT_DOCUMENT_PURPOSE,
           verificationStatus: doc.verificationStatus,
           content: doc.content || '',
         }));

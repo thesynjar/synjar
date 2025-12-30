@@ -116,6 +116,7 @@ export class DocumentController {
   }
 
   @Put(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 req/min - prevents excessive re-indexing
   @ApiOperation({ summary: 'Update document' })
   @ApiResponse({ status: 200, type: DocumentResponseDto })
   async update(

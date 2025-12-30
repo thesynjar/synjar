@@ -1,19 +1,22 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { DocumentPurpose } from '@/shared/types/document.types';
+
+type DocumentPurposeFilter = 'ALL' | DocumentPurpose;
 
 interface AvailableDocument {
   id: string;
   title: string;
   sizeBytes: number;
-  purpose: 'KNOWLEDGE' | 'INSTRUCTION';
+  purpose: DocumentPurpose;
 }
 
 interface AvailableDocumentsListProps {
   documents: AvailableDocument[];
   selectedIds: string[];
   searchQuery: string;
-  filterPurpose: 'ALL' | 'KNOWLEDGE' | 'INSTRUCTION';
+  filterPurpose: DocumentPurposeFilter;
   onSearchChange: (query: string) => void;
-  onFilterChange: (purpose: 'ALL' | 'KNOWLEDGE' | 'INSTRUCTION') => void;
+  onFilterChange: (purpose: DocumentPurposeFilter) => void;
   onAddDocument: (documentId: string) => void;
   maxDocuments: number;
   currentDocumentCount: number;
@@ -161,7 +164,7 @@ export function AvailableDocumentsList({
 
         <select
           value={filterPurpose}
-          onChange={(e) => onFilterChange(e.target.value as 'ALL' | 'KNOWLEDGE' | 'INSTRUCTION')}
+          onChange={(e) => onFilterChange(e.target.value as DocumentPurposeFilter)}
           aria-label="Filter documents by purpose"
           className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
         >

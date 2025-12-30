@@ -16,6 +16,7 @@ import {
   ContentType,
   VerificationStatus,
   ProcessingStatus,
+  DocumentPurpose,
 } from '@prisma/client';
 
 export class CreateDocumentDto {
@@ -49,6 +50,15 @@ export class CreateDocumentDto {
     return value;
   })
   tags?: string[];
+
+  @ApiPropertyOptional({
+    enum: DocumentPurpose,
+    description: 'Document purpose: KNOWLEDGE (RAG + Sets) or INSTRUCTION (Sets only)',
+    default: DocumentPurpose.KNOWLEDGE,
+  })
+  @IsOptional()
+  @IsEnum(DocumentPurpose)
+  purpose?: DocumentPurpose;
 }
 
 export class UpdateDocumentDto {
@@ -85,6 +95,14 @@ export class UpdateDocumentDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @ApiPropertyOptional({
+    enum: DocumentPurpose,
+    description: 'Document purpose: KNOWLEDGE (RAG + Sets) or INSTRUCTION (Sets only)',
+  })
+  @IsOptional()
+  @IsEnum(DocumentPurpose)
+  purpose?: DocumentPurpose;
 
   @ApiPropertyOptional({ description: 'For optimistic locking / conflict detection' })
   @IsOptional()
@@ -203,6 +221,12 @@ export class DocumentResponseDto {
 
   @ApiPropertyOptional()
   processingError!: string | null;
+
+  @ApiProperty({
+    enum: DocumentPurpose,
+    description: 'Document purpose: KNOWLEDGE (RAG + Sets) or INSTRUCTION (Sets only)',
+  })
+  purpose!: DocumentPurpose;
 
   // Edit lock (SPEC-018)
   @ApiPropertyOptional({ description: 'User ID who holds the edit lock' })

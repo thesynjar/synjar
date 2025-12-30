@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { DocumentPurpose } from '@/shared/types/document.types';
 
 interface SelectedDocument {
   id: string;
@@ -24,7 +25,7 @@ interface SelectedDocument {
   title: string;
   sizeBytes: number;
   order: number;
-  purpose?: 'KNOWLEDGE' | 'INSTRUCTION';
+  purpose?: DocumentPurpose;
 }
 
 interface SelectedDocumentsListProps {

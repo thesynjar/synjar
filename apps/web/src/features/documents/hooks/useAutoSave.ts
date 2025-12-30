@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { DocumentPurpose } from '@/shared/types/document.types';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
 
@@ -8,6 +9,7 @@ interface AutoSaveData {
   originalFilename?: string;
   sourceDescription?: string;
   verificationStatus?: 'VERIFIED' | 'UNVERIFIED';
+  purpose?: DocumentPurpose;
   tags?: string[];
 }
 

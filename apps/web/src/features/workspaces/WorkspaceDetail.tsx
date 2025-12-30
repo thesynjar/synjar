@@ -4,8 +4,11 @@ import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { SearchLinksTab } from '@/features/search-links';
 import { InstructionSetsTab } from '@/features/instruction-sets';
+import { DocumentPurposeSelector } from '@/features/documents/DocumentPurposeSelector';
 import { useLastWorkspace } from './hooks';
 import { useWorkspaceUI } from '@/shared/contexts';
+import { toast } from '@/shared/ui';
+import { DocumentPurpose, DEFAULT_DOCUMENT_PURPOSE } from '@/shared/types/document.types';
 
 type TabType = 'documents' | 'search-links' | 'instruction-sets';
 
@@ -22,6 +25,7 @@ interface Document {
   fileSize: number | null;
   verificationStatus: VerificationStatus;
   processingStatus: ProcessingStatus;
+  purpose: DocumentPurpose;
   createdAt: string;
   tags: Array<{ tag: { id: string; name: string } }>;
 }
@@ -89,8 +93,8 @@ export function WorkspaceDetail() {
       setWorkspace(wsData);
       setDocuments(docsData.documents);
       setPagination(docsData.pagination);
-    } catch (err) {
-      console.error('Failed to fetch workspace data:', err);
+    } catch {
+      toast.error('Failed to load workspace data. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -110,9 +114,8 @@ export function WorkspaceDetail() {
       }).json();
 
       await fetchData();
-    } catch (err) {
-      console.error('Failed to upload file:', err);
-      alert('Failed to upload file. Please try again.');
+    } catch {
+      toast.error('Failed to upload file. Please try again.');
     } finally {
       setIsUploading(false);
     }
@@ -137,19 +140,18 @@ export function WorkspaceDetail() {
     e.preventDefault();
   };
 
-  const handleCreateTextDocument = async (title: string, content: string) => {
+  const handleCreateTextDocument = async (title: string, content: string, purpose: DocumentPurpose) => {
     if (!workspaceId) return;
 
     try {
       await apiClient.post(`workspaces/${workspaceId}/documents`, {
-        json: { title, content },
+        json: { title, content, purpose },
       }).json();
 
       setShowNewDocModal(false);
       await fetchData();
-    } catch (err) {
-      console.error('Failed to create document:', err);
-      alert('Failed to create document. Please try again.');
+    } catch {
+      toast.error('Failed to create document. Please try again.');
     }
   };
 
@@ -159,9 +161,8 @@ export function WorkspaceDetail() {
     try {
       await apiClient.delete(`workspaces/${workspaceId}/documents/${documentId}`);
       await fetchData();
-    } catch (err) {
-      console.error('Failed to delete document:', err);
-      alert('Failed to delete document. Please try again.');
+    } catch {
+      toast.error('Failed to delete document. Please try again.');
     }
   };
 
@@ -333,6 +334,29 @@ function DocumentRow({ document, workspaceId, onDelete }: { document: Document; 
     );
   };
 
+  const getPurposeBadge = (purpose: DocumentPurpose) => {
+    const styles = {
+      KNOWLEDGE: 'bg-blue-500/20 text-blue-400',
+      INSTRUCTION: 'bg-purple-500/20 text-purple-400',
+    };
+    const labels = {
+      KNOWLEDGE: 'K',
+      INSTRUCTION: 'I',
+    };
+    const titles = {
+      KNOWLEDGE: 'Knowledge - Indexed for semantic search',
+      INSTRUCTION: 'Instruction - Full context only, not indexed',
+    };
+    return (
+      <span
+        className={`px-2 py-0.5 rounded text-xs font-medium ${styles[purpose]}`}
+        title={titles[purpose]}
+      >
+        {labels[purpose]}
+      </span>
+    );
+  };
+
   const handleClick = () => {
     navigate(`/workspaces/${workspaceId}/documents/${document.id}/edit`);
   };
@@ -374,6 +398,7 @@ function DocumentRow({ document, workspaceId, onDelete }: { document: Document; 
         </div>
       </div>
       <div className="flex items-center gap-3">
+        {getPurposeBadge(document.purpose)}
         {getStatusBadge(document.processingStatus)}
         {document.tags.length > 0 && (
           <div className="flex gap-1">
@@ -401,9 +426,10 @@ function DocumentRow({ document, workspaceId, onDelete }: { document: Document; 
   );
 }
 
-function NewDocumentModal({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, content: string) => void }) {
+function NewDocumentModal({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, content: string, purpose: DocumentPurpose) => void }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [purpose, setPurpose] = useState<DocumentPurpose>(DEFAULT_DOCUMENT_PURPOSE);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -411,7 +437,7 @@ function NewDocumentModal({ onClose, onCreate }: { onClose: () => void; onCreate
     if (!title.trim()) return;
 
     setIsSubmitting(true);
-    await onCreate(title, content);
+    await onCreate(title, content, purpose);
     setIsSubmitting(false);
   };
 
@@ -437,6 +463,9 @@ function NewDocumentModal({ onClose, onCreate }: { onClose: () => void; onCreate
               placeholder="Document title"
               required
             />
+          </div>
+          <div className="mb-4">
+            <DocumentPurposeSelector value={purpose} onChange={setPurpose} />
           </div>
           <div className="mb-6">
             <label className="block text-sm font-medium text-slate-300 mb-1">Content</label>

@@ -251,4 +251,146 @@ test.describe('Document Create and Edit', () => {
     console.log('Saved indicators:', savedCount);
     console.log('Error indicators:', errorCount);
   });
+
+  test('should create document with INSTRUCTION purpose and persist', async ({ page }) => {
+    await setupUserAndWorkspace(page);
+
+    // Click "New Text Document" button - opens modal
+    const newDocButton = page.getByRole('button', { name: 'New Text Document' });
+    await expect(newDocButton).toBeVisible({ timeout: 5000 });
+    await newDocButton.click();
+
+    // Modal should appear
+    await expect(page.getByRole('heading', { name: 'New Text Document' })).toBeVisible();
+
+    // Fill in document title
+    await page.getByPlaceholder('Document title').fill('System Prompt Document');
+
+    // Fill in document content
+    await page.getByPlaceholder(/document content/i).fill('You are a helpful assistant.');
+
+    // Select INSTRUCTION purpose (default is KNOWLEDGE)
+    // The radio button label is "Instruction"
+    const instructionRadio = page.getByRole('radio', { name: 'Instruction' });
+    await expect(instructionRadio).toBeVisible();
+    await instructionRadio.click();
+
+    // Click "Create Document" button
+    await page.getByRole('button', { name: 'Create Document' }).click();
+
+    // Wait for modal to close and document to appear in list
+    await expect(page.getByRole('heading', { name: 'New Text Document' })).not.toBeVisible({ timeout: 5000 });
+
+    // Verify document appears in list
+    await expect(page.getByText('System Prompt Document')).toBeVisible({ timeout: 5000 });
+
+    // Click on document to open edit page
+    await page.getByText('System Prompt Document').click();
+    await page.waitForURL(/\/documents\/[a-f0-9-]+\/edit/, { timeout: 10000 });
+
+    // Wait for page to stabilize
+    await page.waitForLoadState('networkidle');
+
+    // Verify INSTRUCTION radio is checked in the edit page
+    const editPageInstructionRadio = page.getByRole('radio', { name: 'Instruction' });
+    await expect(editPageInstructionRadio).toBeChecked({ timeout: 5000 });
+
+    console.log('✅ Document created with INSTRUCTION purpose and persisted correctly');
+  });
+
+  test('should change purpose from KNOWLEDGE to INSTRUCTION and auto-save', async ({ page }) => {
+    await setupUserAndWorkspace(page);
+
+    // Create document with default KNOWLEDGE purpose
+    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByPlaceholder('Document title').fill('Knowledge to Instruction Test');
+    await page.getByPlaceholder(/document content/i).fill('Initial knowledge content.');
+    // Default is KNOWLEDGE, so no need to click radio
+    await page.getByRole('button', { name: 'Create Document' }).click();
+
+    // Wait for document to appear
+    await expect(page.getByText('Knowledge to Instruction Test')).toBeVisible({ timeout: 5000 });
+
+    // Open document in edit page
+    await page.getByText('Knowledge to Instruction Test').click();
+    await page.waitForURL(/\/documents\/[a-f0-9-]+\/edit/, { timeout: 10000 });
+
+    // Wait for page to stabilize
+    await page.waitForLoadState('networkidle');
+
+    // Verify KNOWLEDGE radio is initially checked
+    const knowledgeRadio = page.getByRole('radio', { name: 'Knowledge' });
+    const instructionRadio = page.getByRole('radio', { name: 'Instruction' });
+
+    await expect(knowledgeRadio).toBeChecked({ timeout: 5000 });
+    await expect(instructionRadio).not.toBeChecked();
+
+    // Change purpose to INSTRUCTION
+    await instructionRadio.click();
+
+    // Wait for auto-save (typically 2s debounce + some buffer)
+    await page.waitForTimeout(3000);
+
+    // Verify the change was made (INSTRUCTION should now be selected)
+    await expect(instructionRadio).toBeChecked();
+    await expect(knowledgeRadio).not.toBeChecked();
+
+    // Reload page to verify persistence
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Verify INSTRUCTION is still selected after reload
+    const reloadedInstructionRadio = page.getByRole('radio', { name: 'Instruction' });
+    const reloadedKnowledgeRadio = page.getByRole('radio', { name: 'Knowledge' });
+
+    await expect(reloadedInstructionRadio).toBeChecked({ timeout: 5000 });
+    await expect(reloadedKnowledgeRadio).not.toBeChecked();
+
+    console.log('✅ Purpose change from KNOWLEDGE to INSTRUCTION auto-saved and persisted after reload');
+  });
+
+  test('should verify purpose persists after page reload', async ({ page }) => {
+    await setupUserAndWorkspace(page);
+
+    // Create document with INSTRUCTION purpose
+    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByPlaceholder('Document title').fill('Persistence Test Document');
+    await page.getByPlaceholder(/document content/i).fill('Testing persistence of purpose field.');
+
+    // Select INSTRUCTION
+    await page.getByRole('radio', { name: 'Instruction' }).click();
+    await page.getByRole('button', { name: 'Create Document' }).click();
+
+    // Wait for document to appear
+    await expect(page.getByText('Persistence Test Document')).toBeVisible({ timeout: 5000 });
+
+    // Open document
+    await page.getByText('Persistence Test Document').click();
+    await page.waitForURL(/\/documents\/[a-f0-9-]+\/edit/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+
+    // First verification - INSTRUCTION should be selected
+    await expect(page.getByRole('radio', { name: 'Instruction' })).toBeChecked({ timeout: 5000 });
+
+    // Reload page
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Second verification - still INSTRUCTION after reload
+    await expect(page.getByRole('radio', { name: 'Instruction' })).toBeChecked({ timeout: 5000 });
+
+    // Navigate away and back
+    await page.goBack();
+    await expect(page.getByText('Persistence Test Document')).toBeVisible({ timeout: 5000 });
+
+    // Re-open document
+    await page.getByText('Persistence Test Document').click();
+    await page.waitForURL(/\/documents\/[a-f0-9-]+\/edit/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+
+    // Third verification - still INSTRUCTION after navigation
+    await expect(page.getByRole('radio', { name: 'Instruction' })).toBeChecked({ timeout: 5000 });
+
+    console.log('✅ Purpose INSTRUCTION persists correctly across reload and navigation');
+  });
 });

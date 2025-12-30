@@ -4,10 +4,13 @@ import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { useEditLock } from './hooks/useEditLock';
 import { useAutoSave } from './hooks/useAutoSave';
+import { useDocumentFieldChange } from './hooks/useDocumentFieldChange';
 import { SaveStatusIndicator } from './SaveStatusIndicator';
 import { LockStatusIndicator } from './LockStatusIndicator';
 import { InlineEditor } from './InlineEditor';
 import { TagInput } from './TagInput';
+import { DocumentPurposeSelector } from './DocumentPurposeSelector';
+import { DocumentPurpose, DEFAULT_DOCUMENT_PURPOSE } from '@/shared/types/document.types';
 
 interface Document {
   id: string;
@@ -18,6 +21,7 @@ interface Document {
   sourceDescription: string | null;
   verificationStatus: 'VERIFIED' | 'UNVERIFIED';
   processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  purpose: DocumentPurpose;
   tags: Array<{ tag: { id: string; name: string } }>;
   updatedAt: string;
 }
@@ -36,6 +40,7 @@ export function DocumentEditPage() {
   const [content, setContent] = useState('');
   const [sourceDescription, setSourceDescription] = useState('');
   const [verificationStatus, setVerificationStatus] = useState<'VERIFIED' | 'UNVERIFIED'>('UNVERIFIED');
+  const [purpose, setPurpose] = useState<DocumentPurpose>(DEFAULT_DOCUMENT_PURPOSE);
   const [tags, setTags] = useState<string[]>([]);
   const [lastKnownUpdatedAt, setLastKnownUpdatedAt] = useState<string | null>(null);
 
@@ -94,6 +99,15 @@ export function DocumentEditPage() {
   const isReadOnly = lockStatus === 'locked_by_other' || lockStatus === 'error';
   const isFileDocument = document?.contentType === 'FILE';
 
+  // Document field change hook for unified auto-save handling
+  const handleFieldChange = useDocumentFieldChange({
+    lockStatus,
+    scheduleAutoSave,
+    formData: { title, content, sourceDescription, verificationStatus, purpose, tags },
+    lastKnownUpdatedAt,
+    setHasUnsavedChanges,
+  });
+
   // Fetch document on mount
   useEffect(() => {
     const fetchDocument = async () => {
@@ -108,6 +122,7 @@ export function DocumentEditPage() {
         setContent(doc.content);
         setSourceDescription(doc.sourceDescription || '');
         setVerificationStatus(doc.verificationStatus);
+        setPurpose(doc.purpose);
         setTags(doc.tags.map((t) => t.tag.name));
         setLastKnownUpdatedAt(doc.updatedAt);
       } catch (error) {
@@ -122,82 +137,6 @@ export function DocumentEditPage() {
       fetchDocument();
     }
   }, [apiClient, workspaceId, documentId]);
-
-  // Schedule auto-save when form changes
-  const handleChange = useCallback(
-    (field: string, value: string) => {
-      setHasUnsavedChanges(true);
-
-      const updates: Record<string, string | undefined> = {};
-
-      if (field === 'title') {
-        setTitle(value);
-        updates.title = value;
-      } else if (field === 'content') {
-        setContent(value);
-        updates.content = value;
-      } else if (field === 'sourceDescription') {
-        setSourceDescription(value);
-        updates.sourceDescription = value;
-      }
-
-      if (lockStatus === 'locked_by_me') {
-        scheduleAutoSave(
-          {
-            title: field === 'title' ? value : title,
-            content: field === 'content' ? value : content,
-            sourceDescription: field === 'sourceDescription' ? value : sourceDescription,
-            verificationStatus,
-            tags,
-          },
-          lastKnownUpdatedAt || undefined
-        );
-      }
-    },
-    [lockStatus, scheduleAutoSave, title, content, sourceDescription, verificationStatus, tags, lastKnownUpdatedAt]
-  );
-
-  const handleVerificationChange = useCallback(
-    (newStatus: 'VERIFIED' | 'UNVERIFIED') => {
-      setVerificationStatus(newStatus);
-      setHasUnsavedChanges(true);
-
-      if (lockStatus === 'locked_by_me') {
-        scheduleAutoSave(
-          {
-            title,
-            content,
-            sourceDescription,
-            verificationStatus: newStatus,
-            tags,
-          },
-          lastKnownUpdatedAt || undefined
-        );
-      }
-    },
-    [lockStatus, scheduleAutoSave, title, content, sourceDescription, tags, lastKnownUpdatedAt]
-  );
-
-  const handleTagsChange = useCallback(
-    (newTags: string[]) => {
-      setTags(newTags);
-      setHasUnsavedChanges(true);
-
-      if (lockStatus === 'locked_by_me') {
-        scheduleAutoSave(
-          {
-            title,
-            content,
-            sourceDescription,
-            verificationStatus,
-            tags: newTags,
-          },
-          lastKnownUpdatedAt || undefined
-        );
-      }
-    },
-    [lockStatus, scheduleAutoSave, title, content, sourceDescription, verificationStatus, lastKnownUpdatedAt]
-  );
 
   const handleBack = useCallback(async () => {
     if (hasUnsavedChanges) {
@@ -304,7 +243,7 @@ export function DocumentEditPage() {
           id="title"
           type="text"
           value={title}
-          onChange={(e) => handleChange('title', e.target.value)}
+          onChange={(e) => handleFieldChange('title', e.target.value, setTitle)}
           disabled={isReadOnly}
           maxLength={200}
           className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-60"
@@ -320,7 +259,7 @@ export function DocumentEditPage() {
         <InlineEditor
           id="content"
           value={content}
-          onChange={(value) => handleChange('content', value)}
+          onChange={(value) => handleFieldChange('content', value, setContent)}
           readOnly={isReadOnly || isFileDocument}
           placeholder="Start typing your document..."
         />
@@ -336,7 +275,7 @@ export function DocumentEditPage() {
             id="sourceDescription"
             type="text"
             value={sourceDescription}
-            onChange={(e) => handleChange('sourceDescription', e.target.value)}
+            onChange={(e) => handleFieldChange('sourceDescription', e.target.value, setSourceDescription)}
             disabled={isReadOnly}
             className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-60"
             placeholder="e.g., Email from client"
@@ -351,7 +290,7 @@ export function DocumentEditPage() {
                 type="radio"
                 name="verificationStatus"
                 checked={verificationStatus === 'UNVERIFIED'}
-                onChange={() => handleVerificationChange('UNVERIFIED')}
+                onChange={() => handleFieldChange('verificationStatus', 'UNVERIFIED' as const, setVerificationStatus)}
                 disabled={isReadOnly}
                 className="text-blue-500"
               />
@@ -362,13 +301,21 @@ export function DocumentEditPage() {
                 type="radio"
                 name="verificationStatus"
                 checked={verificationStatus === 'VERIFIED'}
-                onChange={() => handleVerificationChange('VERIFIED')}
+                onChange={() => handleFieldChange('verificationStatus', 'VERIFIED' as const, setVerificationStatus)}
                 disabled={isReadOnly}
                 className="text-blue-500"
               />
               <span className="text-slate-300">Verified</span>
             </label>
           </div>
+        </div>
+
+        <div>
+          <DocumentPurposeSelector
+            value={purpose}
+            onChange={(newPurpose) => handleFieldChange('purpose', newPurpose, setPurpose)}
+            disabled={isReadOnly}
+          />
         </div>
       </div>
 
@@ -377,7 +324,7 @@ export function DocumentEditPage() {
         <TagInput
           workspaceId={workspaceId!}
           selectedTags={tags}
-          onTagsChange={handleTagsChange}
+          onTagsChange={(newTags) => handleFieldChange('tags', newTags, setTags)}
           disabled={isReadOnly}
           apiClient={apiClient}
         />

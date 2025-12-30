@@ -17,6 +17,10 @@ import {
   DOCUMENT_REPOSITORY,
 } from '@/domain/document/document.repository';
 import {
+  DOMAIN_EVENT_PUBLISHER,
+  IDomainEventPublisher,
+} from '@/domain/shared/domain-event';
+import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -24,6 +28,7 @@ import {
   ContentType,
   VerificationStatus,
   ProcessingStatus,
+  DocumentPurpose,
 } from '@prisma/client';
 
 describe('DocumentService', () => {
@@ -35,6 +40,7 @@ describe('DocumentService', () => {
   let embeddingsServiceStub: Partial<IEmbeddingsService>;
   let storageServiceStub: Partial<IStorageService>;
   let documentRepositoryStub: Partial<IDocumentRepository>;
+  let eventPublisherStub: Partial<IDomainEventPublisher>;
 
   beforeEach(async () => {
     // Create stubs following CLAUDE.md guidelines (stub > mock)
@@ -135,6 +141,11 @@ describe('DocumentService', () => {
       delete: jest.fn(),
     };
 
+    eventPublisherStub = {
+      publish: jest.fn().mockResolvedValue(undefined),
+      publishAll: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DocumentService,
@@ -145,6 +156,7 @@ describe('DocumentService', () => {
         { provide: EMBEDDINGS_SERVICE, useValue: embeddingsServiceStub },
         { provide: STORAGE_SERVICE, useValue: storageServiceStub },
         { provide: DOCUMENT_REPOSITORY, useValue: documentRepositoryStub },
+        { provide: DOMAIN_EVENT_PUBLISHER, useValue: eventPublisherStub },
       ],
     }).compile();
 
@@ -404,6 +416,87 @@ describe('DocumentService', () => {
 
       // Assert
       expect(result.contentType).toBe(ContentType.TEXT);
+    });
+
+    it('should default purpose to KNOWLEDGE when not provided', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const userId = 'user-id-123';
+      const createDto = {
+        title: 'Test Document',
+        content: 'Content',
+        tags: [],
+      };
+
+      const expectedDocument = {
+        id: 'document-id-123',
+        purpose: DocumentPurpose.KNOWLEDGE,
+        tags: [],
+        chunks: [],
+      };
+
+      // Mock forWorkspace for document creation
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            create: jest.fn().mockResolvedValue(expectedDocument),
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue({}),
+          },
+          chunk: {
+            deleteMany: jest.fn(),
+          },
+          $executeRaw: jest.fn(),
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      const result = await service.create(workspaceId, userId, createDto);
+
+      // Assert
+      expect(result.purpose).toBe(DocumentPurpose.KNOWLEDGE);
+    });
+
+    it('should use INSTRUCTION purpose when explicitly specified', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const userId = 'user-id-123';
+      const createDto = {
+        title: 'Test Instruction',
+        content: 'Instruction content',
+        tags: [],
+        purpose: DocumentPurpose.INSTRUCTION,
+      };
+
+      const expectedDocument = {
+        id: 'document-id-123',
+        purpose: DocumentPurpose.INSTRUCTION,
+        tags: [],
+        chunks: [],
+      };
+
+      // Mock forWorkspace for document creation
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            create: jest.fn().mockResolvedValue(expectedDocument),
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue({}),
+          },
+          chunk: {
+            deleteMany: jest.fn(),
+          },
+          $executeRaw: jest.fn(),
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      const result = await service.create(workspaceId, userId, createDto);
+
+      // Assert
+      expect(result.purpose).toBe(DocumentPurpose.INSTRUCTION);
     });
   });
 
@@ -815,6 +908,241 @@ describe('DocumentService', () => {
       await expect(
         service.update(workspaceId, documentId, userId, updateDto),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should update purpose from KNOWLEDGE to INSTRUCTION', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const documentId = 'document-id-123';
+      const userId = 'user-id-123';
+      const updateDto = {
+        purpose: DocumentPurpose.INSTRUCTION,
+      };
+
+      const existingDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.KNOWLEDGE,
+        tags: [],
+        chunks: [],
+      };
+
+      const updatedDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.INSTRUCTION,
+        tags: [],
+        chunks: [],
+      };
+
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            findFirst: jest.fn().mockResolvedValue(existingDocument),
+            update: jest.fn().mockResolvedValue(updatedDocument),
+          },
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      const result = await service.update(workspaceId, documentId, userId, updateDto);
+
+      // Assert
+      expect(result.purpose).toBe(DocumentPurpose.INSTRUCTION);
+    });
+
+    it('should update purpose from INSTRUCTION to KNOWLEDGE', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const documentId = 'document-id-123';
+      const userId = 'user-id-123';
+      const updateDto = {
+        purpose: DocumentPurpose.KNOWLEDGE,
+      };
+
+      const existingDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.INSTRUCTION,
+        tags: [],
+        chunks: [],
+      };
+
+      const updatedDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.KNOWLEDGE,
+        tags: [],
+        chunks: [],
+      };
+
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            findFirst: jest.fn().mockResolvedValue(existingDocument),
+            update: jest.fn().mockResolvedValue(updatedDocument),
+          },
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      const result = await service.update(workspaceId, documentId, userId, updateDto);
+
+      // Assert
+      expect(result.purpose).toBe(DocumentPurpose.KNOWLEDGE);
+    });
+
+    it('should emit DocumentPurposeChangedEvent when purpose changes', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const documentId = 'document-id-123';
+      const userId = 'user-id-123';
+      const updateDto = {
+        purpose: DocumentPurpose.INSTRUCTION,
+      };
+
+      const existingDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.KNOWLEDGE,
+        tags: [],
+        chunks: [],
+      };
+
+      const updatedDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.INSTRUCTION,
+        tags: [],
+        chunks: [],
+      };
+
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            findFirst: jest.fn().mockResolvedValue(existingDocument),
+            update: jest.fn().mockResolvedValue(updatedDocument),
+          },
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      await service.update(workspaceId, documentId, userId, updateDto);
+
+      // Assert
+      expect(eventPublisherStub.publish).toHaveBeenCalledTimes(1);
+      expect(eventPublisherStub.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentId,
+          workspaceId,
+          oldPurpose: DocumentPurpose.KNOWLEDGE,
+          newPurpose: DocumentPurpose.INSTRUCTION,
+          changedBy: userId,
+        }),
+      );
+    });
+
+    it('should not emit DocumentPurposeChangedEvent when purpose stays the same', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const documentId = 'document-id-123';
+      const userId = 'user-id-123';
+      const updateDto = {
+        purpose: DocumentPurpose.KNOWLEDGE,
+      };
+
+      const existingDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.KNOWLEDGE, // Same as updateDto
+        tags: [],
+        chunks: [],
+      };
+
+      const updatedDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.KNOWLEDGE,
+        tags: [],
+        chunks: [],
+      };
+
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            findFirst: jest.fn().mockResolvedValue(existingDocument),
+            update: jest.fn().mockResolvedValue(updatedDocument),
+          },
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      await service.update(workspaceId, documentId, userId, updateDto);
+
+      // Assert - event should NOT be published when purpose doesn't change
+      expect(eventPublisherStub.publish).not.toHaveBeenCalled();
+    });
+
+    it('should not emit DocumentPurposeChangedEvent when purpose is not in updateDto', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const documentId = 'document-id-123';
+      const userId = 'user-id-123';
+      const updateDto = {
+        title: 'New Title', // No purpose in DTO
+      };
+
+      const existingDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        purpose: DocumentPurpose.KNOWLEDGE,
+        tags: [],
+        chunks: [],
+      };
+
+      const updatedDocument = {
+        id: documentId,
+        workspaceId,
+        content: 'Content',
+        title: 'New Title',
+        purpose: DocumentPurpose.KNOWLEDGE,
+        tags: [],
+        chunks: [],
+      };
+
+      // Mock forWorkspace
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            findFirst: jest.fn().mockResolvedValue(existingDocument),
+            update: jest.fn().mockResolvedValue(updatedDocument),
+          },
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      await service.update(workspaceId, documentId, userId, updateDto);
+
+      // Assert - event should NOT be published when purpose is not provided
+      expect(eventPublisherStub.publish).not.toHaveBeenCalled();
     });
   });
 
