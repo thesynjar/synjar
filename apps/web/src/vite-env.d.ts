@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_URL: string;
+  readonly VITE_DOCS_URL: string;
   readonly VITE_ENABLE_ANALYTICS: string;
   readonly VITE_ENABLE_AUDIT_LOG: string;
   readonly VITE_ENABLE_TENANT_ADMIN: string;

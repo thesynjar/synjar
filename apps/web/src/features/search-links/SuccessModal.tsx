@@ -128,12 +128,22 @@ Response:
                 {apiExample}
               </pre>
             </div>
-            <button
-              onClick={() => copyToClipboard(baseUrl, 'api')}
-              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors cursor-pointer"
-            >
-              {copied === 'api' ? 'Copied!' : 'Copy API URL'}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => copyToClipboard(baseUrl, 'api')}
+                className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors cursor-pointer"
+              >
+                {copied === 'api' ? 'Copied!' : 'Copy API URL'}
+              </button>
+              <a
+                href={`${config.docsUrl}/api-reference/search-links`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+              >
+                View API documentation →
+              </a>
+            </div>
           </div>
         </div>
 

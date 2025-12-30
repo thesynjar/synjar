@@ -11,6 +11,7 @@ declare global {
   interface Window {
     __ENV__?: {
       VITE_API_URL?: string;
+      VITE_DOCS_URL?: string;
       VITE_ENABLE_ANALYTICS?: string;
       VITE_ENABLE_AUDIT_LOG?: string;
       VITE_ENABLE_TENANT_ADMIN?: string;
@@ -36,6 +37,7 @@ function getEnv(key: string, defaultValue = ''): string {
 
 export const config = {
   apiUrl: getEnv('VITE_API_URL', ''),
+  docsUrl: getEnv('VITE_DOCS_URL', 'https://docs.synjar.com'),
   enableAnalytics: getEnv('VITE_ENABLE_ANALYTICS', 'false') === 'true',
   enableAuditLog: getEnv('VITE_ENABLE_AUDIT_LOG', 'false') === 'true',
   enableTenantAdmin: getEnv('VITE_ENABLE_TENANT_ADMIN', 'false') === 'true',

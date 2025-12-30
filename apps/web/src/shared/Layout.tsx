@@ -1,5 +1,6 @@
 import { Outlet, Link } from 'react-router-dom';
 import { useAuth } from '@/features/auth/model';
+import { config } from '@/shared/config';
 
 export function Layout() {
   const { user, logout, isLoading } = useAuth();
@@ -20,6 +21,14 @@ export function Layout() {
               <div className="flex gap-4">
                 <NavLink to="/workspaces">Workspaces</NavLink>
                 <NavLink to="/settings">Settings</NavLink>
+                <a
+                  href={config.docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-400 hover:text-white transition-colors"
+                >
+                  Docs
+                </a>
               </div>
             </div>
             <div className="flex items-center gap-4">
