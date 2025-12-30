@@ -24,8 +24,17 @@ export class Email {
 
   /**
    * Validate email format using regex
+   * Also rejects HTML tags for defense in depth (XSS prevention)
+   *
+   * @see docs/specifications/2025-12-30-instruction-sets-editor-ux.md Section M2
    */
   private isValid(email: string): boolean {
+    // Defense in depth: reject HTML tags (XSS prevention)
+    const HTML_TAG_REGEX = /<[^>]*>/;
+    if (HTML_TAG_REGEX.test(email)) {
+      return false;
+    }
+
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return regex.test(email);
   }

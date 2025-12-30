@@ -1,6 +1,7 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Header } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Header, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '@/application/auth/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from '@/application/auth/auth.service';
 import {
   RegisterDto,
@@ -42,12 +43,15 @@ export class AuthController {
   }
 
   @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Logout user' })
   @ApiResponse({ status: 200, description: 'Logout successful' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - valid JWT required' })
   async logout(): Promise<{ message: string }> {
     // Tokens are managed client-side (Bearer token auth)
-    // No server-side action needed for logout
+    // JWT guard provides CSRF protection via Bearer auth
     return { message: 'Logout successful' };
   }
 

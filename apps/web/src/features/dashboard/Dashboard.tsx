@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createApiClient } from '../../shared/api/client';
 import { useAuthStore } from '../auth/model/authStore';
+import { useLastWorkspace } from '../workspaces/hooks';
+import { isValidUUID } from '../../shared/utils';
 
 interface Workspace {
   id: string;
@@ -13,7 +15,9 @@ interface Workspace {
 export function Dashboard() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const hasAutoNavigated = useRef(false);
   const navigate = useNavigate();
+  const { getLastWorkspace, setLastWorkspace } = useLastWorkspace();
 
   const authStore = useAuthStore();
 
@@ -31,6 +35,35 @@ export function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-navigate for single workspace users
+  useEffect(() => {
+    if (!isLoading && workspaces.length > 0 && !hasAutoNavigated.current) {
+      if (workspaces.length === 1) {
+        const workspaceId = workspaces[0].id;
+        // M1: Defense in depth - validate UUID before navigate
+        if (!isValidUUID(workspaceId)) {
+          console.error('Invalid workspace ID from API:', workspaceId);
+          return;
+        }
+        // Single workspace - skip list, go directly
+        hasAutoNavigated.current = true;
+        setLastWorkspace(workspaceId);
+        navigate(`/workspaces/${workspaceId}`, { replace: true });
+      } else {
+        // Multi-workspace - check if we have a last workspace
+        // Note: getLastWorkspace() already validates UUID (defense in depth)
+        const lastWorkspaceId = getLastWorkspace();
+        if (lastWorkspaceId) {
+          const workspaceExists = workspaces.find(w => w.id === lastWorkspaceId);
+          if (workspaceExists) {
+            hasAutoNavigated.current = true;
+            navigate(`/workspaces/${lastWorkspaceId}`, { replace: true });
+          }
+        }
+      }
+    }
+  }, [workspaces, isLoading, navigate, getLastWorkspace, setLastWorkspace]);
+
   const fetchWorkspaces = async () => {
     try {
       const data = await apiClient.get('workspaces').json<Workspace[]>();
@@ -42,6 +75,9 @@ export function Dashboard() {
     }
   };
 
+  // Show loading while fetching or while auto-navigating
+  const shouldShowLoading = isLoading || (workspaces.length === 1 && !hasAutoNavigated.current);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -51,9 +87,12 @@ export function Dashboard() {
         </button>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
+      {shouldShowLoading ? (
+        <div className="flex flex-col items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+          {!isLoading && workspaces.length === 1 && (
+            <p className="text-slate-400 mt-3 text-sm">Opening your workspace...</p>
+          )}
         </div>
       ) : workspaces.length === 0 ? (
         <EmptyState />
@@ -63,7 +102,15 @@ export function Dashboard() {
             <WorkspaceCard
               key={workspace.id}
               workspace={workspace}
-              onClick={() => navigate(`/workspaces/${workspace.id}`)}
+              onClick={() => {
+                // M1: Defense in depth - validate UUID before navigate
+                if (!isValidUUID(workspace.id)) {
+                  console.error('Invalid workspace ID:', workspace.id);
+                  return;
+                }
+                setLastWorkspace(workspace.id);
+                navigate(`/workspaces/${workspace.id}`);
+              }}
             />
           ))}
         </div>
