@@ -4,13 +4,9 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import {
-  S3Client,
-  PutObjectCommand,
-  ListObjectsV2Command,
-  GetObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
+import type { S3Client } from '@aws-sdk/client-s3';
+
+type AwsSdkModule = typeof import('@aws-sdk/client-s3');
 
 // Note: In production/staging, environment variables are set by Docker/CapRover
 // dotenv is only needed for local development (handled by ts-node or dev scripts)
@@ -107,6 +103,8 @@ function parseDatabaseUrl(url: string): {
 export class BackupManager {
   private config: BackupConfig;
   private s3Client?: S3Client;
+  private s3Module?: AwsSdkModule;
+  private b2Enabled: boolean;
 
   constructor() {
     const databaseUrl = process.env.DATABASE_URL;
@@ -129,8 +127,12 @@ export class BackupManager {
       retentionDays: parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10),
     };
 
+    this.b2Enabled = Boolean(
+      this.config.b2KeyId && this.config.b2AppKey && this.config.b2BucketName,
+    );
+
     // Initialize B2 client if credentials are available
-    if (this.config.b2KeyId && this.config.b2AppKey) {
+    if (this.b2Enabled) {
       // SEC-H4: Validate B2 endpoint to prevent SSRF
       if (!isValidB2Endpoint(this.config.b2Endpoint)) {
         throw new Error(
@@ -139,11 +141,12 @@ export class BackupManager {
         );
       }
 
+      const { S3Client } = this.loadS3Module();
       this.s3Client = new S3Client({
         endpoint: `https://${this.config.b2Endpoint}`,
         credentials: {
-          accessKeyId: this.config.b2KeyId,
-          secretAccessKey: this.config.b2AppKey,
+          accessKeyId: this.config.b2KeyId!,
+          secretAccessKey: this.config.b2AppKey!,
         },
         region: 'eu-central-003',
       });
@@ -170,6 +173,34 @@ export class BackupManager {
 
   private generateEncryptionKey(): string {
     return crypto.randomBytes(32).toString('hex');
+  }
+
+  private loadS3Module(): AwsSdkModule {
+    if (this.s3Module) {
+      return this.s3Module;
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      this.s3Module = require('@aws-sdk/client-s3') as AwsSdkModule;
+      return this.s3Module;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === 'MODULE_NOT_FOUND') {
+        throw new Error(
+          'Missing @aws-sdk/client-s3 dependency. Install it to enable Backblaze B2 backups.',
+        );
+      }
+      throw new Error(`Failed to load @aws-sdk/client-s3: ${message}`);
+    }
+  }
+
+  private getS3Module(): AwsSdkModule {
+    if (!this.s3Module) {
+      throw new Error('B2 client not initialized');
+    }
+    return this.s3Module;
   }
 
   private generateBackupId(): string {
@@ -377,6 +408,7 @@ export class BackupManager {
     const fileData = fs.readFileSync(filePath);
     const objectKey = this.getB2ObjectKey(metadata);
 
+    const { PutObjectCommand } = this.getS3Module();
     const command = new PutObjectCommand({
       Bucket: this.config.b2BucketName,
       Key: objectKey,
@@ -429,6 +461,7 @@ export class BackupManager {
     }
 
     try {
+      const { ListObjectsV2Command } = this.getS3Module();
       const command = new ListObjectsV2Command({
         Bucket: this.config.b2BucketName,
       });
@@ -780,6 +813,7 @@ export class BackupManager {
     }
 
     try {
+      const { ListObjectsV2Command } = this.getS3Module();
       const command = new ListObjectsV2Command({
         Bucket: this.config.b2BucketName,
       });
@@ -794,6 +828,7 @@ export class BackupManager {
       let deletedCount = 0;
       for (const object of response.Contents) {
         if (object.LastModified && object.LastModified < cutoffDate && object.Key) {
+          const { DeleteObjectCommand } = this.getS3Module();
           const deleteCommand = new DeleteObjectCommand({
             Bucket: this.config.b2BucketName,
             Key: object.Key,
@@ -823,6 +858,7 @@ export class BackupManager {
 
     console.log(`Downloading backup from B2: ${backupKey}...`);
 
+    const { GetObjectCommand } = this.getS3Module();
     const command = new GetObjectCommand({
       Bucket: this.config.b2BucketName,
       Key: backupKey,
