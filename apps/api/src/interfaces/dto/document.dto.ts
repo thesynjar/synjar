@@ -228,6 +228,22 @@ export class DocumentResponseDto {
   })
   purpose!: DocumentPurpose;
 
+  // Draft/Publish fields
+  @ApiPropertyOptional({ description: 'Draft title (work-in-progress, OWNER/ADMIN only)' })
+  draftTitle!: string | null;
+
+  @ApiPropertyOptional({ description: 'Draft content (work-in-progress, OWNER/ADMIN only)' })
+  draftContent!: string | null;
+
+  @ApiProperty({ description: 'Whether document has unpublished draft changes' })
+  hasDraft!: boolean;
+
+  @ApiPropertyOptional({ description: 'When the draft was last saved' })
+  draftUpdatedAt!: Date | null;
+
+  @ApiPropertyOptional({ description: 'When the document was last published' })
+  publishedAt!: Date | null;
+
   // Edit lock (SPEC-018)
   @ApiPropertyOptional({ description: 'User ID who holds the edit lock' })
   editLockedBy!: string | null;
@@ -272,6 +288,85 @@ export class DocumentListResponseDto {
 
   @ApiProperty({ type: PaginationDto })
   pagination!: PaginationDto;
+}
+
+// ============ Draft/Publish DTOs ============
+
+export class SaveDraftDto {
+  @ApiPropertyOptional({ maxLength: 200, description: 'New draft title (null to keep current)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string | null;
+
+  @ApiPropertyOptional({ description: 'New draft content (null to keep current)' })
+  @IsOptional()
+  @IsString()
+  content?: string | null;
+
+  @ApiProperty({ description: 'Expected updatedAt for optimistic locking (MANDATORY)' })
+  @IsDateString()
+  expectedUpdatedAt!: string;
+}
+
+export class PublishDocumentDto {
+  @ApiProperty({ description: 'Expected updatedAt for optimistic locking (MANDATORY)' })
+  @IsDateString()
+  expectedUpdatedAt!: string;
+}
+
+export class DiscardDraftDto {
+  @ApiProperty({ description: 'Expected updatedAt for optimistic locking (MANDATORY)' })
+  @IsDateString()
+  expectedUpdatedAt!: string;
+}
+
+export class SaveDraftResponseDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  hasDraft!: boolean;
+
+  @ApiPropertyOptional()
+  draftUpdatedAt!: Date | null;
+
+  @ApiProperty()
+  updatedAt!: Date;
+}
+
+export class PublishDocumentResponseDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  hasDraft!: boolean;
+
+  @ApiPropertyOptional()
+  publishedAt!: Date | null;
+
+  @ApiProperty({ enum: ProcessingStatus })
+  processingStatus!: ProcessingStatus;
+
+  @ApiProperty()
+  updatedAt!: Date;
+}
+
+export class DiscardDraftResponseDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  hasDraft!: boolean;
+
+  @ApiProperty({ description: 'Published title (current)' })
+  title!: string;
+
+  @ApiProperty({ description: 'Published content (current)' })
+  content!: string;
+
+  @ApiProperty()
+  updatedAt!: Date;
 }
 
 // Lock DTOs (SPEC-018)

@@ -514,6 +514,8 @@ describe('DocumentService', () => {
           workspaceId,
           tags: [],
           chunks: [],
+          draftTitle: null,
+          draftContent: null,
         },
         {
           id: 'doc-2',
@@ -521,6 +523,8 @@ describe('DocumentService', () => {
           workspaceId,
           tags: [],
           chunks: [],
+          draftTitle: null,
+          draftContent: null,
         },
       ];
 
@@ -539,7 +543,15 @@ describe('DocumentService', () => {
       const result = await service.findAll(workspaceId, userId, query);
 
       // Assert
-      expect(result.documents).toEqual(documents);
+      // Documents in list should have hasDraft field added and draft content masked
+      expect(result.documents).toEqual(
+        documents.map((doc) => ({
+          ...doc,
+          hasDraft: doc.draftContent !== null || doc.draftTitle !== null,
+          draftTitle: null,
+          draftContent: null,
+        })),
+      );
       expect(result.pagination).toEqual({
         page: 1,
         limit: 20,
@@ -644,7 +656,7 @@ describe('DocumentService', () => {
       const documentId = 'document-id-123';
       const userId = 'user-id-123';
 
-      const expectedDocument = {
+      const dbDocument = {
         id: documentId,
         workspaceId,
         title: 'Test Document',
@@ -654,13 +666,16 @@ describe('DocumentService', () => {
           { id: 'chunk-1', chunkIndex: 0, chunkType: 'paragraph', content: 'chunk 1' },
           { id: 'chunk-2', chunkIndex: 1, chunkType: 'paragraph', content: 'chunk 2' },
         ],
+        draftTitle: null,
+        draftContent: null,
+        editLockedBy: null,
       };
 
       // Mock forWorkspace
       prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
         const tx = {
           document: {
-            findFirst: jest.fn().mockResolvedValue(expectedDocument),
+            findFirst: jest.fn().mockResolvedValue(dbDocument),
           },
         } as any;
         return callback(tx);
@@ -669,8 +684,14 @@ describe('DocumentService', () => {
       // Act
       const result = await service.findOne(workspaceId, documentId, userId);
 
-      // Assert
-      expect(result).toEqual(expectedDocument);
+      // Assert - should include draft fields with RBAC applied
+      // User is OWNER (from mock), so they can see draft content
+      expect(result).toEqual({
+        ...dbDocument,
+        hasDraft: false, // No draft content
+        draftTitle: null,
+        draftContent: null,
+      });
       expect(workspaceServiceStub.ensureMember).toHaveBeenCalledWith(
         workspaceId,
         userId,

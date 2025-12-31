@@ -146,9 +146,16 @@ model Document {
   id          String @id @default(uuid())
   workspaceId String
 
+  // PUBLISHED version (used by RAG, InstructionSets)
   title       String
   content     String      @db.Text
   contentType ContentType @default(TEXT)
+
+  // DRAFT version (work-in-progress, isolated from RAG/Sets)
+  draftTitle     String?   @db.Text
+  draftContent   String?   @db.Text
+  draftUpdatedAt DateTime? @db.Timestamptz
+  publishedAt    DateTime? @db.Timestamptz
 
   // File storage
   originalFilename String?
@@ -187,6 +194,7 @@ model Document {
   @@index([editLockedUntil])
   @@index([processingStatus, scheduledProcessingAt])
   @@index([purpose])
+  @@index([draftUpdatedAt])
 }
 
 model Chunk {

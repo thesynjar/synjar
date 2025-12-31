@@ -41,6 +41,13 @@ import {
   DocumentListResponseDto,
   LockResponseDto,
   LockErrorResponseDto,
+  SaveDraftDto,
+  PublishDocumentDto,
+  DiscardDraftDto,
+  SaveDraftResponseDto,
+  PublishDocumentResponseDto,
+  DiscardDraftResponseDto,
+  ConflictErrorResponseDto,
 } from '../dto/document.dto';
 
 // Hard ceiling for multipart - actual limit is enforced by WorkspaceLimitsService from env
@@ -206,5 +213,62 @@ export class DocumentController {
     @CurrentUser() user: CurrentUserData,
   ) {
     return this.documentService.triggerProcessing(workspaceId, id, user.id);
+  }
+
+  // ============ Draft/Publish Lifecycle ============
+
+  @Post(':id/save-draft')
+  @ApiOperation({
+    summary: 'Save document draft',
+    description: 'Saves draft title and/or content. Draft is isolated from RAG search and InstructionSets. Requires OWNER or ADMIN role.',
+  })
+  @ApiResponse({ status: 200, type: SaveDraftResponseDto })
+  @ApiResponse({ status: 403, description: 'Only owner or admin can save drafts' })
+  @ApiResponse({ status: 409, type: ConflictErrorResponseDto, description: 'Document was modified by another user' })
+  @ApiResponse({ status: 423, type: LockErrorResponseDto, description: 'Document is locked by another user' })
+  async saveDraft(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: SaveDraftDto,
+  ) {
+    return this.documentService.saveDraft(workspaceId, id, user.id, dto);
+  }
+
+  @Post(':id/publish')
+  @ApiOperation({
+    summary: 'Publish document draft',
+    description: 'Publishes draft to production. Triggers reprocessing (chunking/embeddings) if content changed. Requires OWNER or ADMIN role.',
+  })
+  @ApiResponse({ status: 200, type: PublishDocumentResponseDto })
+  @ApiResponse({ status: 400, description: 'No draft to publish' })
+  @ApiResponse({ status: 403, description: 'Only owner or admin can publish' })
+  @ApiResponse({ status: 409, type: ConflictErrorResponseDto, description: 'Document was modified by another user' })
+  @ApiResponse({ status: 423, type: LockErrorResponseDto, description: 'Document is locked by another user' })
+  async publishDocument(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: PublishDocumentDto,
+  ) {
+    return this.documentService.publishDocument(workspaceId, id, user.id, dto);
+  }
+
+  @Post(':id/discard-draft')
+  @ApiOperation({
+    summary: 'Discard document draft',
+    description: 'Discards draft and returns to published version. Requires OWNER or ADMIN role.',
+  })
+  @ApiResponse({ status: 200, type: DiscardDraftResponseDto })
+  @ApiResponse({ status: 403, description: 'Only owner or admin can discard drafts' })
+  @ApiResponse({ status: 409, type: ConflictErrorResponseDto, description: 'Document was modified by another user' })
+  @ApiResponse({ status: 423, type: LockErrorResponseDto, description: 'Document is locked by another user' })
+  async discardDraft(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: DiscardDraftDto,
+  ) {
+    return this.documentService.discardDraft(workspaceId, id, user.id, dto);
   }
 }

@@ -292,6 +292,22 @@ export class WorkspaceService {
     });
   }
 
+  /**
+   * Ensure user is OWNER or ADMIN of the workspace.
+   * Used for operations that require edit permissions (e.g., draft/publish).
+   */
+  async ensureEditorOrAdmin(workspaceId: string, userId: string) {
+    return this.prisma.forUser(userId, async (tx) => {
+      const member = await this.ensureMemberTx(tx, workspaceId, userId);
+
+      if (member.role !== Role.OWNER && member.role !== Role.ADMIN) {
+        throw new ForbiddenException('Only owner or admin can perform this action');
+      }
+
+      return member;
+    });
+  }
+
   // Transaction-aware version of ensureMember
   private async ensureMemberTx(
     tx: Parameters<Parameters<typeof this.prisma.forUser>[1]>[0],

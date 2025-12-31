@@ -1,11 +1,21 @@
 import { VerificationStatus, ProcessingStatus, ContentType } from '@prisma/client';
+import { DocumentDraftSavedEvent, DocumentPublishedEvent, DocumentDraftDiscardedEvent } from './events';
+import { DocumentConflictError, InvalidDocumentOperationError } from './errors';
+import { DomainEvent } from '../shared/domain-event';
 
 export interface DocumentProps {
   id: string;
   workspaceId: string;
+  // PUBLISHED version (used by RAG, InstructionSets)
   title: string;
   content: string;
   contentType: ContentType;
+  // DRAFT version (work-in-progress, isolated from RAG/Sets)
+  draftTitle?: string | null;
+  draftContent?: string | null;
+  draftUpdatedAt?: Date | null;
+  publishedAt?: Date | null;
+  // File storage
   originalFilename?: string | null;
   fileUrl?: string | null;
   mimeType?: string | null;
@@ -27,8 +37,12 @@ export interface DocumentProps {
 export class DocumentEntity {
   private constructor(private props: DocumentProps) {}
 
+  // Domain events collected during operations (publish after save)
+  private _domainEvents: DomainEvent[] = [];
+
   // Factory methods
-  static create(props: Omit<DocumentProps, 'id' | 'createdAt' | 'updatedAt' | 'processingStatus' | 'processingError' | 'editLockedBy' | 'editLockedUntil' | 'scheduledProcessingAt'>): DocumentEntity {
+  static create(props: Omit<DocumentProps, 'id' | 'createdAt' | 'updatedAt' | 'processingStatus' | 'processingError' | 'editLockedBy' | 'editLockedUntil' | 'scheduledProcessingAt' | 'draftTitle' | 'draftContent' | 'draftUpdatedAt' | 'publishedAt'>): DocumentEntity {
+    const now = new Date();
     return new DocumentEntity({
       ...props,
       id: '', // Will be set by repository
@@ -37,8 +51,12 @@ export class DocumentEntity {
       editLockedBy: null,
       editLockedUntil: null,
       scheduledProcessingAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      draftTitle: null,
+      draftContent: null,
+      draftUpdatedAt: null,
+      publishedAt: now, // New documents are immediately published
+      createdAt: now,
+      updatedAt: now,
     });
   }
 
@@ -46,7 +64,7 @@ export class DocumentEntity {
     return new DocumentEntity(props);
   }
 
-  // Getters
+  // Getters - Published content (used by RAG, InstructionSets)
   get id(): string { return this.props.id; }
   get workspaceId(): string { return this.props.workspaceId; }
   get title(): string { return this.props.title; }
@@ -59,6 +77,15 @@ export class DocumentEntity {
   get isVerified(): boolean { return this.props.verificationStatus === 'VERIFIED'; }
   get isProcessed(): boolean { return this.props.processingStatus === 'COMPLETED'; }
   get hasFailed(): boolean { return this.props.processingStatus === 'FAILED'; }
+  get updatedAt(): Date { return this.props.updatedAt; }
+
+  // Getters - Draft content (work-in-progress)
+  get draftTitle(): string | null { return this.props.draftTitle ?? null; }
+  get draftContent(): string | null { return this.props.draftContent ?? null; }
+  get draftUpdatedAt(): Date | null { return this.props.draftUpdatedAt ?? null; }
+  get publishedAt(): Date | null { return this.props.publishedAt ?? null; }
+  get hasDraft(): boolean { return this.props.draftContent !== null || this.props.draftTitle !== null; }
+  get domainEvents(): DomainEvent[] { return [...this._domainEvents]; }
 
   // Business logic
   verify(): void {
@@ -222,6 +249,177 @@ export class DocumentEntity {
       return true; // No scheduled time = ready immediately (backwards compatibility)
     }
     return this.props.scheduledProcessingAt <= new Date();
+  }
+
+  // ============ Draft/Publish Lifecycle ============
+
+  /**
+   * Save draft title and content.
+   * Draft is isolated from RAG search and InstructionSets.
+   *
+   * @param title - New draft title (or null to keep current)
+   * @param content - New draft content (or null to keep current)
+   * @param expectedUpdatedAt - For optimistic locking (MANDATORY)
+   * @param savedBy - User ID who saved the draft
+   * @throws DocumentConflictError if expectedUpdatedAt doesn't match
+   */
+  saveDraft(
+    title: string | null,
+    content: string | null,
+    expectedUpdatedAt: Date,
+    savedBy: string,
+  ): DocumentDraftSavedEvent {
+    // Optimistic locking check (MANDATORY)
+    if (this.props.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new DocumentConflictError(this.props.id, this.props.updatedAt);
+    }
+
+    // Save draft
+    if (title !== null) {
+      this.props.draftTitle = title;
+    }
+    if (content !== null) {
+      this.props.draftContent = content;
+    }
+    this.props.draftUpdatedAt = new Date();
+    this.props.updatedAt = new Date();
+
+    const event = new DocumentDraftSavedEvent(
+      this.props.id,
+      this.props.workspaceId,
+      this.props.draftUpdatedAt,
+      this.props.draftTitle?.length ?? 0,
+      this.props.draftContent?.length ?? 0,
+      savedBy,
+    );
+
+    this._domainEvents.push(event);
+    return event;
+  }
+
+  /**
+   * Publish draft to production.
+   * Triggers processing (chunking/embeddings) if content changed.
+   *
+   * @param expectedUpdatedAt - For optimistic locking (MANDATORY)
+   * @param publishedBy - User ID who published the draft
+   * @returns DocumentPublishedEvent with requiresReprocessing flag
+   * @throws DocumentConflictError if expectedUpdatedAt doesn't match
+   * @throws InvalidDocumentOperationError if no draft exists
+   */
+  publish(expectedUpdatedAt: Date, publishedBy: string): DocumentPublishedEvent {
+    // Optimistic locking check (MANDATORY)
+    if (this.props.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new DocumentConflictError(this.props.id, this.props.updatedAt);
+    }
+
+    // Validation
+    if (!this.hasDraft) {
+      throw new InvalidDocumentOperationError('No draft to publish', this.props.id);
+    }
+
+    // Check if content/title actually changed
+    const contentChanged = this.props.draftContent !== null && this.props.draftContent !== this.props.content;
+    const titleChanged = this.props.draftTitle !== null && this.props.draftTitle !== this.props.title;
+    const requiresReprocessing = contentChanged; // Only content affects RAG
+
+    // Copy draft to published
+    if (this.props.draftTitle !== null && this.props.draftTitle !== undefined) {
+      this.props.title = this.props.draftTitle;
+    }
+    if (this.props.draftContent !== null && this.props.draftContent !== undefined) {
+      this.props.content = this.props.draftContent;
+    }
+
+    // Record previous processing status before changing it
+    const previousProcessingStatus = this.props.processingStatus;
+
+    // Clear draft
+    this.props.draftTitle = null;
+    this.props.draftContent = null;
+    this.props.draftUpdatedAt = null;
+    this.props.publishedAt = new Date();
+    this.props.updatedAt = new Date();
+
+    // Set processing status if content changed
+    if (requiresReprocessing) {
+      this.props.processingStatus = 'PENDING';
+    }
+
+    const event = new DocumentPublishedEvent(
+      this.props.id,
+      this.props.workspaceId,
+      this.props.publishedAt,
+      previousProcessingStatus,
+      requiresReprocessing,
+      titleChanged,
+      contentChanged,
+      publishedBy,
+    );
+
+    this._domainEvents.push(event);
+    return event;
+  }
+
+  /**
+   * Discard draft and return to published version.
+   *
+   * @param expectedUpdatedAt - For optimistic locking (MANDATORY)
+   * @param discardedBy - User ID who discarded the draft
+   * @throws DocumentConflictError if expectedUpdatedAt doesn't match
+   */
+  discardDraft(expectedUpdatedAt: Date, discardedBy: string): DocumentDraftDiscardedEvent {
+    // Optimistic locking check (MANDATORY)
+    if (this.props.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new DocumentConflictError(this.props.id, this.props.updatedAt);
+    }
+
+    const hadDraft = this.hasDraft;
+
+    // Clear draft
+    this.props.draftTitle = null;
+    this.props.draftContent = null;
+    this.props.draftUpdatedAt = null;
+    this.props.updatedAt = new Date();
+
+    const event = new DocumentDraftDiscardedEvent(
+      this.props.id,
+      this.props.workspaceId,
+      this.props.updatedAt,
+      hadDraft,
+      discardedBy,
+    );
+
+    this._domainEvents.push(event);
+    return event;
+  }
+
+  /**
+   * Get content for editing (draft if exists, otherwise published).
+   */
+  getEditableContent(): { title: string; content: string } {
+    return {
+      title: this.props.draftTitle ?? this.props.title,
+      content: this.props.draftContent ?? this.props.content,
+    };
+  }
+
+  /**
+   * Check if there are unpublished changes.
+   */
+  hasUnpublishedChanges(): boolean {
+    if (!this.hasDraft) return false;
+    return (
+      (this.props.draftTitle !== null && this.props.draftTitle !== this.props.title) ||
+      (this.props.draftContent !== null && this.props.draftContent !== this.props.content)
+    );
+  }
+
+  /**
+   * Clear collected domain events (call after publishing to event bus).
+   */
+  clearDomainEvents(): void {
+    this._domainEvents = [];
   }
 
   // Serialization

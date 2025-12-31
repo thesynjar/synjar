@@ -181,8 +181,18 @@ export class DocumentService {
         tx.document.count({ where }),
       ]);
 
+      // Add hasDraft to each document for list view
+      // Draft content is NOT shown in list (only in findOne with RBAC)
+      const documentsWithHasDraft = documents.map((doc) => ({
+        ...doc,
+        hasDraft: doc.draftContent !== null || doc.draftTitle !== null,
+        // Mask draft content in list view (use findOne for full details)
+        draftTitle: null,
+        draftContent: null,
+      }));
+
       return {
-        documents,
+        documents: documentsWithHasDraft,
         pagination: {
           page,
           limit,
@@ -194,7 +204,8 @@ export class DocumentService {
   }
 
   async findOne(workspaceId: string, documentId: string, userId: string) {
-    await this.workspaceService.ensureMember(workspaceId, userId);
+    // Get member info to check role
+    const member = await this.workspaceService.ensureMember(workspaceId, userId);
 
     const document = await this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.document.findFirst({
@@ -217,7 +228,20 @@ export class DocumentService {
       throw new NotFoundException('Document not found');
     }
 
-    return document;
+    // Draft visibility RBAC:
+    // - hasDraft, draftUpdatedAt, publishedAt: visible to all roles
+    // - draftTitle, draftContent: visible only to OWNER/ADMIN or when user has edit lock
+    const isOwnerOrAdmin = member.role === 'OWNER' || member.role === 'ADMIN';
+    const hasEditLock = document.editLockedBy === userId;
+    const canSeeDraftContent = isOwnerOrAdmin || hasEditLock;
+
+    return {
+      ...document,
+      hasDraft: document.draftContent !== null || document.draftTitle !== null,
+      // Mask draftContent/draftTitle for MEMBER without edit lock
+      draftTitle: canSeeDraftContent ? document.draftTitle : null,
+      draftContent: canSeeDraftContent ? document.draftContent : null,
+    };
   }
 
   async update(
@@ -652,5 +676,285 @@ export class DocumentService {
     this.processDocument(documentId, workspaceId).catch(console.error);
 
     return { message: 'Processing triggered' };
+  }
+
+  // ============ Draft/Publish Lifecycle ============
+
+  /**
+   * Save draft title and content.
+   * Draft is isolated from RAG search and InstructionSets.
+   */
+  async saveDraft(
+    workspaceId: string,
+    documentId: string,
+    userId: string,
+    dto: { title?: string | null; content?: string | null; expectedUpdatedAt: string },
+  ) {
+    await this.workspaceService.ensureEditorOrAdmin(workspaceId, userId);
+
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: { id: documentId, workspaceId },
+      });
+
+      if (!document) {
+        throw new NotFoundException('Document not found');
+      }
+
+      // SPEC-018: Check edit lock
+      const isLocked = document.editLockedBy && document.editLockedUntil && document.editLockedUntil > new Date();
+      const isLockedByMe = document.editLockedBy === userId;
+
+      if (isLocked && !isLockedByMe) {
+        throw new ConflictException({
+          error: 'DOCUMENT_LOCKED',
+          lockedBy: document.editLockedBy,
+          lockedUntil: document.editLockedUntil,
+        });
+      }
+
+      // Optimistic locking check (MANDATORY)
+      const expectedUpdatedAt = new Date(dto.expectedUpdatedAt);
+      if (document.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictException({
+          error: 'CONFLICT',
+          serverUpdatedAt: document.updatedAt,
+          message: 'Document was modified by another user',
+        });
+      }
+
+      // Save draft
+      const now = new Date();
+      const updated = await tx.document.update({
+        where: { id: documentId },
+        data: {
+          draftTitle: dto.title !== undefined ? dto.title : document.draftTitle,
+          draftContent: dto.content !== undefined ? dto.content : document.draftContent,
+          draftUpdatedAt: now,
+          updatedAt: now,
+        },
+      });
+
+      // Emit domain event
+      const { DocumentDraftSavedEvent } = await import('@/domain/document/events');
+      const event = new DocumentDraftSavedEvent(
+        documentId,
+        workspaceId,
+        now,
+        updated.draftTitle?.length ?? 0,
+        updated.draftContent?.length ?? 0,
+        userId,
+      );
+      await this.eventPublisher.publish(event);
+
+      this.logger.log(`Draft saved for document ${documentId} by ${userId}`);
+
+      return {
+        id: updated.id,
+        hasDraft: updated.draftContent !== null || updated.draftTitle !== null,
+        draftUpdatedAt: updated.draftUpdatedAt,
+        updatedAt: updated.updatedAt,
+      };
+    });
+  }
+
+  /**
+   * Publish draft to production.
+   * Triggers processing (chunking/embeddings) if content changed.
+   */
+  async publishDocument(
+    workspaceId: string,
+    documentId: string,
+    userId: string,
+    dto: { expectedUpdatedAt: string },
+  ) {
+    await this.workspaceService.ensureEditorOrAdmin(workspaceId, userId);
+
+    const result = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: { id: documentId, workspaceId },
+      });
+
+      if (!document) {
+        throw new NotFoundException('Document not found');
+      }
+
+      // SPEC-018: Check edit lock
+      const isLocked = document.editLockedBy && document.editLockedUntil && document.editLockedUntil > new Date();
+      const isLockedByMe = document.editLockedBy === userId;
+
+      if (isLocked && !isLockedByMe) {
+        throw new ConflictException({
+          error: 'DOCUMENT_LOCKED',
+          lockedBy: document.editLockedBy,
+          lockedUntil: document.editLockedUntil,
+        });
+      }
+
+      // Optimistic locking check (MANDATORY)
+      const expectedUpdatedAt = new Date(dto.expectedUpdatedAt);
+      if (document.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictException({
+          error: 'CONFLICT',
+          serverUpdatedAt: document.updatedAt,
+          message: 'Document was modified by another user',
+        });
+      }
+
+      // Validation: Must have draft to publish
+      const hasDraft = document.draftContent !== null || document.draftTitle !== null;
+      if (!hasDraft) {
+        throw new BadRequestException('No draft to publish');
+      }
+
+      // Check if content/title actually changed
+      const contentChanged = document.draftContent !== null && document.draftContent !== document.content;
+      const titleChanged = document.draftTitle !== null && document.draftTitle !== document.title;
+      const requiresReprocessing = contentChanged;
+
+      // If requires reprocessing, delete old chunks
+      if (requiresReprocessing) {
+        await tx.chunk.deleteMany({
+          where: { documentId },
+        });
+      }
+
+      // Copy draft to published, clear draft
+      const now = new Date();
+      const updated = await tx.document.update({
+        where: { id: documentId },
+        data: {
+          title: document.draftTitle !== null ? document.draftTitle : document.title,
+          content: document.draftContent !== null ? document.draftContent : document.content,
+          draftTitle: null,
+          draftContent: null,
+          draftUpdatedAt: null,
+          publishedAt: now,
+          updatedAt: now,
+          processingStatus: requiresReprocessing ? ProcessingStatus.PENDING : document.processingStatus,
+          scheduledProcessingAt: requiresReprocessing ? now : document.scheduledProcessingAt,
+        },
+      });
+
+      return {
+        updated,
+        requiresReprocessing,
+        titleChanged,
+        contentChanged,
+        previousProcessingStatus: document.processingStatus,
+      };
+    });
+
+    // Emit domain event
+    const { DocumentPublishedEvent } = await import('@/domain/document/events');
+    const event = new DocumentPublishedEvent(
+      documentId,
+      workspaceId,
+      result.updated.publishedAt!,
+      result.previousProcessingStatus,
+      result.requiresReprocessing,
+      result.titleChanged,
+      result.contentChanged,
+      userId,
+    );
+    await this.eventPublisher.publish(event);
+
+    this.logger.log(
+      `Document ${documentId} published by ${userId}. Requires reprocessing: ${result.requiresReprocessing}`,
+    );
+
+    // Trigger processing if needed
+    if (result.requiresReprocessing) {
+      this.processDocument(documentId, workspaceId).catch((error) => {
+        this.logger.error(`Failed to process document ${documentId}:`, error);
+      });
+    }
+
+    return {
+      id: result.updated.id,
+      hasDraft: false,
+      publishedAt: result.updated.publishedAt,
+      processingStatus: result.updated.processingStatus,
+      updatedAt: result.updated.updatedAt,
+    };
+  }
+
+  /**
+   * Discard draft and return to published version.
+   */
+  async discardDraft(
+    workspaceId: string,
+    documentId: string,
+    userId: string,
+    dto: { expectedUpdatedAt: string },
+  ) {
+    await this.workspaceService.ensureEditorOrAdmin(workspaceId, userId);
+
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: { id: documentId, workspaceId },
+      });
+
+      if (!document) {
+        throw new NotFoundException('Document not found');
+      }
+
+      // SPEC-018: Check edit lock
+      const isLocked = document.editLockedBy && document.editLockedUntil && document.editLockedUntil > new Date();
+      const isLockedByMe = document.editLockedBy === userId;
+
+      if (isLocked && !isLockedByMe) {
+        throw new ConflictException({
+          error: 'DOCUMENT_LOCKED',
+          lockedBy: document.editLockedBy,
+          lockedUntil: document.editLockedUntil,
+        });
+      }
+
+      // Optimistic locking check (MANDATORY)
+      const expectedUpdatedAt = new Date(dto.expectedUpdatedAt);
+      if (document.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictException({
+          error: 'CONFLICT',
+          serverUpdatedAt: document.updatedAt,
+          message: 'Document was modified by another user',
+        });
+      }
+
+      const hadDraft = document.draftContent !== null || document.draftTitle !== null;
+
+      // Clear draft
+      const now = new Date();
+      const updated = await tx.document.update({
+        where: { id: documentId },
+        data: {
+          draftTitle: null,
+          draftContent: null,
+          draftUpdatedAt: null,
+          updatedAt: now,
+        },
+      });
+
+      // Emit domain event
+      const { DocumentDraftDiscardedEvent } = await import('@/domain/document/events');
+      const event = new DocumentDraftDiscardedEvent(
+        documentId,
+        workspaceId,
+        now,
+        hadDraft,
+        userId,
+      );
+      await this.eventPublisher.publish(event);
+
+      this.logger.log(`Draft discarded for document ${documentId} by ${userId}`);
+
+      return {
+        id: updated.id,
+        hasDraft: false,
+        title: updated.title,
+        content: updated.content,
+        updatedAt: updated.updatedAt,
+      };
+    });
   }
 }
