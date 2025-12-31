@@ -23,9 +23,6 @@ vi.mock('@/shared/api/client', () => ({
   createApiClient: () => ({
     get: vi.fn().mockImplementation((url: string) => ({
       json: () => {
-        if (url.includes('/documents')) {
-          return Promise.resolve({ documents: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } });
-        }
         return Promise.resolve({ id: 'ws-1', name: 'Test Workspace', description: 'Test description' });
       },
     })),
@@ -49,6 +46,10 @@ vi.mock('@/features/search-links', () => ({
 
 vi.mock('@/features/instruction-sets', () => ({
   InstructionSetsTab: () => <div data-testid="instruction-sets-tab-content">Instruction Sets Content</div>,
+}));
+
+vi.mock('@/features/documents', () => ({
+  DocumentListPanel: () => <div data-testid="documents-tab-content">Documents Tab Content</div>,
 }));
 
 vi.mock('../hooks', () => ({
@@ -109,8 +110,7 @@ describe('WorkspaceDetail', () => {
       mockIsMultiWorkspace = false;
       renderWorkspaceDetail();
 
-      // Wait for content to load (documents header)
-      await screen.findByText('Documents (0)');
+      await screen.findByTestId('documents-tab-content');
 
       await waitFor(() => {
         expect(screen.queryByText(/back to workspaces/i)).not.toBeInTheDocument();
@@ -121,8 +121,7 @@ describe('WorkspaceDetail', () => {
       mockIsMultiWorkspace = true;
       renderWorkspaceDetail();
 
-      // Wait for content to load
-      await screen.findByText('Documents (0)');
+      await screen.findByTestId('documents-tab-content');
 
       await waitFor(() => {
         expect(screen.getByText(/back to workspaces/i)).toBeVisible();
@@ -133,8 +132,7 @@ describe('WorkspaceDetail', () => {
       mockIsMultiWorkspace = true;
       renderWorkspaceDetail();
 
-      // Wait for content to load
-      await screen.findByText('Documents (0)');
+      await screen.findByTestId('documents-tab-content');
 
       const backLink = await screen.findByText(/back to workspaces/i);
       expect(backLink.closest('a')).toHaveAttribute('aria-label', 'Return to workspaces list');
@@ -146,7 +144,7 @@ describe('WorkspaceDetail', () => {
       renderWorkspaceDetail('documents');
 
       await waitFor(() => {
-        expect(screen.getByText('Documents (0)')).toBeInTheDocument();
+        expect(screen.getByTestId('documents-tab-content')).toBeInTheDocument();
       });
     });
 
@@ -169,8 +167,7 @@ describe('WorkspaceDetail', () => {
     it('should NOT render non-active content sections', async () => {
       renderWorkspaceDetail('documents');
 
-      // Wait for documents content to load
-      await screen.findByText('Documents (0)');
+      await screen.findByTestId('documents-tab-content');
 
       // With conditional rendering, non-active content is not in the DOM
       expect(screen.queryByTestId('search-links-tab-content')).not.toBeInTheDocument();
@@ -179,7 +176,7 @@ describe('WorkspaceDetail', () => {
   });
 
   describe('loading state', () => {
-    it('should show loading spinner while fetching data', () => {
+    it('should show loading spinner while fetching data', async () => {
       // Note: Since the mock returns immediately, this is tricky to test
       // In a real scenario, we'd mock with a delayed promise
       renderWorkspaceDetail();
@@ -187,6 +184,8 @@ describe('WorkspaceDetail', () => {
       // The component should show loading state briefly
       // This test mainly ensures no errors during initial render
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+
+      await screen.findByTestId('documents-tab-content');
     });
   });
 

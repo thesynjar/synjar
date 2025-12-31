@@ -91,7 +91,7 @@ System składa się z 5 głównych Bounded Contexts:
 **Entities**:
 - `Document` - dokument tekstowy lub plik
 - `Chunk` - fragment dokumentu z embedding (vector)
-- `Tag` - globalna etykieta (współdzielona między workspace'ami)
+- `Tag` - etykieta workspace-scoped (unikalna per workspace)
 - `DocumentTag` - relacja Document ↔ Tag
 
 **Use Cases**:
@@ -109,6 +109,7 @@ System składa się z 5 głównych Bounded Contexts:
 - Document należy do dokładnie jednego Workspace
 - Chunk należy do dokładnie jednego Document
 - RLS enforcement: user widzi tylko dokumenty ze swoich workspace'ów
+- Tag należy do dokładnie jednego Workspace
 
 ### Public API Context
 

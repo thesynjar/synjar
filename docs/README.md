@@ -4,6 +4,13 @@
 
 Synjar is a self-hosted RAG backend - a knowledge base service with Retrieval Augmented Generation capabilities.
 
+## User Guides
+
+| File | Description |
+|------|-------------|
+| [user-guides/documents.md](user-guides/documents.md) | Document list, filters, and upload workflow |
+| [user-guides/registration-cloud.md](user-guides/registration-cloud.md) | Cloud registration and verification flow |
+
 ## Specifications
 
 | File | Description | Status |

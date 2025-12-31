@@ -1,4 +1,9 @@
 export { DocumentEditPage } from './DocumentEditPage';
+export { DocumentListPanel } from './components/DocumentListPanel';
+export { DocumentFilters } from './components/DocumentFilters';
+export { DocumentListToolbar } from './components/DocumentListToolbar';
+export { VerificationBadge } from './components/VerificationBadge';
+export { ProcessingBadge } from './components/ProcessingBadge';
 export { SaveStatusIndicator } from './SaveStatusIndicator';
 export { LockStatusIndicator } from './LockStatusIndicator';
 export { InlineEditor } from './InlineEditor';
@@ -6,3 +11,4 @@ export { TagInput } from './TagInput';
 export { TagPill } from './TagPill';
 export { useEditLock } from './hooks/useEditLock';
 export { useAutoSave } from './hooks/useAutoSave';
+export { useDocumentList } from './hooks/useDocumentList';
