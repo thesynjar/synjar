@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
+    "module": "ESNext",
     "moduleResolution": "node",
-    "outDir": "dist",
+    "outDir": "dist/esm",
+    "declarationDir": "dist/types",
     "strict": true,
     "declaration": true,
     "declarationMap": true,
