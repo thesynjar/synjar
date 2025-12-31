@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "prebuild": "pnpm --filter @synjar/shared build",
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "nest start",
