@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DocumentPurpose } from '@/shared/types/document.types';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
@@ -18,9 +18,14 @@ interface UseAutoSaveOptions {
   documentId: string;
   apiClient: {
     patch: (path: string, options: { json: object }) => { json: <T>() => Promise<T> };
+    post: (path: string, options: { json: object }) => { json: <T>() => Promise<T> };
   };
   debounceMs?: number; // default 2000
   maxRetries?: number; // default 3
+  endpoint?: 'save-draft' | 'patch'; // default 'patch' for backward compatibility
+  // Use ref to always get the latest expectedUpdatedAt when saving
+  // This prevents stale closures when rapid typing causes overlapping saves
+  expectedUpdatedAtRef?: React.RefObject<string | null>;
   onSaved?: (updatedAt: string) => void;
   onConflict?: (serverUpdatedAt: string) => void;
   onError?: (error: string) => void;
@@ -30,9 +35,9 @@ interface UseAutoSaveResult {
   saveStatus: SaveStatus;
   error: string | null;
   lastSavedAt: string | null;
-  save: (data: AutoSaveData, lastKnownUpdatedAt?: string) => Promise<boolean>;
+  save: (data: AutoSaveData, expectedUpdatedAt?: string) => Promise<boolean>;
   forceSave: () => Promise<boolean>;
-  scheduleAutoSave: (data: AutoSaveData, lastKnownUpdatedAt?: string) => void;
+  scheduleAutoSave: (data: AutoSaveData, expectedUpdatedAt?: string) => void;
   cancelPendingSave: () => void;
 }
 
@@ -42,6 +47,8 @@ export function useAutoSave({
   apiClient,
   debounceMs = 2000,
   maxRetries = 3,
+  endpoint = 'patch',
+  expectedUpdatedAtRef,
   onSaved,
   onConflict,
   onError,
@@ -51,7 +58,8 @@ export function useAutoSave({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingDataRef = useRef<{ data: AutoSaveData; lastKnownUpdatedAt?: string } | null>(null);
+  // Only store data, not expectedUpdatedAt - use ref to get current value when saving
+  const pendingDataRef = useRef<{ data: AutoSaveData; expectedUpdatedAt?: string } | null>(null);
   const retryCountRef = useRef(0);
 
   const basePath = `workspaces/${workspaceId}/documents/${documentId}`;
@@ -66,22 +74,40 @@ export function useAutoSave({
 
   const save = useCallback(async (
     data: AutoSaveData,
-    lastKnownUpdatedAt?: string
+    expectedUpdatedAt?: string
   ): Promise<boolean> => {
     setSaveStatus('saving');
     setError(null);
 
     try {
-      const response = await apiClient.patch(basePath, {
-        json: {
-          ...data,
-          lastKnownUpdatedAt,
-        },
-      }).json<{ updatedAt: string }>();
+      const endpointPath = endpoint === 'save-draft'
+        ? `${basePath}/save-draft`
+        : basePath;
+
+      const method = endpoint === 'save-draft' ? 'post' : 'patch';
+
+      // For save-draft endpoint, only send title and content
+      const requestData = endpoint === 'save-draft'
+        ? {
+            title: data.title,
+            content: data.content,
+            expectedUpdatedAt,
+          }
+        : {
+            ...data,
+            expectedUpdatedAt,
+          };
+
+      const response = await apiClient[method](endpointPath, {
+        json: requestData,
+      }).json<{ updatedAt: string; hasDraft?: boolean; draftUpdatedAt?: string | null }>();
 
       setSaveStatus('saved');
       setLastSavedAt(response.updatedAt);
       retryCountRef.current = 0;
+
+      // IMPORTANT: Update expectedUpdatedAt immediately after successful save
+      // This prevents stale expectedUpdatedAt causing 409 CONFLICT on next save
       onSaved?.(response.updatedAt);
 
       // Reset to idle after 2 seconds
@@ -112,7 +138,7 @@ export function useAutoSave({
         retryCountRef.current++;
         const delay = Math.pow(2, retryCountRef.current) * 1000; // Exponential backoff
         setTimeout(() => {
-          save(data, lastKnownUpdatedAt);
+          save(data, expectedUpdatedAt);
         }, delay);
         return false;
       }
@@ -123,32 +149,38 @@ export function useAutoSave({
       onError?.(errorMessage);
       return false;
     }
-  }, [apiClient, basePath, maxRetries, onSaved, onConflict, onError]);
+  }, [apiClient, basePath, endpoint, maxRetries, onSaved, onConflict, onError]);
 
   const forceSave = useCallback(async (): Promise<boolean> => {
     if (pendingDataRef.current) {
-      const { data, lastKnownUpdatedAt } = pendingDataRef.current;
+      const { data, expectedUpdatedAt: fallbackUpdatedAt } = pendingDataRef.current;
       cancelPendingSave();
-      return save(data, lastKnownUpdatedAt);
+      // Use ref value if available, otherwise use fallback
+      const currentExpectedUpdatedAt = expectedUpdatedAtRef?.current ?? fallbackUpdatedAt;
+      return save(data, currentExpectedUpdatedAt ?? undefined);
     }
     return true; // Nothing to save
-  }, [save, cancelPendingSave]);
+  }, [save, cancelPendingSave, expectedUpdatedAtRef]);
 
   const scheduleAutoSave = useCallback((
     data: AutoSaveData,
-    lastKnownUpdatedAt?: string
+    expectedUpdatedAt?: string
   ) => {
     cancelPendingSave();
-    pendingDataRef.current = { data, lastKnownUpdatedAt };
+    // Store data and fallback expectedUpdatedAt (used when ref is not provided)
+    pendingDataRef.current = { data, expectedUpdatedAt };
 
     timerRef.current = setTimeout(() => {
       if (pendingDataRef.current) {
-        const { data: pendingData, lastKnownUpdatedAt: pendingUpdatedAt } = pendingDataRef.current;
+        const { data: pendingData, expectedUpdatedAt: fallbackUpdatedAt } = pendingDataRef.current;
         pendingDataRef.current = null;
-        save(pendingData, pendingUpdatedAt);
+        // CRITICAL: Use ref value (always current) if available, otherwise use fallback
+        // This prevents 409 CONFLICT when rapid typing causes overlapping saves
+        const currentExpectedUpdatedAt = expectedUpdatedAtRef?.current ?? fallbackUpdatedAt;
+        save(pendingData, currentExpectedUpdatedAt ?? undefined);
       }
     }, debounceMs);
-  }, [debounceMs, save, cancelPendingSave]);
+  }, [debounceMs, save, cancelPendingSave, expectedUpdatedAtRef]);
 
   // Cleanup on unmount
   useEffect(() => {

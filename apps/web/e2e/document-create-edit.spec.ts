@@ -393,4 +393,148 @@ test.describe('Document Create and Edit', () => {
 
     console.log('✅ Purpose INSTRUCTION persists correctly across reload and navigation');
   });
+
+  /**
+   * REGRESSION TEST: Rapid typing should not cause 409 CONFLICT errors
+   *
+   * This test verifies that when a user types rapidly (faster than debounce interval),
+   * the auto-save mechanism correctly uses the latest expectedUpdatedAt timestamp.
+   *
+   * Root Cause (from analysis):
+   * - scheduleAutoSave was storing expectedUpdatedAt at scheduling time
+   * - When timer fired, it used the STORED (stale) value instead of CURRENT value
+   * - This caused 409 CONFLICT because the first save updated the server timestamp,
+   *   but subsequent saves still used the old timestamp
+   *
+   * Fix: Pass expectedUpdatedAtRef to useAutoSave so it reads current value when saving
+   */
+  test('should handle rapid typing without 409 CONFLICT errors [REGRESSION]', async ({ page }) => {
+    await setupUserAndWorkspace(page);
+
+    // Create document via modal
+    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByPlaceholder('Document title').fill('Rapid Typing Test');
+    await page.getByPlaceholder(/document content/i).fill('Initial content.');
+    await page.getByRole('button', { name: 'Create Document' }).click();
+
+    // Wait for document to appear
+    await expect(page.getByText('Rapid Typing Test')).toBeVisible({ timeout: 5000 });
+
+    // Click on document to open edit page
+    await page.getByText('Rapid Typing Test').click();
+    await page.waitForURL(/\/documents\/[a-f0-9-]+\/edit/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+
+    // Find the content editor
+    const editor = page.locator('textarea, [contenteditable="true"]').first();
+    await editor.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Clear existing content
+    await editor.fill('');
+
+    // Set up network monitoring to detect 409 errors
+    const conflictErrors: string[] = [];
+    page.on('response', async (response) => {
+      if (response.status() === 409) {
+        const url = response.url();
+        try {
+          const body = await response.json();
+          conflictErrors.push(`409 CONFLICT at ${url}: ${JSON.stringify(body)}`);
+        } catch {
+          conflictErrors.push(`409 CONFLICT at ${url}`);
+        }
+      }
+    });
+
+    // Simulate rapid typing - type characters with small delays
+    // This triggers multiple scheduleAutoSave calls in quick succession
+    const testText = 'The quick brown fox jumps over the lazy dog';
+    for (const char of testText) {
+      await editor.pressSequentially(char, { delay: 50 }); // 50ms between characters
+    }
+
+    // Wait for debounce (2s) plus some buffer for save to complete
+    await page.waitForTimeout(4000);
+
+    // Type more to trigger another save cycle
+    await editor.pressSequentially(' - part two', { delay: 50 });
+
+    // Wait for second save cycle
+    await page.waitForTimeout(4000);
+
+    // Take screenshot
+    await page.screenshot({
+      path: 'test-results/document-rapid-typing.png',
+      fullPage: true,
+    });
+
+    // Check for any 409 CONFLICT errors
+    if (conflictErrors.length > 0) {
+      console.log('❌ BUG DETECTED: CONFLICT errors during rapid typing!');
+      for (const error of conflictErrors) {
+        console.log('  ', error);
+      }
+      // Fail the test
+      expect(conflictErrors).toHaveLength(0);
+    } else {
+      console.log('✅ No CONFLICT errors during rapid typing');
+    }
+
+    // Verify no visible conflict error in UI
+    const conflictMessage = page.getByText(/conflict|modified by another/i);
+    await expect(conflictMessage).not.toBeVisible();
+
+    // Verify content was saved (reload and check)
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    const reloadedEditor = page.locator('textarea, [contenteditable="true"]').first();
+    await reloadedEditor.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Content should contain our typed text
+    const content = await reloadedEditor.inputValue().catch(() => reloadedEditor.textContent());
+    expect(content).toContain('quick brown fox');
+    expect(content).toContain('part two');
+
+    console.log('✅ Rapid typing test passed - auto-save works correctly');
+  });
+
+  /**
+   * Test Save Draft button workflow
+   */
+  test('should save draft using Save Draft button', async ({ page }) => {
+    await setupUserAndWorkspace(page);
+
+    // Create document
+    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByPlaceholder('Document title').fill('Draft Button Test');
+    await page.getByPlaceholder(/document content/i).fill('Initial content.');
+    await page.getByRole('button', { name: 'Create Document' }).click();
+
+    // Wait for document to appear and open edit page
+    await expect(page.getByText('Draft Button Test')).toBeVisible({ timeout: 5000 });
+    await page.getByText('Draft Button Test').click();
+    await page.waitForURL(/\/documents\/[a-f0-9-]+\/edit/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+
+    // Find and modify content
+    const editor = page.locator('textarea, [contenteditable="true"]').first();
+    await editor.waitFor({ state: 'visible', timeout: 5000 });
+    await editor.fill('Updated draft content');
+
+    // Click Save Draft button
+    const saveDraftButton = page.getByRole('button', { name: 'Save Draft' });
+    await expect(saveDraftButton).toBeVisible();
+    await saveDraftButton.click();
+
+    // Wait for save to complete
+    await page.waitForTimeout(2000);
+
+    // Check for success toast or saved indicator
+    // (exact selector depends on toast implementation)
+    const successIndicator = page.getByText(/saved|draft saved/i);
+    await expect(successIndicator).toBeVisible({ timeout: 5000 });
+
+    console.log('✅ Save Draft button works correctly');
+  });
 });

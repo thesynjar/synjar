@@ -28,6 +28,7 @@ interface Document {
   purpose: DocumentPurpose;
   createdAt: string;
   tags: Array<{ tag: { id: string; name: string } }>;
+  hasDraft: boolean; // NEW - draft/publish workflow
 }
 
 interface DocumentListResponse {
@@ -398,6 +399,15 @@ function DocumentRow({ document, workspaceId, onDelete }: { document: Document; 
         </div>
       </div>
       <div className="flex items-center gap-3">
+        {document.hasDraft && (
+          <span
+            className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400"
+            title="Document has unpublished draft"
+            aria-label="Document has unpublished draft"
+          >
+            Draft ●
+          </span>
+        )}
         {getPurposeBadge(document.purpose)}
         {getStatusBadge(document.processingStatus)}
         {document.tags.length > 0 && (

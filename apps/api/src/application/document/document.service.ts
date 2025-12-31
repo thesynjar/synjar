@@ -19,7 +19,12 @@ import {
 } from '@prisma/client';
 import { WorkspaceLimitsService } from '../workspace/workspace-limits.service';
 import { DOMAIN_EVENT_PUBLISHER, IDomainEventPublisher } from '@/domain/shared/domain-event';
-import { DocumentPurposeChangedEvent } from '@/domain/document/events';
+import {
+  DocumentPurposeChangedEvent,
+  DocumentDraftSavedEvent,
+  DocumentPublishedEvent,
+  DocumentDraftDiscardedEvent,
+} from '@/domain/document/events';
 
 interface CreateDocumentDto {
   title: string;
@@ -573,15 +578,18 @@ export class DocumentService {
 
       const lockedUntil = new Date(Date.now() + this.LOCK_DURATION_MINUTES * 60 * 1000);
 
-      await tx.document.update({
+      const updated = await tx.document.update({
         where: { id: documentId },
         data: {
           editLockedBy: userId,
           editLockedUntil: lockedUntil,
         },
+        select: { updatedAt: true },
       });
 
-      return { lockedUntil };
+      // Return updatedAt so frontend can update expectedUpdatedAt
+      // This prevents 409 CONFLICT on first save after lock acquisition
+      return { lockedUntil, updatedAt: updated.updatedAt };
     });
   }
 
@@ -607,14 +615,17 @@ export class DocumentService {
 
       const lockedUntil = new Date(Date.now() + this.LOCK_DURATION_MINUTES * 60 * 1000);
 
-      await tx.document.update({
+      const updated = await tx.document.update({
         where: { id: documentId },
         data: {
           editLockedUntil: lockedUntil,
         },
+        select: { updatedAt: true },
       });
 
-      return { lockedUntil };
+      // Return updatedAt so frontend can update expectedUpdatedAt
+      // This prevents 409 CONFLICT after heartbeat
+      return { lockedUntil, updatedAt: updated.updatedAt };
     });
   }
 
@@ -736,7 +747,6 @@ export class DocumentService {
       });
 
       // Emit domain event
-      const { DocumentDraftSavedEvent } = await import('@/domain/document/events');
       const event = new DocumentDraftSavedEvent(
         documentId,
         workspaceId,
@@ -846,7 +856,6 @@ export class DocumentService {
     });
 
     // Emit domain event
-    const { DocumentPublishedEvent } = await import('@/domain/document/events');
     const event = new DocumentPublishedEvent(
       documentId,
       workspaceId,
@@ -936,7 +945,6 @@ export class DocumentService {
       });
 
       // Emit domain event
-      const { DocumentDraftDiscardedEvent } = await import('@/domain/document/events');
       const event = new DocumentDraftDiscardedEvent(
         documentId,
         workspaceId,

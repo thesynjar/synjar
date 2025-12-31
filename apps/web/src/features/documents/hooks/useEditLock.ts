@@ -15,7 +15,12 @@ interface UseEditLockOptions {
     put: (path: string) => { json: <T>() => Promise<T> };
     delete: (path: string) => Promise<void>;
   };
-  onLockAcquired?: () => void;
+  // Called when lock is acquired with the new updatedAt timestamp
+  // This allows the caller to update expectedUpdatedAt to prevent CONFLICT errors
+  onLockAcquired?: (updatedAt: string) => void;
+  // Called after each heartbeat with the new updatedAt timestamp
+  // This prevents 409 CONFLICT when heartbeat updates document.updatedAt
+  onHeartbeat?: (updatedAt: string) => void;
   onLockLost?: () => void;
   heartbeatInterval?: number; // ms, default 30000
 }
@@ -33,6 +38,7 @@ export function useEditLock({
   documentId,
   apiClient,
   onLockAcquired,
+  onHeartbeat,
   onLockLost,
   heartbeatInterval = 30000,
 }: UseEditLockOptions): UseEditLockResult {
@@ -55,7 +61,9 @@ export function useEditLock({
     stopHeartbeat();
     heartbeatRef.current = setInterval(async () => {
       try {
-        await apiClient.put(basePath).json();
+        const response = await apiClient.put(basePath).json<{ lockedUntil: string; updatedAt: string }>();
+        // Update expectedUpdatedAt after each heartbeat to prevent CONFLICT
+        onHeartbeat?.(response.updatedAt);
       } catch (err) {
         console.error('Heartbeat failed:', err);
         setLockStatus('error');
@@ -64,18 +72,19 @@ export function useEditLock({
         onLockLost?.();
       }
     }, heartbeatInterval);
-  }, [apiClient, basePath, heartbeatInterval, stopHeartbeat, onLockLost]);
+  }, [apiClient, basePath, heartbeatInterval, stopHeartbeat, onLockLost, onHeartbeat]);
 
   const acquireLock = useCallback(async (): Promise<boolean> => {
     setLockStatus('acquiring');
     setError(null);
 
     try {
-      const response = await apiClient.post(basePath).json<{ lockedUntil: string }>();
+      const response = await apiClient.post(basePath).json<{ lockedUntil: string; updatedAt: string }>();
       setLockStatus('locked_by_me');
       setLockInfo({ lockedUntil: response.lockedUntil });
       startHeartbeat();
-      onLockAcquired?.();
+      // Pass updatedAt so caller can update expectedUpdatedAt and prevent CONFLICT
+      onLockAcquired?.(response.updatedAt);
       return true;
     } catch (err: unknown) {
       const errorData = (err as { response?: { json?: () => Promise<{ error?: string; lockedBy?: string; lockedUntil?: string }> } })?.response;

@@ -1,11 +1,10 @@
-import { useEffect, useRef } from 'react';
-
 interface InlineEditorProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   readOnly?: boolean;
   minHeight?: string;
+  maxHeight?: string;
   id?: string;
 }
 
@@ -15,23 +14,12 @@ export function InlineEditor({
   placeholder = 'Start typing your document...',
   readOnly = false,
   minHeight = '400px',
+  maxHeight = '100vh',
   id,
 }: InlineEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.max(textarea.scrollHeight, parseInt(minHeight))}px`;
-    }
-  }, [value, minHeight]);
-
   return (
     <div className="relative">
       <textarea
-        ref={textareaRef}
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -43,10 +31,10 @@ export function InlineEditor({
           text-white placeholder-slate-500
           font-mono text-sm leading-relaxed
           focus:outline-none focus:border-blue-500
-          transition-colors resize-none
+          transition-colors resize-y overflow-auto
           ${readOnly ? 'opacity-60 cursor-not-allowed' : ''}
         `}
-        style={{ minHeight }}
+        style={{ minHeight, maxHeight }}
         aria-label="Document content"
       />
       {readOnly && (

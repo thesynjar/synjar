@@ -1,15 +1,20 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
+import { toast } from '@/shared/ui';
 import { useEditLock } from './hooks/useEditLock';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useDocumentFieldChange } from './hooks/useDocumentFieldChange';
+// LocalStorage backup removed - using server-side drafts only
 import { SaveStatusIndicator } from './SaveStatusIndicator';
 import { LockStatusIndicator } from './LockStatusIndicator';
 import { InlineEditor } from './InlineEditor';
 import { TagInput } from './TagInput';
 import { DocumentPurposeSelector } from './DocumentPurposeSelector';
+import { DraftBadge } from './DraftBadge';
+import { PublishConfirmationDialog } from './PublishConfirmationDialog';
+import { DiscardDraftConfirmationDialog } from './DiscardDraftConfirmationDialog';
 import { DocumentPurpose, DEFAULT_DOCUMENT_PURPOSE } from '@/shared/types/document.types';
 
 interface Document {
@@ -24,6 +29,12 @@ interface Document {
   purpose: DocumentPurpose;
   tags: Array<{ tag: { id: string; name: string } }>;
   updatedAt: string;
+  // Draft fields
+  draftTitle: string | null;
+  draftContent: string | null;
+  hasDraft: boolean;
+  draftUpdatedAt: string | null;
+  publishedAt: string | null;
 }
 
 export function DocumentEditPage() {
@@ -42,10 +53,21 @@ export function DocumentEditPage() {
   const [verificationStatus, setVerificationStatus] = useState<'VERIFIED' | 'UNVERIFIED'>('UNVERIFIED');
   const [purpose, setPurpose] = useState<DocumentPurpose>(DEFAULT_DOCUMENT_PURPOSE);
   const [tags, setTags] = useState<string[]>([]);
-  const [lastKnownUpdatedAt, setLastKnownUpdatedAt] = useState<string | null>(null);
+
+  // Use ref to always have the latest expectedUpdatedAt value
+  // This prevents stale closure issues when auto-save is queued with old expectedUpdatedAt
+  const expectedUpdatedAtRef = useRef<string | null>(null);
 
   // Track if user has made changes
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Draft/Publish dialog states
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+
+  // Loading states
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
 
   const apiClient = useMemo(
     () =>
@@ -59,6 +81,12 @@ export function DocumentEditPage() {
     [authStore, workspaceId]
   );
 
+  // Helper to update expectedUpdatedAt in both ref and state
+  // Ref ensures we always have the latest value even in closures
+  const updateExpectedUpdatedAt = useCallback((value: string) => {
+    expectedUpdatedAtRef.current = value;
+  }, []);
+
   // Edit lock hook
   const {
     lockStatus,
@@ -70,6 +98,16 @@ export function DocumentEditPage() {
     documentId: documentId!,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiClient: apiClient as any,
+    onLockAcquired: (updatedAt) => {
+      // Update expectedUpdatedAt with the new value from lock acquisition
+      // This prevents 409 CONFLICT on first save after lock is acquired
+      updateExpectedUpdatedAt(updatedAt);
+    },
+    onHeartbeat: (updatedAt) => {
+      // Update expectedUpdatedAt after each heartbeat
+      // Heartbeat updates document.updatedAt on server, so we need to sync
+      updateExpectedUpdatedAt(updatedAt);
+    },
     onLockLost: () => {
       // Lock was lost - show warning and disable editing
       alert('Your edit lock has expired. Please refresh and try again.');
@@ -82,17 +120,24 @@ export function DocumentEditPage() {
     error: saveError,
     scheduleAutoSave,
     forceSave,
+    cancelPendingSave,
   } = useAutoSave({
     workspaceId: workspaceId!,
     documentId: documentId!,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiClient: apiClient as any,
+    endpoint: 'save-draft', // Use save-draft endpoint for draft/publish workflow
+    // Pass ref so auto-save always uses the current expectedUpdatedAt value
+    // This prevents 409 CONFLICT when rapid typing causes overlapping saves
+    expectedUpdatedAtRef,
     onSaved: (updatedAt) => {
-      setLastKnownUpdatedAt(updatedAt);
+      updateExpectedUpdatedAt(updatedAt);
       setHasUnsavedChanges(false);
+      // Update document state to reflect that we now have a draft
+      setDocument((prev) => prev ? { ...prev, hasDraft: true } : prev);
     },
     onConflict: () => {
-      alert('This document was modified by another user. Please refresh to see the latest version.');
+      toast.error('Document was modified by another user. Please refresh to see the latest version.');
     },
   });
 
@@ -104,7 +149,7 @@ export function DocumentEditPage() {
     lockStatus,
     scheduleAutoSave,
     formData: { title, content, sourceDescription, verificationStatus, purpose, tags },
-    lastKnownUpdatedAt,
+    lastKnownUpdatedAt: expectedUpdatedAtRef.current,
     setHasUnsavedChanges,
   });
 
@@ -118,13 +163,16 @@ export function DocumentEditPage() {
           .json<Document>();
 
         setDocument(doc);
-        setTitle(doc.title);
-        setContent(doc.content);
+
+        // Use server data (draft if exists, otherwise published)
+        setTitle(doc.draftTitle ?? doc.title);
+        setContent(doc.draftContent ?? doc.content);
+
         setSourceDescription(doc.sourceDescription || '');
         setVerificationStatus(doc.verificationStatus);
         setPurpose(doc.purpose);
         setTags(doc.tags.map((t) => t.tag.name));
-        setLastKnownUpdatedAt(doc.updatedAt);
+        updateExpectedUpdatedAt(doc.updatedAt);
       } catch (error) {
         console.error('Failed to fetch document:', error);
         setLoadError('Failed to load document');
@@ -136,51 +184,109 @@ export function DocumentEditPage() {
     if (workspaceId && documentId) {
       fetchDocument();
     }
-  }, [apiClient, workspaceId, documentId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, documentId]);
 
-  const handleBack = useCallback(async () => {
-    if (hasUnsavedChanges) {
+  // Draft/Publish handlers
+  const handleSaveDraft = useCallback(async () => {
+    await forceSave();
+    toast.success('Draft saved');
+  }, [forceSave]);
+
+  const handlePublish = useCallback(() => {
+    setShowPublishDialog(true);
+  }, []);
+
+  const handlePublishConfirm = useCallback(async () => {
+    // Cancel any pending auto-save to prevent race condition
+    cancelPendingSave();
+    setIsPublishing(true);
+    try {
+      const result = await apiClient.post(
+        `workspaces/${workspaceId}/documents/${documentId}/publish`,
+        { json: { expectedUpdatedAt: expectedUpdatedAtRef.current } }
+      ).json<{ id: string; hasDraft: boolean; publishedAt: string; processingStatus: string; updatedAt: string }>();
+
+      updateExpectedUpdatedAt(result.updatedAt);
+      toast.success('Published successfully');
+      await releaseLock();
+      navigate(`/workspaces/${workspaceId}`);
+    } catch (error: unknown) {
+      if ((error as { response?: { status?: number } }).response?.status === 409) {
+        toast.error('Document was modified by another user');
+      } else {
+        toast.error('Failed to publish');
+      }
+    } finally {
+      setIsPublishing(false);
+      setShowPublishDialog(false);
+    }
+  }, [apiClient, workspaceId, documentId, updateExpectedUpdatedAt, releaseLock, navigate, cancelPendingSave]);
+
+  const handleDiscardConfirm = useCallback(async () => {
+    // Cancel any pending auto-save to prevent race condition
+    cancelPendingSave();
+    setIsDiscarding(true);
+    try {
+      const result = await apiClient.post(
+        `workspaces/${workspaceId}/documents/${documentId}/discard-draft`,
+        { json: { expectedUpdatedAt: expectedUpdatedAtRef.current } }
+      ).json<{ id: string; hasDraft: boolean; title: string; content: string; updatedAt: string }>();
+
+      setTitle(result.title);
+      setContent(result.content);
+      updateExpectedUpdatedAt(result.updatedAt);
+      setHasUnsavedChanges(false);
+      setDocument((prev) => prev ? { ...prev, hasDraft: false } : prev);
+      toast.success('Draft discarded');
+      await releaseLock();
+      navigate(`/workspaces/${workspaceId}`);
+    } catch (error) {
+      toast.error('Failed to discard draft');
+    } finally {
+      setIsDiscarding(false);
+      setShowDiscardDialog(false);
+    }
+  }, [apiClient, workspaceId, documentId, updateExpectedUpdatedAt, releaseLock, navigate, cancelPendingSave]);
+
+  const handleCancel = useCallback(async () => {
+    if (hasUnsavedChanges && document?.hasDraft) {
+      setShowDiscardDialog(true);
+    } else if (hasUnsavedChanges) {
       const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave?');
       if (!confirmed) return;
+      await releaseLock();
+      navigate(`/workspaces/${workspaceId}`);
+    } else {
+      await releaseLock();
+      navigate(`/workspaces/${workspaceId}`);
     }
-
-    await releaseLock();
-    navigate(`/workspaces/${workspaceId}`);
-  }, [hasUnsavedChanges, releaseLock, navigate, workspaceId]);
+  }, [hasUnsavedChanges, document, releaseLock, navigate, workspaceId]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+S / Cmd+S - Force save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      // Ctrl+S / Cmd+S - Save draft
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.shiftKey) {
         e.preventDefault();
-        forceSave();
+        handleSaveDraft();
       }
 
-      // Escape - Go back (with confirmation if unsaved)
+      // Ctrl+Shift+P / Cmd+Shift+P - Publish
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        handlePublish();
+      }
+
+      // Escape - Cancel (with confirmation if unsaved)
       if (e.key === 'Escape') {
-        handleBack();
+        handleCancel();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [forceSave, handleBack]);
-
-  const handleCloseAndIndex = useCallback(async () => {
-    // Force save first
-    await forceSave();
-
-    // Trigger processing
-    try {
-      await apiClient.post(`workspaces/${workspaceId}/documents/${documentId}/process`);
-    } catch (error) {
-      console.error('Failed to trigger processing:', error);
-    }
-
-    await releaseLock();
-    navigate(`/workspaces/${workspaceId}`);
-  }, [apiClient, forceSave, releaseLock, navigate, workspaceId, documentId]);
+  }, [handleSaveDraft, handlePublish, handleCancel]);
 
   if (isLoading) {
     return (
@@ -208,7 +314,7 @@ export function DocumentEditPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <button
-          onClick={handleBack}
+          onClick={handleCancel}
           className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -218,6 +324,17 @@ export function DocumentEditPage() {
         </button>
 
         <div className="flex items-center gap-4">
+          {document && (
+            <DraftBadge
+              status={
+                hasUnsavedChanges
+                  ? 'unsaved'
+                  : document.hasDraft
+                  ? 'draft'
+                  : 'published'
+              }
+            />
+          )}
           <SaveStatusIndicator status={saveStatus} error={saveError} onRetry={forceSave} />
           <LockStatusIndicator
             status={lockStatus}
@@ -338,27 +455,73 @@ export function DocumentEditPage() {
       )}
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-4">
-        <button
-          onClick={handleBack}
-          className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleCloseAndIndex}
-          disabled={isReadOnly}
-          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Close and Index
-        </button>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleCancel}
+            className="px-4 py-2 border border-slate-600 rounded-lg text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
+            aria-label="Cancel and return to document list"
+          >
+            Cancel
+          </button>
+          {document?.hasDraft && (
+            <button
+              onClick={() => setShowDiscardDialog(true)}
+              disabled={isReadOnly || isDiscarding}
+              className="px-4 py-2 border border-red-600 rounded-lg text-red-400 hover:text-red-300 hover:border-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Discard draft and revert to published version"
+            >
+              Discard Draft
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSaveDraft}
+            disabled={isReadOnly}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Save draft without publishing"
+          >
+            Save Draft
+          </button>
+          <button
+            onClick={handlePublish}
+            disabled={isReadOnly || !document?.hasDraft}
+            className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            aria-label="Publish document and make it searchable"
+            title={!document?.hasDraft ? 'No draft to publish' : 'Publish document'}
+          >
+            Publish
+          </button>
+        </div>
       </div>
 
       {/* Keyboard shortcuts hint */}
       <div className="mt-6 text-xs text-slate-500 text-center">
-        <span className="mr-4">Ctrl+S to save</span>
-        <span>Esc to go back</span>
+        <span className="mr-4">Ctrl+S to save draft</span>
+        <span className="mr-4">Ctrl+Shift+P to publish</span>
+        <span>Esc to cancel</span>
       </div>
+
+      {/* Dialogs */}
+      <PublishConfirmationDialog
+        isOpen={showPublishDialog}
+        onConfirm={handlePublishConfirm}
+        onCancel={() => setShowPublishDialog(false)}
+        isPublishing={isPublishing}
+      />
+
+      <DiscardDraftConfirmationDialog
+        isOpen={showDiscardDialog}
+        onConfirm={handleDiscardConfirm}
+        onCancel={() => setShowDiscardDialog(false)}
+        onSaveDraft={async () => {
+          setShowDiscardDialog(false);
+          await handleSaveDraft();
+        }}
+        isDiscarding={isDiscarding}
+      />
+
     </div>
   );
 }
