@@ -4,7 +4,6 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import * as dotenv from 'dotenv';
 import {
   S3Client,
   PutObjectCommand,
@@ -13,8 +12,8 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 
-// Load environment variables
-dotenv.config();
+// Note: In production/staging, environment variables are set by Docker/CapRover
+// dotenv is only needed for local development (handled by ts-node or dev scripts)
 
 const execFileAsync = promisify(execFile);
 
