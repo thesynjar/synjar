@@ -143,6 +143,10 @@ export function DocumentEditPage() {
 
   const isReadOnly = lockStatus === 'locked_by_other' || lockStatus === 'error';
   const isFileDocument = document?.contentType === 'FILE';
+  const publishDisabled = isReadOnly || (!document?.hasDraft && !hasUnsavedChanges);
+  const publishTitle = publishDisabled
+    ? (isReadOnly ? 'Read-only' : 'No draft to publish')
+    : 'Publish document';
 
   // Document field change hook for unified auto-save handling
   const handleFieldChange = useDocumentFieldChange({
@@ -193,9 +197,17 @@ export function DocumentEditPage() {
     toast.success('Draft saved');
   }, [forceSave]);
 
-  const handlePublish = useCallback(() => {
+  const handlePublish = useCallback(async () => {
+    if (hasUnsavedChanges) {
+      const saved = await forceSave();
+      if (!saved) {
+        toast.error('Failed to save changes before publishing');
+        return;
+      }
+    }
+
     setShowPublishDialog(true);
-  }, []);
+  }, [hasUnsavedChanges, forceSave]);
 
   const handlePublishConfirm = useCallback(async () => {
     // Cancel any pending auto-save to prevent race condition
@@ -275,7 +287,7 @@ export function DocumentEditPage() {
       // Ctrl+Shift+P / Cmd+Shift+P - Publish
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
         e.preventDefault();
-        handlePublish();
+        void handlePublish();
       }
 
       // Escape - Cancel (with confirmation if unsaved)
@@ -486,10 +498,10 @@ export function DocumentEditPage() {
           </button>
           <button
             onClick={handlePublish}
-            disabled={isReadOnly || !document?.hasDraft}
+            disabled={publishDisabled}
             className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             aria-label="Publish document and make it searchable"
-            title={!document?.hasDraft ? 'No draft to publish' : 'Publish document'}
+            title={publishTitle}
           >
             Publish
           </button>

@@ -304,6 +304,36 @@ export class SaveDraftDto {
   @IsString()
   content?: string | null;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  sourceDescription?: string;
+
+  @ApiPropertyOptional({ enum: VerificationStatus })
+  @IsOptional()
+  @IsEnum(VerificationStatus)
+  verificationStatus?: VerificationStatus;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value.split(',').map((t: string) => t.trim());
+    }
+    return value;
+  })
+  tags?: string[];
+
+  @ApiPropertyOptional({
+    enum: DocumentPurpose,
+    description: 'Document purpose: KNOWLEDGE (RAG + Sets) or INSTRUCTION (Sets only)',
+  })
+  @IsOptional()
+  @IsEnum(DocumentPurpose)
+  purpose?: DocumentPurpose;
+
   @ApiProperty({ description: 'Expected updatedAt for optimistic locking (MANDATORY)' })
   @IsDateString()
   expectedUpdatedAt!: string;

@@ -47,6 +47,16 @@ interface UpdateDocumentDto {
   lastKnownUpdatedAt?: string;
 }
 
+interface SaveDraftDto {
+  title?: string | null;
+  content?: string | null;
+  sourceDescription?: string;
+  verificationStatus?: VerificationStatus;
+  tags?: string[];
+  purpose?: DocumentPurpose;
+  expectedUpdatedAt: string;
+}
+
 interface ListDocumentsQuery {
   tags?: string[];
   verificationStatus?: VerificationStatus;
@@ -699,11 +709,16 @@ export class DocumentService {
     workspaceId: string,
     documentId: string,
     userId: string,
-    dto: { title?: string | null; content?: string | null; expectedUpdatedAt: string },
+    dto: SaveDraftDto,
   ) {
     await this.workspaceService.ensureEditorOrAdmin(workspaceId, userId);
 
-    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+    let tagRecords: { id: string; name: string }[] = [];
+    if (dto.tags !== undefined) {
+      tagRecords = await this.ensureTags(workspaceId, dto.tags);
+    }
+
+    const result = await this.prisma.forWorkspace(workspaceId, async (tx) => {
       const document = await tx.document.findFirst({
         where: { id: documentId, workspaceId },
       });
@@ -734,6 +749,21 @@ export class DocumentService {
         });
       }
 
+      let tagsUpdate = {};
+      if (dto.tags !== undefined) {
+        tagsUpdate = {
+          tags: {
+            deleteMany: {},
+            create: tagRecords.map((tag) => ({
+              tagId: tag.id,
+            })),
+          },
+        };
+      }
+
+      const purposeChanged = dto.purpose !== undefined && dto.purpose !== document.purpose;
+      const oldPurpose = purposeChanged ? document.purpose : null;
+
       // Save draft
       const now = new Date();
       const updated = await tx.document.update({
@@ -743,6 +773,10 @@ export class DocumentService {
           draftContent: dto.content !== undefined ? dto.content : document.draftContent,
           draftUpdatedAt: now,
           updatedAt: now,
+          sourceDescription: dto.sourceDescription,
+          verificationStatus: dto.verificationStatus,
+          purpose: dto.purpose,
+          ...tagsUpdate,
         },
       });
 
@@ -759,13 +793,29 @@ export class DocumentService {
 
       this.logger.log(`Draft saved for document ${documentId} by ${userId}`);
 
-      return {
-        id: updated.id,
-        hasDraft: updated.draftContent !== null || updated.draftTitle !== null,
-        draftUpdatedAt: updated.draftUpdatedAt,
-        updatedAt: updated.updatedAt,
-      };
+      return { updated, purposeChanged, oldPurpose };
     });
+
+    if (result.purposeChanged && result.oldPurpose !== null) {
+      const event = new DocumentPurposeChangedEvent(
+        documentId,
+        workspaceId,
+        result.oldPurpose,
+        result.updated.purpose,
+        userId,
+      );
+      await this.eventPublisher.publish(event);
+      this.logger.log(
+        `Document purpose changed: ${documentId} from ${result.oldPurpose} to ${result.updated.purpose} by ${userId}`,
+      );
+    }
+
+    return {
+      id: result.updated.id,
+      hasDraft: result.updated.draftContent !== null || result.updated.draftTitle !== null,
+      draftUpdatedAt: result.updated.draftUpdatedAt,
+      updatedAt: result.updated.updatedAt,
+    };
   }
 
   /**

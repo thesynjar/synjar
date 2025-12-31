@@ -99,12 +99,21 @@ async function setupUserAndWorkspace(page: Page) {
   await page.getByLabel('Email').fill(user.email);
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: /sign in/i }).click();
-  await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+  await page.waitForURL(/\/workspaces(\/[a-f0-9-]+)?/, { timeout: 10000 });
 
-  // Navigate to workspace
-  const workspaceCard = page.locator('div.cursor-pointer').first();
-  await workspaceCard.click();
-  await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
+  // Navigate to workspace if not auto-redirected
+  if (!/\/workspaces\/[a-f0-9-]+/.test(page.url())) {
+    const workspaceHeading = page.getByRole('heading', { name: user.workspaceName });
+    const nextStep = await Promise.race([
+      page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 }).then(() => 'navigated'),
+      workspaceHeading.waitFor({ state: 'visible', timeout: 10000 }).then(() => 'list'),
+    ]);
+
+    if (nextStep === 'list') {
+      await workspaceHeading.click();
+      await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
+    }
+  }
 
   return user;
 }
@@ -149,7 +158,7 @@ test.describe('Document Create and Edit', () => {
     await setupUserAndWorkspace(page);
 
     // Create document via modal
-    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByRole('button', { name: /New Text/i }).first().click();
     await page.getByPlaceholder('Document title').fill('Editable Document');
     await page.getByPlaceholder(/document content/i).fill('Initial content.');
     await page.getByRole('button', { name: 'Create Document' }).click();
@@ -186,7 +195,7 @@ test.describe('Document Create and Edit', () => {
     await setupUserAndWorkspace(page);
 
     // Create document via modal
-    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByRole('button', { name: /New Text/i }).first().click();
     await page.getByPlaceholder('Document title').fill('Auto-save Test Document');
     await page.getByPlaceholder(/document content/i).fill('Initial content.');
     await page.getByRole('button', { name: 'Create Document' }).click();
@@ -412,7 +421,7 @@ test.describe('Document Create and Edit', () => {
     await setupUserAndWorkspace(page);
 
     // Create document via modal
-    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByRole('button', { name: /New Text/i }).first().click();
     await page.getByPlaceholder('Document title').fill('Rapid Typing Test');
     await page.getByPlaceholder(/document content/i).fill('Initial content.');
     await page.getByRole('button', { name: 'Create Document' }).click();
@@ -536,5 +545,72 @@ test.describe('Document Create and Edit', () => {
     await expect(successIndicator).toBeVisible({ timeout: 5000 });
 
     console.log('✅ Save Draft button works correctly');
+  });
+
+  /**
+   * REGRESSION TEST: Verification status should persist after publish
+   *
+   * Bug: Switching verification to VERIFIED, publishing, and reloading
+   * keeps the document UNVERIFIED.
+   */
+  test('should persist verification status after publish [REGRESSION]', async ({ page }) => {
+    await setupUserAndWorkspace(page);
+
+    const title = 'Verification Status Regression';
+
+    // Create document via modal
+    await page.getByRole('button', { name: /New Text/i }).first().click();
+    await page.getByPlaceholder('Document title').fill(title);
+    await page.getByPlaceholder(/document content/i).fill('Verification status regression content.');
+    await page.getByRole('button', { name: 'Create Document' }).click();
+
+    // Open document in edit page (some flows auto-navigate after creation)
+    const editUrlPattern = /\/documents\/[a-f0-9-]+\/edit/;
+    const documentRow = page.getByRole('button', { name: new RegExp(title) });
+
+    const openResult = await Promise.race([
+      page.waitForURL(editUrlPattern, { timeout: 10000 }).then(() => 'navigated'),
+      documentRow.waitFor({ state: 'visible', timeout: 10000 }).then(() => 'list'),
+    ]);
+
+    if (openResult === 'list') {
+      await documentRow.click();
+      await page.waitForURL(editUrlPattern, { timeout: 10000 });
+    }
+
+    await page.waitForLoadState('networkidle');
+
+    // Wait for edit lock to be acquired before changing fields
+    await expect(page.getByText('You are editing')).toBeVisible({ timeout: 10000 });
+
+    const unverifiedRadio = page.getByRole('radio', { name: 'Unverified', exact: true });
+    const verifiedRadio = page.getByRole('radio', { name: 'Verified', exact: true });
+
+    await expect(unverifiedRadio).toBeChecked({ timeout: 5000 });
+    await expect(verifiedRadio).not.toBeChecked();
+
+    // Switch to VERIFIED and verify Publish becomes enabled immediately
+    await verifiedRadio.click();
+    await expect(verifiedRadio).toBeChecked();
+
+    const publishButton = page.getByRole('button', { name: /publish document and make it searchable/i });
+    await expect(publishButton).toBeEnabled({ timeout: 5000 });
+    await publishButton.click();
+
+    // Publish and confirm
+    const publishDialog = page.getByRole('alertdialog');
+    await expect(publishDialog).toBeVisible();
+    await publishDialog.getByRole('button', { name: /confirm and publish document/i }).click();
+
+    // Back to workspace documents list
+    await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
+    await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
+
+    // Re-open document and verify status persisted
+    await page.getByText(title).click();
+    await page.waitForURL(/\/documents\/[a-f0-9-]+\/edit/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('radio', { name: 'Verified', exact: true })).toBeChecked({ timeout: 5000 });
   });
 });

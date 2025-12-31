@@ -86,11 +86,15 @@ export function useAutoSave({
 
       const method = endpoint === 'save-draft' ? 'post' : 'patch';
 
-      // For save-draft endpoint, only send title and content
+      // For save-draft endpoint, include metadata that should persist before publish
       const requestData = endpoint === 'save-draft'
         ? {
             title: data.title,
             content: data.content,
+            sourceDescription: data.sourceDescription,
+            verificationStatus: data.verificationStatus,
+            purpose: data.purpose,
+            tags: data.tags,
             expectedUpdatedAt,
           }
         : {
