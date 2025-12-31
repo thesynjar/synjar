@@ -21,7 +21,7 @@ let mockIsMultiWorkspace = false;
 // Mock dependencies
 vi.mock('@/shared/api/client', () => ({
   createApiClient: () => ({
-    get: vi.fn().mockImplementation((url: string) => ({
+    get: vi.fn().mockImplementation(() => ({
       json: () => {
         return Promise.resolve({ id: 'ws-1', name: 'Test Workspace', description: 'Test description' });
       },
