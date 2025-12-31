@@ -32,6 +32,7 @@ COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY . .
 RUN pnpm --filter api run db:generate
 RUN pnpm --filter api run build
+RUN pnpm --filter api run scripts:build
 
 # Resolve prisma symlink to actual package (for runner stage)
 RUN cp -rL apps/api/node_modules/prisma /tmp/prisma-cli
