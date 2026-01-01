@@ -46,12 +46,13 @@ describe('Instruction Set Integration Tests', () => {
     prisma = module.get<PrismaService>(PrismaService);
     await prisma.$connect();
 
-    // Use DATABASE_URL from env (set by setup-env.ts for e2e tests)
-    // Falls back to dev database if not set
+    // Use DATABASE_URL_MIGRATE for superuser access (bypasses RLS in setup/teardown)
     prismaSuperuser = new PrismaClient({
       datasources: {
         db: {
-          url: process.env.DATABASE_URL,
+          url:
+            process.env.DATABASE_URL_MIGRATE ||
+            'postgresql://postgres:postgres@localhost:6201/synjar?schema=public',
         },
       },
     });
