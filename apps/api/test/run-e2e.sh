@@ -14,18 +14,18 @@ cd "$(dirname "$0")/../../.."
 
 # Start test containers
 echo -e "${YELLOW}📦 Starting Docker containers...${NC}"
-docker-compose -f docker-compose.test.yml up -d
+docker compose -f docker-compose.test.yml up -d
 
 # Wait for PostgreSQL to be ready
 echo -e "${YELLOW}⏳ Waiting for PostgreSQL...${NC}"
-until docker-compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U postgres > /dev/null 2>&1; do
+until docker compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U postgres > /dev/null 2>&1; do
   sleep 1
 done
 echo -e "${GREEN}✓ PostgreSQL is ready${NC}"
 
 # Wait for Mailpit to be ready
 echo -e "${YELLOW}⏳ Waiting for Mailpit...${NC}"
-until curl -s http://localhost:6213/api/v1/messages > /dev/null 2>&1; do
+until curl -s http://localhost:6313/api/v1/messages > /dev/null 2>&1; do
   sleep 1
 done
 echo -e "${GREEN}✓ Mailpit is ready${NC}"
@@ -33,22 +33,22 @@ echo -e "${GREEN}✓ Mailpit is ready${NC}"
 # Apply migrations
 echo -e "${YELLOW}🔄 Applying database migrations...${NC}"
 cd apps/api
-DATABASE_URL="postgresql://postgres:postgres@localhost:6211/synjar_test?schema=public" \
-DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6211/synjar_test?schema=public" \
+DATABASE_URL="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
+DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
 npx prisma migrate deploy
 
 # Run tests with all test environment variables
 echo -e "${YELLOW}🧪 Running E2E tests...${NC}"
 TEST_RESULT=0
 export NODE_ENV=test
-export DATABASE_URL="postgresql://postgres:postgres@localhost:6211/synjar_test?schema=public"
+export DATABASE_URL="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public"
 export JWT_SECRET="test-jwt-secret-for-e2e-tests"
 export JWT_EXPIRES_IN="7d"
 export SMTP_HOST="localhost"
-export SMTP_PORT="6212"
+export SMTP_PORT="6312"
 export SMTP_SECURE="false"
 export EMAIL_VERIFICATION_URL="http://localhost:6210/auth/verify"
-export MAILPIT_API_URL="http://localhost:6213"
+export MAILPIT_API_URL="http://localhost:6313"
 export OPENAI_API_KEY="sk-test-dummy-key-for-testing"
 export B2_KEY_ID="test-key"
 export B2_APPLICATION_KEY="test-app-key"
@@ -60,7 +60,7 @@ npx jest --config ./test/jest-e2e.json --testPathPattern="${1:-registration}" --
 # Cleanup
 cd ../..
 echo -e "${YELLOW}🧹 Stopping Docker containers...${NC}"
-docker-compose -f docker-compose.test.yml down
+docker compose -f docker-compose.test.yml down
 
 if [ $TEST_RESULT -eq 0 ]; then
   echo -e "${GREEN}✅ All tests passed!${NC}"

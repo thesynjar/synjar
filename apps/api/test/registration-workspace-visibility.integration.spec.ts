@@ -48,10 +48,10 @@ import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.s
  * Environment (from test/.env.test):
  *   - NODE_ENV=test
  *   - DEPLOYMENT_MODE=cloud
- *   - DATABASE_URL=postgresql://postgres:postgres@localhost:6211/synjar_test
+ *   - DATABASE_URL=postgresql://postgres:postgres@localhost:6311/synjar_test
  *   - SMTP_HOST=localhost
- *   - SMTP_PORT=6212
- *   - MAILPIT_API_URL=http://localhost:6213
+ *   - SMTP_PORT=6312
+ *   - MAILPIT_API_URL=http://localhost:6313
  *   - JWT_SECRET=test-jwt-secret-for-e2e-tests
  *   - EMAIL_VERIFICATION_URL=http://localhost:6210/auth/verify
  *
@@ -76,7 +76,7 @@ describe('Registration → Workspace Visibility (REGRESSION)', () => {
 
   beforeAll(async () => {
     // Environment variables are set by setup-env.ts
-    // Test ports: SMTP 6212, Mailpit API 6213, Postgres 6211
+    // Test ports: SMTP 6312, Mailpit API 6313, Postgres 6311
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [await AppModule.forRoot()],

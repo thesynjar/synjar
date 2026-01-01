@@ -22,10 +22,10 @@ const testEnv: Record<string, string> = {
 
   // Email (Mailpit - test ports)
   SMTP_HOST: 'localhost',
-  SMTP_PORT: '6212',
+  SMTP_PORT: '6312',
   SMTP_SECURE: 'false',
-  EMAIL_VERIFICATION_URL: 'http://localhost:6210/auth/verify',
-  MAILPIT_API_URL: 'http://localhost:6213',
+  EMAIL_VERIFICATION_URL: 'http://localhost:6310/auth/verify',
+  MAILPIT_API_URL: 'http://localhost:6313',
 
   // OpenAI (mock for tests that don't need it)
   OPENAI_API_KEY: 'sk-test-dummy-key-for-testing',
@@ -35,7 +35,7 @@ const testEnv: Record<string, string> = {
   B2_KEY_ID: 'minioadmin',
   B2_APPLICATION_KEY: 'minioadmin',
   B2_BUCKET_NAME: 'synjar-test',
-  B2_ENDPOINT: 'http://localhost:6214',
+  B2_ENDPOINT: 'http://localhost:6314',
 };
 
 const isCi = process.env.CI === 'true';

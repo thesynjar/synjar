@@ -30,7 +30,7 @@ const logger = new Logger('AppModule');
 function getCoreModules() {
   const isTest = process.env.NODE_ENV === 'test';
   // Use process.cwd() which is always the api folder
-  // Test: test/.env.test (ports 6211-6213), Dev: .env (ports 6201-6203)
+  // Test: test/.env.test (ports 6311-6315), Dev: .env (ports 6201-6205)
   const envFile = isTest
     ? path.join(process.cwd(), 'test', '.env.test')
     : path.join(process.cwd(), '.env');

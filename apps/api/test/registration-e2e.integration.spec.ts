@@ -30,8 +30,8 @@ const OWNER_PERMISSIONS = [
  * 3. Security: Constant-time responses, rate limiting, password validation
  *
  * Prerequisites (TEST environment - separate from dev):
- * - Mailpit running on localhost:6212 (SMTP) / 6213 (API)
- * - PostgreSQL running on localhost:6211
+ * - Mailpit running on localhost:6312 (SMTP) / 6313 (API)
+ * - PostgreSQL running on localhost:6311
  *
  * Run with: pnpm test:e2e -- --testPathPattern=registration-e2e
  *
@@ -39,7 +39,7 @@ const OWNER_PERMISSIONS = [
  */
 
 // Mailpit API configuration (loaded from setup-env.ts or environment)
-const MAILPIT_API_URL = process.env.MAILPIT_API_URL || 'http://localhost:6213';
+const MAILPIT_API_URL = process.env.MAILPIT_API_URL || 'http://localhost:6313';
 
 interface MailpitMessage {
   ID: string;
@@ -140,7 +140,7 @@ describe('Registration E2E Integration Tests', () => {
 
   beforeAll(async () => {
     // Environment variables are set by setup-env.ts
-    // Test ports: SMTP 6212, Mailpit API 6213, Postgres 6211
+    // Test ports: SMTP 6312, Mailpit API 6313, Postgres 6311
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [await AppModule.forRoot()],
@@ -614,12 +614,12 @@ describe('Registration E2E Integration Tests', () => {
      * Prerequisites:
      * - NODE_ENV=test
      * - DEPLOYMENT_MODE=cloud
-     * - Mailpit running on localhost:6212 (SMTP) / 6213 (API)
+     * - Mailpit running on localhost:6312 (SMTP) / 6313 (API)
      *
      * Environment variables (from .env.test):
      * - SMTP_HOST=localhost
-     * - SMTP_PORT=6212
-     * - MAILPIT_API_URL=http://localhost:6213
+     * - SMTP_PORT=6312
+     * - MAILPIT_API_URL=http://localhost:6313
      * - EMAIL_VERIFICATION_URL=http://localhost:6210/auth/verify
      *
      * Root Cause:

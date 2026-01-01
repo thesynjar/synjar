@@ -11,9 +11,9 @@ import { EmailQueueService } from './email-queue.service';
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        // SMTP port defaults: Test: 6212, Dev: 6202
+        // SMTP port defaults: Test: 6312, Dev: 6202
         const isTest = process.env.NODE_ENV === 'test';
-        const defaultSmtpPort = isTest ? 6212 : 6202;
+        const defaultSmtpPort = isTest ? 6312 : 6202;
 
         const smtpHost = configService.get('SMTP_HOST', 'localhost');
         const smtpPortConfig = configService.get('SMTP_PORT');

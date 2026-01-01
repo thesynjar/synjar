@@ -29,7 +29,7 @@ describe('MCP Privacy Compliance (TS-014a-c)', () => {
         db: {
           url:
             process.env.DATABASE_URL_MIGRATE ||
-            'postgresql://postgres:postgres@localhost:6211/synjar?schema=public',
+            'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public',
         },
       },
     });
