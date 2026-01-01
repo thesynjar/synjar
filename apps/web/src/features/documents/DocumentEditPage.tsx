@@ -253,7 +253,7 @@ export function DocumentEditPage() {
       toast.success('Draft discarded');
       await releaseLock();
       navigate(`/workspaces/${workspaceId}`);
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to discard draft');
     } finally {
       setIsDiscarding(false);

@@ -75,7 +75,7 @@ export function useDocumentBackup(
         content: DOMPurify.sanitize(backup.content),
         savedAt: backup.savedAt,
       };
-    } catch (e) {
+    } catch (_e) {
       localStorage.removeItem(`${BACKUP_KEY}:${docId}`);
       return null;
     }

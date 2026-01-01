@@ -1,1 +1,32 @@
+# Verify pnpm-lock.yaml is in sync with package.json files
+# This catches the same issue that CI would catch with --frozen-lockfile
+echo "Checking pnpm-lock.yaml sync..."
+pnpm install --frozen-lockfile --ignore-scripts 2>/dev/null || {
+  echo ""
+  echo "❌ pnpm-lock.yaml is out of sync with package.json!"
+  echo ""
+  echo "Run 'pnpm install' to update the lockfile, then stage it:"
+  echo "  pnpm install"
+  echo "  git add pnpm-lock.yaml"
+  echo ""
+  exit 1
+}
+echo "✓ pnpm-lock.yaml is in sync"
+
+echo "Running lint..."
+pnpm lint || {
+  echo ""
+  echo "❌ Linting failed! Fix the issues above before committing."
+  exit 1
+}
+echo "✓ Lint passed"
+
+echo "Checking build..."
+pnpm build || {
+  echo ""
+  echo "❌ Build failed! Fix compilation errors before committing."
+  exit 1
+}
+echo "✓ Build passed"
+
 pnpm test

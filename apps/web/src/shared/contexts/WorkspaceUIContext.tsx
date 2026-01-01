@@ -116,37 +116,29 @@ export function WorkspaceUIProvider({ children }: WorkspaceUIProviderProps) {
     [navigate, setLastWorkspace, clearLastWorkspace, workspaces]
   );
 
-  // Handle error state - provide empty context to not break the app
-  if (error) {
-    return (
-      <WorkspaceUIContext.Provider
-        value={{
-          currentWorkspace: null,
-          workspaces: [],
-          workspaceCount: 0,
-          isLoading: false,
-          error,
-          switchWorkspace: () => {},
-          isMultiWorkspace: false,
-          refreshWorkspaces: fetchWorkspaces,
-        }}
-      >
-        {children}
-      </WorkspaceUIContext.Provider>
-    );
-  }
-
   const value: WorkspaceUIContextValue = useMemo(
-    () => ({
-      currentWorkspace,
-      workspaces,
-      workspaceCount: workspaces.length,
-      isLoading,
-      error,
-      switchWorkspace,
-      isMultiWorkspace: workspaces.length > 1,
-      refreshWorkspaces: fetchWorkspaces,
-    }),
+    () =>
+      error
+        ? {
+            currentWorkspace: null,
+            workspaces: [],
+            workspaceCount: 0,
+            isLoading: false,
+            error,
+            switchWorkspace: () => {},
+            isMultiWorkspace: false,
+            refreshWorkspaces: fetchWorkspaces,
+          }
+        : {
+            currentWorkspace,
+            workspaces,
+            workspaceCount: workspaces.length,
+            isLoading,
+            error,
+            switchWorkspace,
+            isMultiWorkspace: workspaces.length > 1,
+            refreshWorkspaces: fetchWorkspaces,
+          },
     [currentWorkspace, workspaces, isLoading, error, switchWorkspace, fetchWorkspaces]
   );
 

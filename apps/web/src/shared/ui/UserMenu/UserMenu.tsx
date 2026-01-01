@@ -76,16 +76,18 @@ export function UserMenu({ user, onLogout, isLoggingOut = false }: UserMenuProps
     const currentIndex = items.indexOf(document.activeElement as Element);
 
     switch (event.key) {
-      case 'ArrowDown':
+      case 'ArrowDown': {
         event.preventDefault();
         const nextIndex = (currentIndex + 1) % items.length;
         (items[nextIndex] as HTMLElement)?.focus();
         break;
-      case 'ArrowUp':
+      }
+      case 'ArrowUp': {
         event.preventDefault();
         const prevIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
         (items[prevIndex] as HTMLElement)?.focus();
         break;
+      }
     }
   }
 

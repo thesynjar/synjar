@@ -1,4 +1,20 @@
+import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../src/infrastructure/persistence/prisma/prisma.service';
+
+/**
+ * Creates a PrismaClient with superuser access (bypasses RLS).
+ * Used for test setup/teardown where we need direct database access.
+ */
+export function createSuperuserClient(): PrismaClient {
+  const databaseUrl = process.env.DATABASE_URL_MIGRATE || process.env.DATABASE_URL;
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+  });
+}
 
 /**
  * Clean all test data from database.
