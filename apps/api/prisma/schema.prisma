@@ -59,6 +59,8 @@ model Workspace {
   processingQueue WorkspaceProcessingQueue?
   tags            Tag[]
   instructionSets InstructionSet[]
+  usageEvents     UsageEvent[]
+  usageDaily      UsageDaily[]
 
   @@index([createdById])
 }
@@ -268,22 +270,87 @@ enum DocumentPurpose {
 
 // ============ PUBLIC ACCESS ============
 
+enum HistoryMode {
+  OFF
+  ON
+}
+
 model PublicLink {
-  id          String @id @default(uuid())
-  token       String @unique
+  id          String      @id @default(uuid())
+  token       String      @unique
   workspaceId String
 
   name        String?
   allowedTags String[]
-  expiresAt   DateTime? @db.Timestamptz
-  isActive    Boolean   @default(true)
+  expiresAt   DateTime?   @db.Timestamptz
+  isActive    Boolean     @default(true)
+  historyMode HistoryMode @default(OFF)
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  usageEvents  UsageEvent[]
+  usageDaily   UsageDaily[]
 
   @@index([token])
   @@index([workspaceId])
+  @@index([isActive])
+}
+
+// ============ USAGE EVENTS ============
+
+enum UsageEventSource {
+  SEARCH_LINK
+  MCP_SEARCH
+  INSTRUCTION_SET
+}
+
+model UsageEvent {
+  id                String            @id @default(uuid())
+  workspaceId       String
+  searchLinkId      String?
+  instructionSetId  String?
+  source            UsageEventSource
+  createdAt         DateTime          @default(now()) @db.Timestamptz
+  resultCount       Int
+  latencyMs         Int
+  queryStored       Boolean           @default(false)
+  queryText         String?           @db.VarChar(512)
+  userAgentHash     String?
+  ipHash            String?
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id])
+  searchLink       PublicLink?      @relation(fields: [searchLinkId], references: [id], onDelete: SetNull)
+  instructionSet   InstructionSet?  @relation(fields: [instructionSetId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([searchLinkId])
+  @@index([instructionSetId])
+  @@index([createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, source])
+}
+
+model UsageDaily {
+  id               String            @id @default(uuid())
+  workspaceId      String
+  searchLinkId     String?
+  instructionSetId String?
+  source           UsageEventSource
+  date             DateTime          @db.Date
+  requestCount     Int
+  avgLatencyMs     Int
+  billingLockedAt  DateTime?         @db.Timestamptz
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id])
+  searchLink       PublicLink?      @relation(fields: [searchLinkId], references: [id], onDelete: SetNull)
+  instructionSet   InstructionSet?  @relation(fields: [instructionSetId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, source, date, searchLinkId, instructionSetId])
+  @@index([workspaceId])
+  @@index([date])
+  @@index([workspaceId, date])
+  @@index([billingLockedAt])
 }
 
 // ============ SYSTEM TABLES ============
@@ -316,8 +383,10 @@ model InstructionSet {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
-  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents InstructionSetDocument[]
+  workspace    Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents    InstructionSetDocument[]
+  usageEvents  UsageEvent[]
+  usageDaily   UsageDaily[]
 
   @@index([workspaceId])
 }

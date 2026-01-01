@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, ValidateIf, IsDate } from 'class-validator';
+import { IsString, IsOptional, IsArray, ValidateIf, IsDate, IsEnum } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class CreatePublicLinkDto {
@@ -33,6 +33,12 @@ export class CreatePublicLinkDto {
   expiresAt?: Date;
 }
 
+export class UpdatePublicLinkDto {
+  @ApiProperty({ enum: ['ON', 'OFF'], example: 'OFF' })
+  @IsEnum(['ON', 'OFF'], { message: 'historyMode must be either ON or OFF' })
+  historyMode!: 'ON' | 'OFF';
+}
+
 export class PublicLinkResponseDto {
   @ApiProperty()
   id!: string;
@@ -57,4 +63,7 @@ export class PublicLinkResponseDto {
 
   @ApiProperty()
   createdAt!: Date;
+
+  @ApiProperty({ enum: ['ON', 'OFF'] })
+  historyMode!: 'ON' | 'OFF';
 }

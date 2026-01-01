@@ -7,6 +7,7 @@ export interface SearchLink {
   expiresAt: string | null;
   isActive: boolean;
   createdAt: string;
+  historyMode: 'ON' | 'OFF';
 }
 
 export interface CreateSearchLinkDto {

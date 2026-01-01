@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Delete,
+  Patch,
   Body,
   Param,
   UseGuards,
@@ -21,6 +22,7 @@ import {
 import { PublicLinkService } from '@/application/public-link/public-link.service';
 import {
   CreatePublicLinkDto,
+  UpdatePublicLinkDto,
   PublicLinkResponseDto,
 } from '../dto/public-link.dto';
 
@@ -61,6 +63,18 @@ export class PublicLinkController {
     @CurrentUser() user: CurrentUserData,
   ) {
     return this.publicLinkService.findOne(workspaceId, id, user.id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update public link' })
+  @ApiResponse({ status: 200, type: PublicLinkResponseDto })
+  async update(
+    @Param('workspaceId') workspaceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: UpdatePublicLinkDto,
+  ) {
+    return this.publicLinkService.update(workspaceId, id, user.id, dto);
   }
 
   @Delete(':id')

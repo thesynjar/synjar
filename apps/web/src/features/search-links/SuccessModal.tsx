@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SearchLink } from './types';
 import { config } from '@/shared/config';
+import { McpSetupTabs } from './McpSetupTabs';
 
 interface SuccessModalProps {
   link: SearchLink;
@@ -9,11 +10,12 @@ interface SuccessModalProps {
 }
 
 export function SuccessModal({ link, workspaceName, onClose }: SuccessModalProps) {
-  const [copied, setCopied] = useState<'link' | 'prompt' | 'api' | null>(null);
+  const [copied, setCopied] = useState<'link' | 'mcp' | null>(null);
 
   const baseUrl = `${config.apiUrl}/public/${link.token}/search`;
+  const mcpUrl = `${config.apiUrl}/mcp/${link.token}`;
 
-  const copyToClipboard = async (text: string, type: 'link' | 'prompt' | 'api') => {
+  const copyToClipboard = async (text: string, type: 'link' | 'mcp') => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(type);
@@ -22,40 +24,6 @@ export function SuccessModal({ link, workspaceName, onClose }: SuccessModalProps
       console.error('Failed to copy:', err);
     }
   };
-
-  const linkName = link.name || workspaceName;
-
-  const chatPrompt = `You have access to "${linkName}" knowledge base via Synjar semantic search API.
-
-IMPORTANT: You cannot open URLs you generate yourself. Do not try to fetch search links directly.
-The link must be pasted by the user (or appear on a page the user already opened).
-Whenever you need to search, ask the user to paste the exact link into the chat.
-
-Use this exact instruction:
-"Please read this link: ${baseUrl}?q=YOUR_QUERY"
-
-If you need multiple searches, provide ALL links and ask the user to paste each one.
-Wait for the user to paste the link(s), then use the returned JSON to answer.
-
-Replace YOUR_QUERY with URL-encoded search terms. Examples:
-- ${baseUrl}?q=refund+policy
-- ${baseUrl}?q=how+to+reset+password
-
-The API returns JSON with relevant document chunks and relevance scores. Use this to answer questions about ${linkName}.`;
-
-  const apiExample = `GET ${baseUrl}?q=refund+policy
-
-Response:
-{
-  "results": [
-    {
-      "title": "Refund Policy",
-      "content": "Full refund within 30 days...",
-      "score": 0.95
-    }
-  ],
-  "totalCount": 3
-}`;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -76,20 +44,40 @@ Response:
           </button>
         </div>
 
-        {/* Link display */}
+        {/* MCP URL display */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-slate-300 mb-2">
-            Your search API endpoint:
+            MCP Server URL (for ChatGPT / Claude):
           </label>
           <div className="bg-slate-900 rounded-lg p-4 flex items-center gap-4">
             <div className="flex-1 overflow-x-auto">
               <code className="text-blue-400 text-sm whitespace-nowrap">
+                {mcpUrl}
+              </code>
+            </div>
+            <button
+              onClick={() => copyToClipboard(mcpUrl, 'mcp')}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm transition-colors shrink-0 cursor-pointer"
+            >
+              {copied === 'mcp' ? 'Copied!' : 'Copy MCP URL'}
+            </button>
+          </div>
+        </div>
+
+        {/* Direct API URL display */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Direct Search API endpoint:
+          </label>
+          <div className="bg-slate-900 rounded-lg p-4 flex items-center gap-4">
+            <div className="flex-1 overflow-x-auto">
+              <code className="text-slate-400 text-sm whitespace-nowrap">
                 {baseUrl}
               </code>
             </div>
             <button
               onClick={() => copyToClipboard(baseUrl, 'link')}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm transition-colors shrink-0 cursor-pointer"
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white text-sm transition-colors shrink-0 cursor-pointer"
             >
               {copied === 'link' ? 'Copied!' : 'Copy URL'}
             </button>
@@ -97,61 +85,9 @@ Response:
         </div>
 
         <div className="border-t border-slate-700 pt-6 mb-6">
-          <h3 className="text-lg font-medium text-white mb-4">How to use:</h3>
+          <h3 className="text-lg font-medium text-white mb-4">Setup Instructions:</h3>
 
-          {/* ChatGPT/Claude usage */}
-          <div className="bg-slate-900 rounded-lg p-4 mb-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">1</span>
-              <h4 className="text-white font-medium">ChatGPT / Claude with browsing</h4>
-            </div>
-            <p className="text-slate-400 text-sm mb-3">
-              Paste this prompt to give AI access to your knowledge base:
-            </p>
-            <div className="bg-slate-800 rounded p-3 mb-3 overflow-x-auto">
-              <pre className="text-slate-300 text-sm whitespace-pre font-mono">
-                {chatPrompt}
-              </pre>
-            </div>
-            <button
-              onClick={() => copyToClipboard(chatPrompt, 'prompt')}
-              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors cursor-pointer"
-            >
-              {copied === 'prompt' ? 'Copied!' : 'Copy Prompt'}
-            </button>
-          </div>
-
-          {/* API usage */}
-          <div className="bg-slate-900 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">2</span>
-              <h4 className="text-white font-medium">API integration (for developers)</h4>
-            </div>
-            <p className="text-slate-400 text-sm mb-3">
-              Query the search API from your backend:
-            </p>
-            <div className="bg-slate-800 rounded p-3 mb-3 overflow-x-auto">
-              <pre className="text-slate-300 text-sm whitespace-pre font-mono">
-                {apiExample}
-              </pre>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => copyToClipboard(baseUrl, 'api')}
-                className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors cursor-pointer"
-              >
-                {copied === 'api' ? 'Copied!' : 'Copy API URL'}
-              </button>
-              <a
-                href={`${config.docsUrl}/api-reference/search-links`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
-              >
-                View API documentation →
-              </a>
-            </div>
-          </div>
+          <McpSetupTabs mcpUrl={mcpUrl} apiUrl={baseUrl} />
         </div>
 
         <div className="flex justify-end">

@@ -31,6 +31,10 @@ interface CreatePublicLinkDto {
   expiresAt?: Date;
 }
 
+interface UpdatePublicLinkDto {
+  historyMode: 'ON' | 'OFF';
+}
+
 interface PublicSearchDto {
   query?: string;
   tags?: string[];
@@ -113,6 +117,25 @@ export class PublicLinkService {
     }
 
     return link;
+  }
+
+  async update(
+    workspaceId: string,
+    linkId: string,
+    userId: string,
+    dto: UpdatePublicLinkDto,
+  ): Promise<PublicLink> {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    const link = await this.publicLinkRepository.findOneWithUser(userId, linkId, workspaceId);
+
+    if (!link) {
+      throw new NotFoundException('Public link not found');
+    }
+
+    return this.publicLinkRepository.updateWithUser(userId, linkId, {
+      historyMode: dto.historyMode,
+    });
   }
 
   async delete(workspaceId: string, linkId: string, userId: string): Promise<void> {

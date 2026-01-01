@@ -30,6 +30,7 @@ export interface IPublicLinkRepository {
   createWithUser(userId: string, data: CreatePublicLinkData): Promise<PublicLink>;
   findAllWithUser(userId: string, workspaceId: string): Promise<PublicLink[]>;
   findOneWithUser(userId: string, id: string, workspaceId: string): Promise<PublicLink | null>;
+  updateWithUser(userId: string, id: string, data: Partial<{ historyMode: 'ON' | 'OFF' }>): Promise<PublicLink>;
   deleteWithUser(userId: string, id: string): Promise<void>;
 
   // System operations (bypass RLS)

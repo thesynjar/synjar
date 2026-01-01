@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SearchLink } from './types';
 import { config } from '@/shared/config';
+import { McpSetupTabs } from './McpSetupTabs';
 
 interface SearchLinkCardProps {
   link: SearchLink;
@@ -8,9 +9,11 @@ interface SearchLinkCardProps {
 }
 
 export function SearchLinkCard({ link, onRevoke }: SearchLinkCardProps) {
-  const [copied, setCopied] = useState<'link' | 'prompt' | null>(null);
+  const [copied, setCopied] = useState<'link' | 'mcp' | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   const apiUrl = `${config.apiUrl}/public/${link.token}/search`;
+  const mcpUrl = `${config.apiUrl}/mcp/${link.token}`;
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -20,7 +23,7 @@ export function SearchLinkCard({ link, onRevoke }: SearchLinkCardProps) {
     });
   };
 
-  const copyToClipboard = async (text: string, type: 'link' | 'prompt') => {
+  const copyToClipboard = async (text: string, type: 'link' | 'mcp') => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(type);
@@ -29,26 +32,6 @@ export function SearchLinkCard({ link, onRevoke }: SearchLinkCardProps) {
       console.error('Failed to copy:', err);
     }
   };
-
-  const linkName = link.name || 'Knowledge Base';
-
-  const examplePrompt = `You have access to "${linkName}" knowledge base via Synjar semantic search API.
-
-IMPORTANT: You cannot open URLs you generate yourself. Do not try to fetch search links directly.
-The link must be pasted by the user (or appear on a page the user already opened).
-Whenever you need to search, ask the user to paste the exact link into the chat.
-
-Use this exact instruction:
-"Please read this link: ${apiUrl}?q=YOUR_QUERY"
-
-If you need multiple searches, provide ALL links and ask the user to paste each one.
-Wait for the user to paste the link(s), then use the returned JSON to answer.
-
-Replace YOUR_QUERY with URL-encoded search terms. Examples:
-- ${apiUrl}?q=refund+policy
-- ${apiUrl}?q=how+to+reset+password
-
-The API returns JSON with relevant document chunks and relevance scores. Use this to answer questions about ${linkName}.`;
 
   const isExpired = link.expiresAt && new Date(link.expiresAt) < new Date();
 
@@ -103,43 +86,63 @@ The API returns JSON with relevant document chunks and relevance scores. Use thi
         )}
       </div>
 
-      {/* URL display */}
-      <div className="bg-slate-900 rounded-lg p-3 mb-4 flex items-center gap-4">
-        <div className="flex-1 overflow-x-auto">
-          <code className="text-slate-300 text-sm whitespace-nowrap">
-            {apiUrl}
-          </code>
+      {/* MCP URL display */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-slate-400 mb-2">
+          MCP Server URL (ChatGPT / Claude)
+        </label>
+        <div className="bg-slate-900 rounded-lg p-3 flex items-center gap-4">
+          <div className="flex-1 overflow-x-auto">
+            <code className="text-slate-300 text-sm whitespace-nowrap">
+              {mcpUrl}
+            </code>
+          </div>
+          <button
+            onClick={() => copyToClipboard(mcpUrl, 'mcp')}
+            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            {copied === 'mcp' ? 'Copied!' : 'Copy MCP URL'}
+          </button>
         </div>
-        <button
-          onClick={() => copyToClipboard(apiUrl, 'link')}
-          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors flex items-center gap-2 cursor-pointer shrink-0"
-        >
-          {copied === 'link' ? (
-            <>
-              <svg className="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Copied!
-            </>
-          ) : (
-            <>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-              </svg>
-              Copy Link
-            </>
-          )}
-        </button>
       </div>
+
+      {/* Direct API URL display */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-slate-400 mb-2">
+          Direct Search API
+        </label>
+        <div className="bg-slate-900 rounded-lg p-3 flex items-center gap-4">
+          <div className="flex-1 overflow-x-auto">
+            <code className="text-slate-300 text-sm whitespace-nowrap">
+              {apiUrl}
+            </code>
+          </div>
+          <button
+            onClick={() => copyToClipboard(apiUrl, 'link')}
+            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            {copied === 'link' ? 'Copied!' : 'Copy URL'}
+          </button>
+        </div>
+      </div>
+
+      {/* View Setup Instructions */}
+      <button
+        onClick={() => setShowInstructions(!showInstructions)}
+        className="text-blue-400 hover:text-blue-300 text-sm transition-colors mb-4"
+      >
+        {showInstructions ? 'Hide' : 'View'} Setup Instructions →
+      </button>
+
+      {/* Collapsible instructions */}
+      {showInstructions && (
+        <div className="mb-4 border-t border-slate-700 pt-4">
+          <McpSetupTabs mcpUrl={mcpUrl} apiUrl={apiUrl} />
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => copyToClipboard(examplePrompt, 'prompt')}
-          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white transition-colors cursor-pointer"
-        >
-          {copied === 'prompt' ? 'Copied!' : 'Copy Prompt'}
-        </button>
         <button
           onClick={onRevoke}
           className="px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded text-sm transition-colors cursor-pointer"

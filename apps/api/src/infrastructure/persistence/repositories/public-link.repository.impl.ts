@@ -97,6 +97,19 @@ export class PrismaPublicLinkRepository implements IPublicLinkRepository {
     });
   }
 
+  async updateWithUser(
+    userId: string,
+    id: string,
+    data: Partial<{ historyMode: 'ON' | 'OFF' }>,
+  ): Promise<PublicLink> {
+    return this.prisma.forUser(userId, async (tx) => {
+      return tx.publicLink.update({
+        where: { id },
+        data,
+      });
+    });
+  }
+
   async deleteWithUser(userId: string, id: string): Promise<void> {
     await this.prisma.forUser(userId, async (tx) => {
       await tx.publicLink.delete({ where: { id } });
@@ -182,6 +195,7 @@ export class PrismaPublicLinkRepository implements IPublicLinkRepository {
     allowed_tags: string[];
     expires_at: Date | null;
     is_active: boolean;
+    history_mode?: string;
     created_at: Date;
     workspace_name: string;
     workspace_created_by_id: string;
@@ -194,6 +208,7 @@ export class PrismaPublicLinkRepository implements IPublicLinkRepository {
       allowedTags: row.allowed_tags,
       expiresAt: row.expires_at,
       isActive: row.is_active,
+      historyMode: (row.history_mode || 'OFF') as 'ON' | 'OFF',
       createdAt: row.created_at,
       workspace: {
         id: row.workspace_id,
