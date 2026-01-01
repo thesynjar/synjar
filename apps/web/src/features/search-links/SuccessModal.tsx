@@ -9,7 +9,7 @@ interface SuccessModalProps {
   onClose: () => void;
 }
 
-export function SuccessModal({ link, workspaceName, onClose }: SuccessModalProps) {
+export function SuccessModal({ link, workspaceName: _workspaceName, onClose }: SuccessModalProps) {
   const [copied, setCopied] = useState<'link' | 'mcp' | null>(null);
 
   const baseUrl = `${config.apiUrl}/public/${link.token}/search`;
