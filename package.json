@@ -18,6 +18,7 @@
     "test:all": "pnpm --filter api test:all",
     "test:e2e": "pnpm --filter api test:e2e:full",
     "test:e2e:web": "./apps/web/e2e/run-e2e.sh",
+    "test:full": "pnpm test && pnpm test:integration && pnpm test:e2e && pnpm test:e2e:web",
     "test:security": "pnpm --filter api test:e2e registration",
     "test:cloud": "DEPLOYMENT_MODE=cloud pnpm test:security",
     "test:selfhosted": "DEPLOYMENT_MODE=self-hosted pnpm test:security",

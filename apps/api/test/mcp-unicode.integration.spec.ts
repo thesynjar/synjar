@@ -3,7 +3,6 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
 // Note: This test doesn't create any database records - it only tests
@@ -47,7 +46,6 @@ const mockEmbeddingsService = {
  */
 describe('MCP Unicode NFC Normalization (TS-019)', () => {
   let app: INestApplication;
-  let prisma: PrismaService;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -58,7 +56,6 @@ describe('MCP Unicode NFC Normalization (TS-019)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    prisma = moduleFixture.get(PrismaService);
 
     app.use(cookieParser());
     app.useGlobalPipes(
