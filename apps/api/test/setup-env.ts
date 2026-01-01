@@ -10,6 +10,9 @@
 // Dev: postgres 6205
 // Test: postgres 6311, mailpit 6312/6313, minio 6314/6315
 const testEnv: Record<string, string> = {
+  // Node environment
+  NODE_ENV: 'test',
+
   // Database
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public',
 
