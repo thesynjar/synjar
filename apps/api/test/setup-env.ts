@@ -35,8 +35,14 @@ const testEnv: Record<string, string> = {
   B2_ENDPOINT: 'http://localhost:6214',
 };
 
-// Set environment variables for tests
-// These OVERRIDE any existing values to ensure tests use correct ports
+const isCi = process.env.CI === 'true';
+
+// Set environment variables for tests.
+// In CI, respect values provided by the pipeline and only fill missing ones.
 for (const [key, value] of Object.entries(testEnv)) {
+  if (isCi && process.env[key]) {
+    continue;
+  }
+
   process.env[key] = value;
 }
