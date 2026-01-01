@@ -85,7 +85,7 @@ export class RegistrationOrchestrator {
         },
       });
 
-      // Step 2: Set RLS context now that user exists
+      // Step 2: Set RLS user context now that user exists
       // This satisfies Workspace INSERT policy: "createdById" = get_current_user_id()
       // Using is_local=true ensures context is transaction-scoped (per PostgreSQL docs)
       await tx.$executeRaw`
@@ -99,6 +99,12 @@ export class RegistrationOrchestrator {
           createdById: user.id,
         },
       });
+
+      // Step 3b: Set RLS workspace context now that workspace exists
+      // This satisfies WorkspaceMember INSERT policy: "workspaceId" = get_current_workspace_id()
+      await tx.$executeRaw`
+        SELECT set_config('app.current_workspace_id', ${workspace.id}::text, true)
+      `;
 
       // Step 4: Create workspace member with OWNER role
       // (Same pattern as WorkspaceService.create:49-54)

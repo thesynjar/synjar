@@ -10,6 +10,7 @@ import {
 import { Response, Request } from 'express';
 import { ThrottlerException } from '@nestjs/throttler';
 import { McpErrorCode, McpJsonRpcErrorResponse } from '../../types/mcp.types';
+import { McpRequestException } from './mcp-request.exception';
 
 /**
  * MCP Exception Filter
@@ -17,6 +18,7 @@ import { McpErrorCode, McpJsonRpcErrorResponse } from '../../types/mcp.types';
  * Converts NestJS exceptions to JSON-RPC error responses per MCP spec.
  *
  * Error Code Mapping:
+ * - McpRequestException → Custom error code (from exception)
  * - BadRequestException → -32602 (Invalid params)
  * - ForbiddenException → -32002 (Forbidden)
  * - ThrottlerException → -32000 (Rate limit)
@@ -36,7 +38,15 @@ export class McpExceptionFilter implements ExceptionFilter {
     let message = 'Internal error';
     let data: Record<string, unknown> | undefined;
 
-    if (exception instanceof BadRequestException) {
+    // Check for custom MCP exception first (before generic BadRequestException)
+    if (exception instanceof McpRequestException) {
+      httpStatus = 400;
+      errorCode = exception.errorCode;
+      message = exception.message;
+      if (exception.errorData) {
+        data = exception.errorData;
+      }
+    } else if (exception instanceof BadRequestException) {
       httpStatus = 400;
       errorCode = McpErrorCode.INVALID_PARAMS;
       message = exception.message;

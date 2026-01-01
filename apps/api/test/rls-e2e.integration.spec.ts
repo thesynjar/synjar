@@ -54,8 +54,8 @@ describe('RLS E2E Integration Tests', () => {
       await prisma.$executeRawUnsafe(`
         DO $$
         BEGIN
-          -- Delete TenantUserEmailLookup entries
-          DELETE FROM "TenantUserEmailLookup"
+          -- Delete UserWorkspaceLookup entries (renamed from TenantUserEmailLookup)
+          DELETE FROM "UserWorkspaceLookup"
           WHERE "workspaceId" IN (
             SELECT id FROM "Workspace"
             WHERE "createdById" IN (
@@ -106,13 +106,14 @@ describe('RLS E2E Integration Tests', () => {
     email: string,
     name: string = 'Test User',
   ): Promise<string[]> {
-    // Register user
+    // Register user (workspaceName is required)
     await request(app.getHttpServer())
       .post('/auth/register')
       .send({
         email,
         password: 'TestPass123!@#',
         name,
+        workspaceName: `${name}'s Workspace`,
       })
       .expect(201);
 

@@ -3,7 +3,6 @@ import {
   Post,
   Param,
   Body,
-  BadRequestException,
   UseFilters,
   Ip,
   Headers,
@@ -17,11 +16,13 @@ const isValidToken = (token: string): boolean => {
 import { PublicLinkService } from '@/application/public-link/public-link.service';
 import { UsageEventService } from '@/application/usage-event/usage-event.service';
 import { McpExceptionFilter } from './mcp-exception.filter';
+import { McpRequestException } from './mcp-request.exception';
 import {
   McpJsonRpcRequest,
   McpJsonRpcResponse,
   McpSearchResult,
   McpSearchArguments,
+  McpErrorCode,
 } from '@/types/mcp.types';
 
 /**
@@ -75,7 +76,7 @@ export class McpController {
 
     // 1. Validate token format (64 hex chars) - defense in depth
     if (!isValidToken(token)) {
-      throw new BadRequestException('Invalid token format');
+      throw new McpRequestException('Invalid token format', McpErrorCode.INVALID_REQUEST);
     }
 
     // 2. Validate JSON-RPC structure (deep validation)
@@ -153,31 +154,31 @@ export class McpController {
    */
   private validateMcpRequest(body: unknown): McpJsonRpcRequest {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      throw new BadRequestException('Invalid JSON-RPC request');
+      throw new McpRequestException('Invalid JSON-RPC request', McpErrorCode.INVALID_REQUEST);
     }
 
     const req = body as Record<string, unknown>;
 
-    // Validate required fields
+    // Validate required fields - these are INVALID_REQUEST (-32600) errors
     if (req.jsonrpc !== '2.0') {
-      throw new BadRequestException('Invalid JSON-RPC version');
+      throw new McpRequestException('Invalid JSON-RPC version', McpErrorCode.INVALID_REQUEST);
     }
     if (typeof req.id !== 'string' && typeof req.id !== 'number') {
-      throw new BadRequestException('Invalid request ID');
+      throw new McpRequestException('Invalid request ID', McpErrorCode.INVALID_REQUEST);
     }
     if (req.method !== 'tools/call') {
-      throw new BadRequestException('Unsupported method');
+      throw new McpRequestException('Unsupported method', McpErrorCode.METHOD_NOT_FOUND);
     }
     if (!req.params || typeof req.params !== 'object') {
-      throw new BadRequestException('Missing params');
+      throw new McpRequestException('Missing params', McpErrorCode.INVALID_REQUEST);
     }
 
     const params = req.params as Record<string, unknown>;
     if (params.name !== 'synjar_search') {
-      throw new BadRequestException('Unsupported tool');
+      throw new McpRequestException('Unsupported tool', McpErrorCode.INVALID_PARAMS);
     }
     if (!params.arguments || typeof params.arguments !== 'object') {
-      throw new BadRequestException('Missing arguments');
+      throw new McpRequestException('Missing arguments', McpErrorCode.INVALID_REQUEST);
     }
 
     // Prevent prototype pollution - check own properties only
@@ -187,7 +188,7 @@ export class McpController {
       Object.prototype.hasOwnProperty.call(args, 'constructor') ||
       Object.prototype.hasOwnProperty.call(args, 'prototype')
     ) {
-      throw new BadRequestException('Invalid arguments');
+      throw new McpRequestException('Invalid arguments', McpErrorCode.INVALID_PARAMS);
     }
 
     return {
@@ -213,41 +214,40 @@ export class McpController {
     args: Record<string, unknown>,
     allowedTags: string[],
   ): McpSearchArguments {
-    // Query validation
+    // Query validation - these are INVALID_PARAMS (-32602) errors
     const query = args.query;
     if (typeof query !== 'string') {
-      throw new BadRequestException('Query must be a string');
+      throw new McpRequestException('Query must be a string', McpErrorCode.INVALID_PARAMS);
     }
     if (query.length < 2 || query.length > 256) {
-      throw new BadRequestException('Query must be 2-256 characters');
+      throw new McpRequestException('Query must be 2-256 characters', McpErrorCode.INVALID_PARAMS);
     }
 
     // Limit validation
     const limit = typeof args.limit === 'number' ? args.limit : 5;
     if (limit < 1 || limit > 20) {
-      throw new BadRequestException('Limit must be 1-20');
+      throw new McpRequestException('Limit must be 1-20', McpErrorCode.INVALID_PARAMS);
     }
 
     // Tags validation
     let tags: string[] = [];
     if (args.tags !== undefined) {
       if (!Array.isArray(args.tags)) {
-        throw new BadRequestException('Tags must be an array');
+        throw new McpRequestException('Tags must be an array', McpErrorCode.INVALID_PARAMS);
       }
       if (!args.tags.every((t) => typeof t === 'string')) {
-        throw new BadRequestException('Tags must be strings');
+        throw new McpRequestException('Tags must be strings', McpErrorCode.INVALID_PARAMS);
       }
       tags = args.tags as string[];
 
       // Validate tags against allowedTags
       const invalidTags = tags.filter((t) => !allowedTags.includes(t));
       if (invalidTags.length > 0) {
-        throw new BadRequestException(`Tags not allowed: ${invalidTags.join(', ')}`, {
-          cause: {
-            invalidTags,
-            allowedTags,
-          },
-        });
+        throw new McpRequestException(
+          `Tags not allowed: ${invalidTags.join(', ')}`,
+          McpErrorCode.INVALID_PARAMS,
+          { invalidTags, allowedTags },
+        );
       }
     }
 
