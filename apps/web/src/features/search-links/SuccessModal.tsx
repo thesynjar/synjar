@@ -27,8 +27,15 @@ export function SuccessModal({ link, workspaceName, onClose }: SuccessModalProps
 
   const chatPrompt = `You have access to "${linkName}" knowledge base via Synjar semantic search API.
 
-To search, use this URL with your query:
-${baseUrl}?q=YOUR_QUERY
+IMPORTANT: You cannot open URLs you generate yourself. Do not try to fetch search links directly.
+The link must be pasted by the user (or appear on a page the user already opened).
+Whenever you need to search, ask the user to paste the exact link into the chat.
+
+Use this exact instruction:
+"Please read this link: ${baseUrl}?q=YOUR_QUERY"
+
+If you need multiple searches, provide ALL links and ask the user to paste each one.
+Wait for the user to paste the link(s), then use the returned JSON to answer.
 
 Replace YOUR_QUERY with URL-encoded search terms. Examples:
 - ${baseUrl}?q=refund+policy
