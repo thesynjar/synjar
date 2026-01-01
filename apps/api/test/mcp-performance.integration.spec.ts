@@ -169,7 +169,8 @@ describe('MCP Performance Baselines (TS-018)', () => {
       // This test requires a valid PublicLink with documents
       // Skip if not in performance testing mode
       if (!process.env.TEST_MCP_PERFORMANCE) {
-        console.log('Skipped: Set TEST_MCP_PERFORMANCE=true to run');
+         
+        console.warn('Skipped: Set TEST_MCP_PERFORMANCE=true to run');
         return;
       }
 
@@ -200,10 +201,9 @@ describe('MCP Performance Baselines (TS-018)', () => {
       const p95 = percentile(latencies, 0.95);
       const p99 = percentile(latencies, 0.99);
 
-      console.log(`Performance results (${numRequests} requests):`);
-      console.log(`  p50: ${p50}ms`);
-      console.log(`  p95: ${p95}ms`);
-      console.log(`  p99: ${p99}ms`);
+      // Performance results output (allowed for test diagnostics)
+       
+      console.warn(`Performance results (${numRequests} requests): p50=${p50}ms, p95=${p95}ms, p99=${p99}ms`);
 
       // Verify performance requirements
       expect(p50).toBeLessThan(500); // p50 < 500ms
