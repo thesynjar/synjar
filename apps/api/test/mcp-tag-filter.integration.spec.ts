@@ -6,7 +6,8 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
-import { cleanDatabase } from './helpers/clean-database';
+// Note: This test doesn't create any database records - it only tests
+// MCP tag filter validation with dummy requests. No cleanup needed.
 
 /**
  * Mock embeddings service for tests
@@ -72,10 +73,6 @@ describe('MCP Tag Filter Edge Cases (TS-020)', () => {
 
   afterAll(async () => {
     await app.close();
-  });
-
-  beforeEach(async () => {
-    await cleanDatabase(prisma);
   });
 
   /**

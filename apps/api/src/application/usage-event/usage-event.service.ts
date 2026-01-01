@@ -88,6 +88,10 @@ export class UsageEventService {
    * Update daily aggregates for a workspace
    *
    * Called asynchronously (fire-and-forget) to avoid blocking the main flow
+   *
+   * Uses find-then-update pattern because:
+   * 1. PostgreSQL treats NULL values as distinct in unique constraints
+   * 2. Prisma's upsert doesn't support NULL in compound unique where clauses
    */
   async updateDailyAggregates(
     workspaceId: string,
@@ -99,32 +103,37 @@ export class UsageEventService {
     today.setHours(0, 0, 0, 0);
 
     try {
-      // Upsert daily aggregate
-      await this.prisma.usageDaily.upsert({
+      // Find existing record with proper NULL handling
+      const existing = await this.prisma.usageDaily.findFirst({
         where: {
-          workspaceId_source_date_searchLinkId_instructionSetId: {
-            workspaceId,
-            source,
-            date: today,
-            searchLinkId: searchLinkId || (null as any),
-            instructionSetId: instructionSetId || (null as any),
-          },
-        },
-        create: {
           workspaceId,
           source,
           date: today,
-          searchLinkId: searchLinkId || undefined,
-          instructionSetId: instructionSetId || undefined,
-          requestCount: 1,
-          avgLatencyMs: 0, // Will be computed in background job
-        },
-        update: {
-          requestCount: {
-            increment: 1,
-          },
+          searchLinkId: searchLinkId ?? null,
+          instructionSetId: instructionSetId ?? null,
         },
       });
+
+      if (existing) {
+        // Update existing record
+        await this.prisma.usageDaily.update({
+          where: { id: existing.id },
+          data: { requestCount: { increment: 1 } },
+        });
+      } else {
+        // Create new record
+        await this.prisma.usageDaily.create({
+          data: {
+            workspaceId,
+            source,
+            date: today,
+            searchLinkId: searchLinkId ?? null,
+            instructionSetId: instructionSetId ?? null,
+            requestCount: 1,
+            avgLatencyMs: 0,
+          },
+        });
+      }
     } catch (error) {
       this.logger.error('Failed to update daily aggregates', error);
       // Don't throw - this is background work

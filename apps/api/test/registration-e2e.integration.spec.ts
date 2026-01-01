@@ -329,57 +329,9 @@ describe('Registration E2E Integration Tests', () => {
     });
   });
 
-  describe('Self-Hosted Mode - First User (REQ-S1, REQ-S2)', () => {
-    beforeEach(async () => {
-      process.env.DEPLOYMENT_MODE = 'self-hosted';
-      process.env.REQUIRE_EMAIL_VERIFICATION = 'false';
-
-      // Ensure no workspaces exist
-      await prisma.$executeRawUnsafe(`
-        DELETE FROM "WorkspaceMember";
-        DELETE FROM "Workspace";
-        DELETE FROM "User";
-      `);
-    });
-
-    it('should allow first user registration without verification and instant admin access', async () => {
-      const email = `admin-${Date.now()}@registration-e2e-test.com`;
-
-      // 1. Register first user
-      const res = await request(app.getHttpServer())
-        .post('/auth/register')
-        .send({
-          email,
-          password: 'SecurePass123!',
-          workspaceName: 'Admin Workspace',
-          name: 'First Admin User',
-        })
-        .expect(201);
-
-      // 2. Check response
-      expect(res.body.message).toContain('log in now');
-      expect(res.body.accessToken).toBeDefined();
-      expect(res.body.refreshToken).toBeDefined();
-
-      // 3. Verify user is marked as verified (no email verification needed)
-      const user = await prisma.user.findUnique({ where: { email } });
-      expect(user?.isEmailVerified).toBe(true);
-      expect(user?.emailVerificationToken).toBeNull();
-
-      // 4. Verify workspace was created
-      const workspaces = await prisma.workspace.findMany({
-        where: { members: { some: { userId: user!.id } } },
-      });
-      expect(workspaces.length).toBe(1);
-      expect(workspaces[0].name).toBe('Admin Workspace');
-
-      // 5. Verify user is OWNER
-      const member = await prisma.workspaceMember.findFirst({
-        where: { userId: user!.id, workspaceId: workspaces[0].id },
-      });
-      expect(member?.role).toBe('OWNER');
-    });
-  });
+  // NOTE: "First User" test moved to registration-first-user.isolated.spec.ts
+  // It requires empty database and must run in isolation (--runInBand)
+  // Run with: pnpm test:e2e:isolated
 
   describe('Self-Hosted Mode - Registration Blocking (REQ-S3, REQ-S6)', () => {
     beforeEach(async () => {

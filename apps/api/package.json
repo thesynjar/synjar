@@ -13,6 +13,7 @@
     "test:cov": "jest --coverage",
     "test:integration": "jest --testPathPattern=\\.integration\\.spec\\.ts$ --testPathIgnorePatterns=test/",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e:isolated": "jest --config ./test/jest-e2e.json --testPathPattern=isolated --runInBand",
     "test:e2e:full": "./test/run-e2e.sh",
     "test:all": "jest && jest --testPathPattern=\\.integration\\.spec\\.ts$ --testPathIgnorePatterns=test/ && ./test/run-e2e.sh",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",

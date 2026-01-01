@@ -6,7 +6,8 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
-import { cleanDatabase } from './helpers/clean-database';
+// Note: This test doesn't create any database records - it only tests
+// MCP request validation with various Unicode inputs. No cleanup needed.
 
 /**
  * Mock embeddings service for tests
@@ -73,10 +74,6 @@ describe('MCP Unicode NFC Normalization (TS-019)', () => {
 
   afterAll(async () => {
     await app.close();
-  });
-
-  beforeEach(async () => {
-    await cleanDatabase(prisma);
   });
 
   /**
