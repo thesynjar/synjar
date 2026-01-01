@@ -8,75 +8,75 @@ Critical issues from frontend code review. Full details: `docs/specifications/20
 
 #### Security
 
-- [x] **JWT token storage** - Access token w pamięci, refresh w localStorage, API client z Authorization header
+- [x] **JWT token storage** - Access token in memory, refresh in localStorage, API client with Authorization header
   - Files: `apps/web/src/features/auth/model/authStore.ts`, `apps/web/src/shared/api/client.ts`
 
-- [x] **Protected routes** - Dashboard wymaga autoryzacji, redirect na /login dla niezalogowanych
+- [x] **Protected routes** - Dashboard requires authorization, redirect to /login for unauthenticated users
   - Files: `apps/web/src/app/router/ProtectedRoute.tsx`, `apps/web/src/App.tsx`
 
-- [ ] **HTTPS enforcement** - Credentials przesyłane plain text, JWT może być przechwycony (MITM)
-  - Config: nginx.conf, vite.config.ts (plugin-basic-ssl dla dev)
+- [ ] **HTTPS enforcement** - Credentials sent as plain text, JWT can be intercepted (MITM)
+  - Config: nginx.conf, vite.config.ts (plugin-basic-ssl for dev)
 
 #### Testing
 
-- [ ] **Zero testów** - Naruszenie TDD z CLAUDE.md. Dodaj vitest.config.ts + testy dla Login, Dashboard, Layout
+- [ ] **Zero tests** - Violation of TDD from CLAUDE.md. Add vitest.config.ts + tests for Login, Dashboard, Layout
   - Add: `apps/web/vitest.config.ts`, `apps/web/src/**/*.test.tsx`
 
 #### Architecture
 
-- [ ] **Anemic Architecture** - Logika biznesowa w komponentach. Dodać warstwę application/ (use cases)
+- [ ] **Anemic Architecture** - Business logic in components. Add application/ layer (use cases)
   - Add: `apps/web/src/application/auth/`, `apps/web/src/application/workspace/`
 
 #### UX / Accessibility
 
-- [ ] **Brak ARIA labels** - Formularze i przyciski bez labels (WCAG 2.1 Level A failure)
+- [ ] **Missing ARIA labels** - Forms and buttons without labels (WCAG 2.1 Level A failure)
   - Files: `apps/web/src/features/auth/Login.tsx`, `apps/web/src/features/dashboard/Dashboard.tsx`
 
 ### HIGH (Before Merge)
 
 #### Security
 
-- [ ] **CSP headers** - Brak Content Security Policy, podatność na XSS
-  - Add: CSP meta tag w `apps/web/index.html` lub header w nginx.conf
+- [ ] **CSP headers** - Missing Content Security Policy, vulnerable to XSS
+  - Add: CSP meta tag in `apps/web/index.html` or header in nginx.conf
 
-- [ ] **Client-side validation** - Tylko HTML5 required. Dodać React Hook Form + Zod
+- [ ] **Client-side validation** - Only HTML5 required. Add React Hook Form + Zod
   - File: `apps/web/src/features/auth/Login.tsx`
 
-- [ ] **Console.error leaks** - Może ujawnić wrażliwe info. Zamień na proper logger
+- [ ] **Console.error leaks** - May expose sensitive info. Replace with proper logger
   - Files: `apps/web/src/shared/Layout.tsx`, `apps/web/src/features/dashboard/Dashboard.tsx`
 
 #### Architecture
 
-- [ ] **Layout SRP violation** - Miesza routing, prezentację i logikę API. Wydzielić Navigation
+- [ ] **Layout SRP violation** - Mixes routing, presentation and API logic. Extract Navigation
   - File: `apps/web/src/shared/Layout.tsx`
 
-- [ ] **Brak domain interfaces** - Plain interfaces zamiast Value Objects, brak IWorkspaceRepository
+- [ ] **Missing domain interfaces** - Plain interfaces instead of Value Objects, missing IWorkspaceRepository
   - Add: `apps/web/src/domain/workspace/`
 
 #### UX
 
-- [ ] **Dashboard error state** - Błędy API nie są pokazywane użytkownikowi
+- [ ] **Dashboard error state** - API errors are not shown to user
   - File: `apps/web/src/features/dashboard/Dashboard.tsx`
 
-- [ ] **Focus indicators** - Brak focus:ring dla keyboard navigation (WCAG 2.1 Level AA)
+- [ ] **Focus indicators** - Missing focus:ring for keyboard navigation (WCAG 2.1 Level AA)
   - Files: All interactive elements
 
-- [ ] **WorkspaceCard keyboard** - Brak onClick/onKeyDown, niedostępny przez TAB
+- [ ] **WorkspaceCard keyboard** - Missing onClick/onKeyDown, inaccessible via TAB
   - File: `apps/web/src/features/dashboard/Dashboard.tsx`
 
 #### Documentation
 
-- [ ] **README.md** - Brak dokumentacji dla apps/web
+- [ ] **README.md** - Missing documentation for apps/web
   - Add: `apps/web/README.md`
 
 ### MEDIUM (Next Sprint)
 
-- [ ] **Sourcemaps w production** - Wyłączyć w vite.config.ts
-- [ ] **Security headers** - X-Frame-Options, X-Content-Type-Options w nginx
-- [ ] **Hardcoded endpoints** - Magic strings, utworzyć src/config/api.ts
-- [ ] **Duplikacja stylów** - Utworzyć shared Button component
-- [ ] **ADR dla stack** - Udokumentować wybór React 19, Vite 6, Tailwind 4
-- [ ] **Active state w nav** - Brak wizualnego wskaźnika aktywnego linku
+- [ ] **Sourcemaps in production** - Disable in vite.config.ts
+- [ ] **Security headers** - X-Frame-Options, X-Content-Type-Options in nginx
+- [ ] **Hardcoded endpoints** - Magic strings, create src/config/api.ts
+- [ ] **Style duplication** - Create shared Button component
+- [ ] **ADR for stack** - Document choice of React 19, Vite 6, Tailwind 4
+- [ ] **Active state in nav** - Missing visual indicator for active link
 
 ---
 

@@ -1,6 +1,6 @@
 # Testing Strategy
 
-> "Testuj zachowanie, nie implementację; preferuj szybkie unit/integration z realnymi adapterami (mockuj tylko zewnętrzne API)."
+> "Test behavior, not implementation; prefer fast unit/integration tests with real adapters (mock only external APIs)."
 >
 > — CLAUDE.md
 
