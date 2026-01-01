@@ -15,8 +15,17 @@ import {
   IUserRepository,
   CreateUserData,
   UpdateUserData,
-  CreateUserWithWorkspaceData,
 } from '../../../domain/auth/repositories/user.repository.interface';
+
+/**
+ * Data for creating a user with workspace in a single transaction.
+ * Used by InMemoryUserRepository for testing multi-entity creation scenarios.
+ */
+interface CreateUserWithWorkspaceData {
+  user: CreateUserData;
+  workspace: { name: string };
+  ownerPermissions: string[];
+}
 
 interface InMemoryUser {
   id: string;
