@@ -19,6 +19,7 @@ import {
   ForgotPasswordUseCase,
   ResetPasswordUseCase,
 } from './use-cases';
+import { RegistrationOrchestrator } from './registration.orchestrator';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import {
     AuthService,
     JwtStrategy,
     TokenService,
+    RegistrationOrchestrator,
     RegisterUserUseCase,
     LoginUserUseCase,
     VerifyEmailUseCase,

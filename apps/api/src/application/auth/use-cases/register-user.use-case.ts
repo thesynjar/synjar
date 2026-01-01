@@ -14,6 +14,7 @@ import { AuthConstants } from '@/infrastructure/config/constants';
 import { TokenService } from '../services/token.service';
 import { RegistrationDisabledException, WeakPasswordException } from '../exceptions';
 import type { RegisterDto, RegisterResult } from '../auth.service';
+import { RegistrationOrchestrator } from '../registration.orchestrator';
 
 const OWNER_PERMISSIONS = [
   'workspace:create',
@@ -32,6 +33,7 @@ export class RegisterUserUseCase {
     private readonly emailQueueService: EmailQueueService,
     private readonly configService: ConfigService,
     private readonly tokenService: TokenService,
+    private readonly registrationOrchestrator: RegistrationOrchestrator,
   ) {}
 
   async execute(dto: RegisterDto): Promise<RegisterResult> {
@@ -133,19 +135,15 @@ export class RegisterUserUseCase {
     // Case 4: First user → instant admin (verified, auto-login)
     const passwordHash = await bcrypt.hash(dto.password, AuthConstants.BCRYPT_COST_FACTOR);
 
-    const user = await this.userRepository.createWithWorkspace({
-      user: {
-        email: dto.email,
-        passwordHash,
-        name: dto.name,
-        isEmailVerified: true, // VERIFIED immediately in self-hosted!
-        emailVerificationToken: null,
-        emailVerificationSentAt: null,
-      },
-      workspace: {
-        name: dto.workspaceName,
-      },
+    const { user } = await this.registrationOrchestrator.registerWithWorkspace({
+      email: dto.email,
+      passwordHash,
+      name: dto.name,
+      workspaceName: dto.workspaceName,
       ownerPermissions: OWNER_PERMISSIONS,
+      isEmailVerified: true, // VERIFIED immediately in self-hosted!
+      emailVerificationToken: null,
+      emailVerificationSentAt: null,
     });
 
     // Generate tokens for auto-login
@@ -165,19 +163,15 @@ export class RegisterUserUseCase {
     const emailVerificationToken = this.generateVerificationToken();
     const emailVerificationSentAt = new Date();
 
-    const user = await this.userRepository.createWithWorkspace({
-      user: {
-        email: dto.email,
-        passwordHash,
-        name: dto.name,
-        isEmailVerified: false,
-        emailVerificationToken,
-        emailVerificationSentAt,
-      },
-      workspace: {
-        name: dto.workspaceName,
-      },
+    const { user } = await this.registrationOrchestrator.registerWithWorkspace({
+      email: dto.email,
+      passwordHash,
+      name: dto.name,
+      workspaceName: dto.workspaceName,
       ownerPermissions: OWNER_PERMISSIONS,
+      isEmailVerified: false,
+      emailVerificationToken,
+      emailVerificationSentAt,
     });
 
     // Queue verification email in background (non-blocking) - prevents timing attacks

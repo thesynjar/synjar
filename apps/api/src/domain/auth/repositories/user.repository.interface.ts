@@ -30,14 +30,6 @@ export interface UpdateUserData {
   passwordResetSentAt?: Date | null;
 }
 
-export interface CreateUserWithWorkspaceData {
-  user: CreateUserData;
-  workspace: {
-    name: string;
-  };
-  ownerPermissions: string[];
-}
-
 export interface UserWithWorkspace extends User {
   workspaces?: (WorkspaceMember & { workspace: Workspace })[];
 }
@@ -78,12 +70,6 @@ export interface IUserRepository {
    * Used for email verification, password reset, profile updates
    */
   update(id: string, data: UpdateUserData): Promise<User>;
-
-  /**
-   * Create user with workspace in a transaction
-   * Used during registration to ensure atomic creation
-   */
-  createWithWorkspace(data: CreateUserWithWorkspaceData): Promise<User>;
 
   /**
    * Count total workspaces in the system

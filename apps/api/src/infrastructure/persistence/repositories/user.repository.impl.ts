@@ -5,7 +5,6 @@ import {
   IUserRepository,
   CreateUserData,
   UpdateUserData,
-  CreateUserWithWorkspaceData,
 } from '../../../domain/auth/repositories/user.repository.interface';
 
 /**
@@ -65,42 +64,6 @@ export class PrismaUserRepository implements IUserRepository {
     return this.prisma.user.update({
       where: { id },
       data,
-    });
-  }
-
-  async createWithWorkspace(data: CreateUserWithWorkspaceData): Promise<User> {
-    return this.prisma.$transaction(async (tx) => {
-      // Create user
-      const user = await tx.user.create({
-        data: {
-          email: data.user.email,
-          passwordHash: data.user.passwordHash,
-          name: data.user.name,
-          isEmailVerified: data.user.isEmailVerified,
-          emailVerificationToken: data.user.emailVerificationToken,
-          emailVerificationSentAt: data.user.emailVerificationSentAt,
-        },
-      });
-
-      // Create workspace
-      const workspace = await tx.workspace.create({
-        data: {
-          name: data.workspace.name,
-          createdById: user.id,
-        },
-      });
-
-      // Create workspace member with OWNER role
-      await tx.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: user.id,
-          role: 'OWNER',
-          permissions: data.ownerPermissions,
-        },
-      });
-
-      return user;
     });
   }
 

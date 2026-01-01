@@ -25,6 +25,7 @@ import {
 import { TokenService } from './services/token.service';
 import * as bcrypt from 'bcrypt';
 import { DeploymentConfig } from '@/infrastructure/config/deployment.config';
+import { RegistrationOrchestrator } from './registration.orchestrator';
 
 /**
  * TODO: Split this test file (967 lines) into focused suites per CLAUDE.md Clean Code rules.
@@ -87,6 +88,7 @@ describe('AuthService', () => {
   let emailQueueServiceStub: { queueEmailVerification: jest.Mock; queueWorkspaceInvitation: jest.Mock; queuePasswordReset: jest.Mock };
   let configServiceStub: Partial<ConfigService>;
   let userRepositoryStub: { [key: string]: jest.Mock };
+  let registrationOrchestratorStub: { registerWithWorkspace: jest.Mock };
 
   beforeEach(async () => {
     // Create stubs following CLAUDE.md guidelines (stub > mock)
@@ -135,10 +137,14 @@ describe('AuthService', () => {
       findByEmail: jest.fn(),
       findByVerificationToken: jest.fn(),
       findByPasswordResetToken: jest.fn(),
-      createWithWorkspace: jest.fn(),
+      create: jest.fn(),
       update: jest.fn(),
       save: jest.fn(),
       countWorkspaces: jest.fn(),
+    };
+
+    registrationOrchestratorStub = {
+      registerWithWorkspace: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -158,6 +164,7 @@ describe('AuthService', () => {
         { provide: EmailQueueService, useValue: emailQueueServiceStub },
         { provide: ConfigService, useValue: configServiceStub },
         { provide: USER_REPOSITORY, useValue: userRepositoryStub },
+        { provide: RegistrationOrchestrator, useValue: registrationOrchestratorStub },
       ],
     }).compile();
 
@@ -211,7 +218,10 @@ describe('AuthService', () => {
       };
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockResolvedValue({
+        user: createdUser,
+        workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
+      });
 
       // Act
       const result = await service.register(registerDto);
@@ -235,21 +245,24 @@ describe('AuthService', () => {
       };
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue({
-        id: 'user-id-123',
-        email: registerDto.email,
-        isEmailVerified: false,
-        emailVerificationToken: 'token-123',
-        emailVerificationSentAt: new Date(),
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockResolvedValue({
+        user: {
+          id: 'user-id-123',
+          email: registerDto.email,
+          isEmailVerified: false,
+          emailVerificationToken: 'token-123',
+          emailVerificationSentAt: new Date(),
+        },
+        workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
       });
 
       // Act
       await service.register(registerDto);
 
       // Assert
-      expect(userRepositoryStub.createWithWorkspace).toHaveBeenCalledWith(
+      expect(registrationOrchestratorStub.registerWithWorkspace).toHaveBeenCalledWith(
         expect.objectContaining({
-          workspace: { name: registerDto.workspaceName },
+          workspaceName: registerDto.workspaceName,
         }),
       );
     });
@@ -263,11 +276,14 @@ describe('AuthService', () => {
       };
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue({
-        id: 'user-id-123',
-        email: registerDto.email,
-        emailVerificationToken: 'verification-token-abc',
-        isEmailVerified: false,
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockResolvedValue({
+        user: {
+          id: 'user-id-123',
+          email: registerDto.email,
+          emailVerificationToken: 'verification-token-abc',
+          isEmailVerified: false,
+        },
+        workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
       });
 
       // Act
@@ -289,19 +305,22 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      let capturedData: { user: { emailVerificationToken: string } } | null = null;
+      let capturedData: { emailVerificationToken: string } | null = null;
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockImplementation((data) => {
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockImplementation((data) => {
         capturedData = data;
         return Promise.resolve({
-          id: 'user-id-123',
-          email: registerDto.email,
-          emailVerificationToken: data.user.emailVerificationToken,
-          isEmailVerified: false,
-          emailVerificationSentAt: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          user: {
+            id: 'user-id-123',
+            email: registerDto.email,
+            emailVerificationToken: data.emailVerificationToken,
+            isEmailVerified: false,
+            emailVerificationSentAt: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
         });
       });
 
@@ -310,10 +329,10 @@ describe('AuthService', () => {
 
       // Assert
       expect(capturedData).not.toBeNull();
-      expect(capturedData!.user.emailVerificationToken).toBeDefined();
-      expect(typeof capturedData!.user.emailVerificationToken).toBe('string');
+      expect(capturedData!.emailVerificationToken).toBeDefined();
+      expect(typeof capturedData!.emailVerificationToken).toBe('string');
       // Token should be 64 hex characters (32 bytes)
-      expect(capturedData!.user.emailVerificationToken).toMatch(/^[a-f0-9]{64}$/);
+      expect(capturedData!.emailVerificationToken).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it('should set emailVerificationSentAt timestamp', async () => {
@@ -324,20 +343,23 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      let capturedData: { user: { emailVerificationSentAt: Date } } | null = null;
+      let capturedData: { emailVerificationSentAt: Date } | null = null;
       const beforeTest = new Date();
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockImplementation((data) => {
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockImplementation((data) => {
         capturedData = data;
         return Promise.resolve({
-          id: 'user-id-123',
-          email: registerDto.email,
-          emailVerificationToken: data.user.emailVerificationToken,
-          emailVerificationSentAt: data.user.emailVerificationSentAt,
-          isEmailVerified: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          user: {
+            id: 'user-id-123',
+            email: registerDto.email,
+            emailVerificationToken: data.emailVerificationToken,
+            emailVerificationSentAt: data.emailVerificationSentAt,
+            isEmailVerified: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
         });
       });
 
@@ -346,9 +368,9 @@ describe('AuthService', () => {
 
       // Assert
       expect(capturedData).not.toBeNull();
-      expect(capturedData!.user.emailVerificationSentAt).toBeDefined();
-      expect(capturedData!.user.emailVerificationSentAt instanceof Date).toBe(true);
-      expect(capturedData!.user.emailVerificationSentAt.getTime()).toBeGreaterThanOrEqual(beforeTest.getTime());
+      expect(capturedData!.emailVerificationSentAt).toBeDefined();
+      expect(capturedData!.emailVerificationSentAt instanceof Date).toBe(true);
+      expect(capturedData!.emailVerificationSentAt.getTime()).toBeGreaterThanOrEqual(beforeTest.getTime());
     });
 
     it('should return generic message for existing verified user (user enumeration prevention)', async () => {
@@ -380,7 +402,7 @@ describe('AuthService', () => {
       });
       expect(result).not.toHaveProperty('accessToken');
       expect(result).not.toHaveProperty('refreshToken');
-      expect(userRepositoryStub.createWithWorkspace).not.toHaveBeenCalled();
+      expect(registrationOrchestratorStub.registerWithWorkspace).not.toHaveBeenCalled();
     });
 
     it('should create workspace member with OWNER role and all permissions', async () => {
@@ -391,19 +413,25 @@ describe('AuthService', () => {
         workspaceName: 'My Knowledge Base',
       };
 
-      let capturedData: { ownerPermissions: string[]; workspace: { name: string }; user: { email: string; isEmailVerified: boolean } } | null = null;
+      let capturedData: { ownerPermissions: string[]; workspaceName: string; email: string; isEmailVerified: boolean } | null = null;
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockImplementation((data) => {
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockImplementation((data) => {
         capturedData = data;
         return Promise.resolve({
-          id: 'user-id-123',
-          email: registerDto.email,
-          emailVerificationToken: 'token-123',
-          isEmailVerified: false,
-          emailVerificationSentAt: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          user: {
+            id: 'user-id-123',
+            email: registerDto.email,
+            emailVerificationToken: 'token-123',
+            isEmailVerified: false,
+            emailVerificationSentAt: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          workspace: {
+            id: 'workspace-id-123',
+            name: registerDto.workspaceName,
+          },
         });
       });
 
@@ -414,9 +442,9 @@ describe('AuthService', () => {
       expect(capturedData).toBeDefined();
       expect(capturedData).not.toBeNull();
       expect(capturedData!.ownerPermissions).toEqual(ownerPermissions);
-      expect(capturedData!.workspace.name).toBe(registerDto.workspaceName);
-      expect(capturedData!.user.email).toBe(registerDto.email);
-      expect(capturedData!.user.isEmailVerified).toBe(false);
+      expect(capturedData!.workspaceName).toBe(registerDto.workspaceName);
+      expect(capturedData!.email).toBe(registerDto.email);
+      expect(capturedData!.isEmailVerified).toBe(false);
     });
 
     it('should reject weak password during registration', async () => {
@@ -466,7 +494,10 @@ describe('AuthService', () => {
       };
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockResolvedValue({
+        user: createdUser,
+        workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
+      });
 
       // Act
       const result = await service.register(registerDto);
@@ -1032,7 +1063,10 @@ describe('AuthService', () => {
       };
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockResolvedValue({
+        user: createdUser,
+        workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
+      });
 
       // Act
       const result = await service.register(registerDto);
@@ -1081,7 +1115,10 @@ describe('AuthService', () => {
 
       userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
       userRepositoryStub.countWorkspaces = jest.fn().mockResolvedValue(0); // No workspaces yet
-      userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue(createdUser);
+      registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockResolvedValue({
+        user: createdUser,
+        workspace: { id: 'workspace-id-123', name: registerDto.workspaceName },
+      });
 
       // Act
       const result = await service.register(registerDto);
@@ -1093,13 +1130,11 @@ describe('AuthService', () => {
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
       });
-      expect(userRepositoryStub.createWithWorkspace).toHaveBeenCalledWith(
+      expect(registrationOrchestratorStub.registerWithWorkspace).toHaveBeenCalledWith(
         expect.objectContaining({
-          user: expect.objectContaining({
-            email: registerDto.email,
-            isEmailVerified: true, // Verified immediately!
-            emailVerificationToken: null,
-          }),
+          email: registerDto.email,
+          isEmailVerified: true, // Verified immediately!
+          emailVerificationToken: null,
         }),
       );
       // No verification email sent for self-hosted first user
@@ -1120,7 +1155,7 @@ describe('AuthService', () => {
       );
 
       // Verify no user was created
-      expect(userRepositoryStub.createWithWorkspace).not.toHaveBeenCalled();
+      expect(registrationOrchestratorStub.registerWithWorkspace).not.toHaveBeenCalled();
       expect(emailQueueServiceStub.queueEmailVerification).not.toHaveBeenCalled();
     });
 
@@ -1199,14 +1234,17 @@ describe('AuthService', () => {
         } else {
           // New user (email queued in background)
           userRepositoryStub.findByEmail = jest.fn().mockResolvedValue(null);
-          userRepositoryStub.createWithWorkspace = jest.fn().mockResolvedValue({
-            id: 'new-user',
-            email: 'new@test.com',
-            passwordHash: 'hash',
-            name: 'Test User',
-            isEmailVerified: false,
-            emailVerificationToken: 'token-123',
-            emailVerificationSentAt: new Date(),
+          registrationOrchestratorStub.registerWithWorkspace = jest.fn().mockResolvedValue({
+            user: {
+              id: 'new-user',
+              email: 'new@test.com',
+              passwordHash: 'hash',
+              name: 'Test User',
+              isEmailVerified: false,
+              emailVerificationToken: 'token-123',
+              emailVerificationSentAt: new Date(),
+            },
+            workspace: { id: 'workspace-id-123', name: 'Test Workspace' },
           });
         }
 

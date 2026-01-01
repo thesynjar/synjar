@@ -2,8 +2,24 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.service';
+import { RegistrationOrchestrator } from '../src/application/auth/registration.orchestrator';
+
+/**
+ * Default owner permissions for test fixtures.
+ * Must match OWNER_PERMISSIONS in register-user.use-case.ts
+ */
+const OWNER_PERMISSIONS = [
+  'workspace:create',
+  'document:create',
+  'document:read',
+  'document:update',
+  'document:delete',
+  'user:invite',
+  'user:remove',
+];
 
 /**
  * Registration E2E Integration Tests - Dual-Mode Registration (Phase 7)
@@ -120,6 +136,7 @@ async function waitForEmail(
 describe('Registration E2E Integration Tests', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let registrationOrchestrator: RegistrationOrchestrator;
 
   beforeAll(async () => {
     // Environment variables are set by setup-env.ts
@@ -143,8 +160,10 @@ describe('Registration E2E Integration Tests', () => {
 
     await app.init();
 
-    // Get Prisma service for cleanup
+    // Get services from DI container
+    // IMPORTANT: Use application services for fixtures to ensure production code path
     prisma = moduleFixture.get<PrismaService>(PrismaService);
+    registrationOrchestrator = moduleFixture.get<RegistrationOrchestrator>(RegistrationOrchestrator);
 
     // Clear Mailpit before tests
     await clearMailpit();
@@ -369,25 +388,18 @@ describe('Registration E2E Integration Tests', () => {
     });
 
     it('should block second user registration with 403 and ADMIN_EMAIL', async () => {
-      // 1. Create first user and workspace
-      const firstUser = await prisma.user.create({
-        data: {
-          email: 'first@registration-e2e-test.com',
-          passwordHash: 'hashed',
-          isEmailVerified: true,
-        },
-      });
-      await prisma.workspace.create({
-        data: {
-          name: 'Existing Workspace',
-          createdById: firstUser.id,
-          members: {
-            create: {
-              userId: firstUser.id,
-              role: 'OWNER',
-            },
-          },
-        },
+      // 1. Create first user and workspace using PRODUCTION CODE PATH
+      // IMPORTANT: Use RegistrationOrchestrator instead of direct Prisma
+      // This ensures fixtures follow the same RLS context setup as production
+      const passwordHash = await bcrypt.hash('TestPassword123!', 10);
+      await registrationOrchestrator.registerWithWorkspace({
+        email: 'first@registration-e2e-test.com',
+        passwordHash,
+        workspaceName: 'Existing Workspace',
+        ownerPermissions: OWNER_PERMISSIONS,
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationSentAt: null,
       });
 
       // 2. Try to register second user
