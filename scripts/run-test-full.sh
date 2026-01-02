@@ -32,8 +32,16 @@ cleanup() {
   echo -e "${YELLOW}✓ Cleanup complete${NC}"
 }
 
-# Trap signals for cleanup
-trap cleanup EXIT INT TERM
+# Interrupt handler - cleanup and exit
+interrupt() {
+  cleanup
+  echo -e "\n${RED}❌ Tests interrupted by user${NC}"
+  exit 130  # 128 + 2 (SIGINT)
+}
+
+# Trap signals
+trap cleanup EXIT
+trap interrupt INT TERM
 
 echo -e "${YELLOW}🚀 Running full test suite...${NC}"
 
