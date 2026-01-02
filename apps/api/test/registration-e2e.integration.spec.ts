@@ -649,7 +649,7 @@ describe('Registration E2E Integration Tests', () => {
     it('should return generic message for non-existent email', async () => {
       const resendRes = await request(app.getHttpServer())
         .post('/auth/resend-verification')
-        .send({ email: 'nonexistent${TEST_EMAIL_DOMAIN}' })
+        .send({ email: `nonexistent${TEST_EMAIL_DOMAIN}` })
         .expect(200);
 
       // Generic message to prevent email enumeration
@@ -668,7 +668,7 @@ describe('Registration E2E Integration Tests', () => {
       const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({
-          email: 'weak${TEST_EMAIL_DOMAIN}',
+          email: `weak${TEST_EMAIL_DOMAIN}`,
           password: 'weak', // Too short, no special chars
           workspaceName: 'Test',
         })
@@ -694,7 +694,7 @@ describe('Registration E2E Integration Tests', () => {
       const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({
-          email: 'short-ws${TEST_EMAIL_DOMAIN}',
+          email: `short-ws${TEST_EMAIL_DOMAIN}`,
           password: 'MyP@ssw0rd123!',
           workspaceName: 'X', // Too short (min 2)
         })
