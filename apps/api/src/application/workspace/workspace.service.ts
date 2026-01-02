@@ -10,6 +10,7 @@ import { WorkspaceMemberAddedEvent } from '@/application/workspace-lookup/events
 import { WorkspaceMemberRemovedEvent } from '@/application/workspace-lookup/events/workspace-member-removed.event';
 import { ConfigService } from '@nestjs/config';
 import { EmailQueueService } from '@/application/email/email-queue.service';
+import { randomUUID } from 'crypto';
 import * as crypto from 'crypto';
 
 interface CreateWorkspaceDto {
@@ -40,19 +41,38 @@ export class WorkspaceService {
   ) {}
 
   async create(userId: string, dto: CreateWorkspaceDto) {
-    // Use forUser() to set RLS context - createdById enables visibility for RETURNING
+    // Use forUser() to set RLS context
+    const workspaceId = await this.prisma.forUser(userId, async (tx) => {
+      // WORKAROUND: Prisma Client has a bug where set_config() doesn't affect
+      // subsequent Prisma operations within the same transaction for RLS policy checks.
+      // Raw SQL INSERT works correctly with RLS context.
+      // See: https://github.com/prisma/prisma/issues/12735
+      const id = randomUUID();
+      const now = new Date();
+      await tx.$executeRaw`
+        INSERT INTO "Workspace" (id, name, "createdById", "createdAt", "updatedAt")
+        VALUES (${id}, ${dto.name}, ${userId}, ${now}, ${now})
+      `;
+
+      // Set workspace context for WorkspaceMember INSERT policy
+      await tx.$executeRaw`
+        SELECT set_config('app.current_workspace_id', ${id}::text, true)
+      `;
+
+      // Create workspace member with OWNER role using raw SQL
+      const memberId = randomUUID();
+      await tx.$executeRaw`
+        INSERT INTO "WorkspaceMember" (id, "workspaceId", "userId", role, "createdAt")
+        VALUES (${memberId}, ${id}, ${userId}, 'OWNER', NOW())
+      `;
+
+      return id;
+    });
+
+    // Fetch the complete workspace with relations (outside the RLS transaction)
     const workspace = await this.prisma.forUser(userId, async (tx) => {
-      return tx.workspace.create({
-        data: {
-          name: dto.name,
-          createdById: userId,
-          members: {
-            create: {
-              userId,
-              role: Role.OWNER,
-            },
-          },
-        },
+      return tx.workspace.findUniqueOrThrow({
+        where: { id: workspaceId },
         include: {
           members: {
             include: { user: { select: { id: true, email: true, name: true } } },

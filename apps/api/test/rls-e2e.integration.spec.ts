@@ -100,14 +100,14 @@ describe('RLS E2E Integration Tests', () => {
   });
 
   /**
-   * Helper function: Register and login a user, return cookies for subsequent requests
+   * Helper function: Register a user and return access token for Bearer auth
    */
   async function createAuthenticatedUser(
     email: string,
     name: string = 'Test User',
-  ): Promise<string[]> {
-    // Register user (workspaceName is required)
-    await request(app.getHttpServer())
+  ): Promise<string> {
+    // Register user (returns accessToken for auto-login)
+    const registerRes = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
         email,
@@ -117,23 +117,12 @@ describe('RLS E2E Integration Tests', () => {
       })
       .expect(201);
 
-    // Login and get cookies
-    const loginRes = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        email,
-        password: 'TestPass123!@#',
-      })
-      .expect(201);
-
-    // Extract cookies from response
-    const cookies = loginRes.headers['set-cookie'];
-    if (!cookies) {
-      throw new Error('No cookies returned from login');
+    const { accessToken } = registerRes.body;
+    if (!accessToken) {
+      throw new Error('No access token returned from registration');
     }
 
-    // Ensure it's an array
-    return Array.isArray(cookies) ? cookies : [cookies];
+    return accessToken;
   }
 
   /**
@@ -169,12 +158,12 @@ describe('RLS E2E Integration Tests', () => {
   describe('Workspace Isolation', () => {
     it('should allow authenticated user to create and see their own workspace', async () => {
       const userEmail = `user-own-workspace-${Date.now()}@rls-e2e-test.com`;
-      const cookies = await createAuthenticatedUser(userEmail);
+      const token = await createAuthenticatedUser(userEmail);
 
       // Create workspace
       const createRes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookies)
+        .set('Authorization', `Bearer ${token}`)
         .send({ name: 'My Workspace' })
         .expect(201);
 
@@ -185,7 +174,7 @@ describe('RLS E2E Integration Tests', () => {
       // List workspaces - should see the one we created
       const listRes = await request(app.getHttpServer())
         .get('/workspaces')
-        .set('Cookie', cookies)
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(listRes.body).toBeInstanceOf(Array);
@@ -201,11 +190,11 @@ describe('RLS E2E Integration Tests', () => {
     it('should NOT allow user B to see user A\'s workspace', async () => {
       // Create User A and their workspace
       const userAEmail = `user-a-${Date.now()}@rls-e2e-test.com`;
-      const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
+      const tokenA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({ name: 'Workspace A' })
         .expect(201);
 
@@ -213,12 +202,12 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create User B
       const userBEmail = `user-b-${Date.now()}@rls-e2e-test.com`;
-      const cookiesB = await createAuthenticatedUser(userBEmail, 'User B');
+      const tokenB = await createAuthenticatedUser(userBEmail, 'User B');
 
       // User B lists workspaces - should NOT see Workspace A
       const listBRes = await request(app.getHttpServer())
         .get('/workspaces')
-        .set('Cookie', cookiesB)
+        .set('Authorization', `Bearer ${tokenB}`)
         .expect(200);
 
       expect(listBRes.body).toBeInstanceOf(Array);
@@ -232,11 +221,11 @@ describe('RLS E2E Integration Tests', () => {
     it('should return 404 when user B tries to access user A\'s workspace by ID', async () => {
       // Create User A and their workspace
       const userAEmail = `user-a-direct-${Date.now()}@rls-e2e-test.com`;
-      const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
+      const tokenA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({ name: 'Private Workspace A' })
         .expect(201);
 
@@ -244,12 +233,12 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create User B
       const userBEmail = `user-b-direct-${Date.now()}@rls-e2e-test.com`;
-      const cookiesB = await createAuthenticatedUser(userBEmail, 'User B');
+      const tokenB = await createAuthenticatedUser(userBEmail, 'User B');
 
       // User B tries to access Workspace A directly - should get 404
       await request(app.getHttpServer())
         .get(`/workspaces/${workspaceAId}`)
-        .set('Cookie', cookiesB)
+        .set('Authorization', `Bearer ${tokenB}`)
         .expect(404);
     });
   });
@@ -260,12 +249,12 @@ describe('RLS E2E Integration Tests', () => {
   describe('Workspace Creation with RLS', () => {
     it('should set createdById to authenticated user when creating workspace', async () => {
       const userEmail = `user-created-by-${Date.now()}@rls-e2e-test.com`;
-      const cookies = await createAuthenticatedUser(userEmail);
+      const token = await createAuthenticatedUser(userEmail);
 
       // Create workspace
       const createRes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookies)
+        .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Workspace with CreatedBy' })
         .expect(201);
 
@@ -280,7 +269,7 @@ describe('RLS E2E Integration Tests', () => {
       // as RLS policies check createdById = current_user_id() for INSERT)
       const getRes = await request(app.getHttpServer())
         .get(`/workspaces/${workspaceId}`)
-        .set('Cookie', cookies)
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(getRes.body.id).toBe(workspaceId);
@@ -288,12 +277,12 @@ describe('RLS E2E Integration Tests', () => {
 
     it('should create workspace_members entry for creator automatically', async () => {
       const userEmail = `user-members-${Date.now()}@rls-e2e-test.com`;
-      const cookies = await createAuthenticatedUser(userEmail);
+      const token = await createAuthenticatedUser(userEmail);
 
       // Create workspace
       const createRes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookies)
+        .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Workspace with Members' })
         .expect(201);
 
@@ -302,7 +291,7 @@ describe('RLS E2E Integration Tests', () => {
       // Get members
       const membersRes = await request(app.getHttpServer())
         .get(`/workspaces/${workspaceId}/members`)
-        .set('Cookie', cookies)
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(membersRes.body).toBeInstanceOf(Array);
@@ -326,11 +315,11 @@ describe('RLS E2E Integration Tests', () => {
     it('should NOT allow user B to list documents from user A\'s workspace', async () => {
       // Create User A and workspace with document
       const userAEmail = `user-a-docs-${Date.now()}@rls-e2e-test.com`;
-      const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
+      const tokenA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({ name: 'Workspace A Docs' })
         .expect(201);
 
@@ -339,7 +328,7 @@ describe('RLS E2E Integration Tests', () => {
       // Create a document in Workspace A
       await request(app.getHttpServer())
         .post(`/workspaces/${workspaceAId}/documents`)
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({
           title: 'Private Document A',
           content: 'This is private content',
@@ -348,23 +337,23 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create User B
       const userBEmail = `user-b-docs-${Date.now()}@rls-e2e-test.com`;
-      const cookiesB = await createAuthenticatedUser(userBEmail, 'User B');
+      const tokenB = await createAuthenticatedUser(userBEmail, 'User B');
 
       // User B tries to list documents from Workspace A - should get 404 (workspace not found)
       await request(app.getHttpServer())
         .get(`/workspaces/${workspaceAId}/documents`)
-        .set('Cookie', cookiesB)
+        .set('Authorization', `Bearer ${tokenB}`)
         .expect(404);
     });
 
     it('should NOT allow user B to access user A\'s document by ID', async () => {
       // Create User A and workspace with document
       const userAEmail = `user-a-doc-id-${Date.now()}@rls-e2e-test.com`;
-      const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
+      const tokenA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({ name: 'Workspace A Doc ID' })
         .expect(201);
 
@@ -373,7 +362,7 @@ describe('RLS E2E Integration Tests', () => {
       // Create a document in Workspace A
       const docARes = await request(app.getHttpServer())
         .post(`/workspaces/${workspaceAId}/documents`)
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({
           title: 'Secret Document',
           content: 'Top secret content',
@@ -384,23 +373,23 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create User B
       const userBEmail = `user-b-doc-id-${Date.now()}@rls-e2e-test.com`;
-      const cookiesB = await createAuthenticatedUser(userBEmail, 'User B');
+      const tokenB = await createAuthenticatedUser(userBEmail, 'User B');
 
       // User B tries to access Document A directly - should get 404
       await request(app.getHttpServer())
         .get(`/workspaces/${workspaceAId}/documents/${docAId}`)
-        .set('Cookie', cookiesB)
+        .set('Authorization', `Bearer ${tokenB}`)
         .expect(404);
     });
 
     it('should allow user A to access their own documents', async () => {
       // Create User A and workspace with document
       const userAEmail = `user-a-own-docs-${Date.now()}@rls-e2e-test.com`;
-      const cookiesA = await createAuthenticatedUser(userAEmail, 'User A');
+      const tokenA = await createAuthenticatedUser(userAEmail, 'User A');
 
       const workspaceARes = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({ name: 'Workspace A Own Docs' })
         .expect(201);
 
@@ -409,7 +398,7 @@ describe('RLS E2E Integration Tests', () => {
       // Create a document in Workspace A
       const docARes = await request(app.getHttpServer())
         .post(`/workspaces/${workspaceAId}/documents`)
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .send({
           title: 'My Document',
           content: 'My content',
@@ -421,7 +410,7 @@ describe('RLS E2E Integration Tests', () => {
       // User A lists documents - should see their document
       const listRes = await request(app.getHttpServer())
         .get(`/workspaces/${workspaceAId}/documents`)
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
 
       expect(listRes.body.documents).toBeInstanceOf(Array);
@@ -434,7 +423,7 @@ describe('RLS E2E Integration Tests', () => {
       // User A accesses document by ID - should succeed
       const getRes = await request(app.getHttpServer())
         .get(`/workspaces/${workspaceAId}/documents/${docAId}`)
-        .set('Cookie', cookiesA)
+        .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
 
       expect(getRes.body.id).toBe(docAId);
@@ -449,17 +438,17 @@ describe('RLS E2E Integration Tests', () => {
     it('should maintain complete isolation between multiple users and workspaces', async () => {
       // Create User 1 with 2 workspaces
       const user1Email = `user1-multi-${Date.now()}@rls-e2e-test.com`;
-      const cookies1 = await createAuthenticatedUser(user1Email, 'User 1');
+      const token1 = await createAuthenticatedUser(user1Email, 'User 1');
 
       const ws1Res = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookies1)
+        .set('Authorization', `Bearer ${token1}`)
         .send({ name: 'User 1 Workspace 1' })
         .expect(201);
 
       const ws2Res = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookies1)
+        .set('Authorization', `Bearer ${token1}`)
         .send({ name: 'User 1 Workspace 2' })
         .expect(201);
 
@@ -468,11 +457,11 @@ describe('RLS E2E Integration Tests', () => {
 
       // Create User 2 with 1 workspace
       const user2Email = `user2-multi-${Date.now()}@rls-e2e-test.com`;
-      const cookies2 = await createAuthenticatedUser(user2Email, 'User 2');
+      const token2 = await createAuthenticatedUser(user2Email, 'User 2');
 
       const ws3Res = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookies2)
+        .set('Authorization', `Bearer ${token2}`)
         .send({ name: 'User 2 Workspace 1' })
         .expect(201);
 
@@ -481,7 +470,7 @@ describe('RLS E2E Integration Tests', () => {
       // User 1 should see only their 2 workspaces
       const list1Res = await request(app.getHttpServer())
         .get('/workspaces')
-        .set('Cookie', cookies1)
+        .set('Authorization', `Bearer ${token1}`)
         .expect(200);
 
       expect(list1Res.body).toBeInstanceOf(Array);
@@ -493,7 +482,7 @@ describe('RLS E2E Integration Tests', () => {
       // User 2 should see only their 1 workspace
       const list2Res = await request(app.getHttpServer())
         .get('/workspaces')
-        .set('Cookie', cookies2)
+        .set('Authorization', `Bearer ${token2}`)
         .expect(200);
 
       expect(list2Res.body).toBeInstanceOf(Array);
@@ -510,23 +499,23 @@ describe('RLS E2E Integration Tests', () => {
   describe('System Operations vs User Operations', () => {
     it('should enforce RLS for user operations even if system bypass exists', async () => {
       const user1Email = `user1-system-${Date.now()}@rls-e2e-test.com`;
-      const cookies1 = await createAuthenticatedUser(user1Email, 'User 1');
+      const token1 = await createAuthenticatedUser(user1Email, 'User 1');
 
       const ws1Res = await request(app.getHttpServer())
         .post('/workspaces')
-        .set('Cookie', cookies1)
+        .set('Authorization', `Bearer ${token1}`)
         .send({ name: 'System Test Workspace 1' })
         .expect(201);
 
       const ws1Id = ws1Res.body.id;
 
       const user2Email = `user2-system-${Date.now()}@rls-e2e-test.com`;
-      const cookies2 = await createAuthenticatedUser(user2Email, 'User 2');
+      const token2 = await createAuthenticatedUser(user2Email, 'User 2');
 
       // User 2 should NOT see User 1's workspace (RLS enforced)
       const list2Res = await request(app.getHttpServer())
         .get('/workspaces')
-        .set('Cookie', cookies2)
+        .set('Authorization', `Bearer ${token2}`)
         .expect(200);
 
       const user2WorkspaceIds = list2Res.body.map((ws: { id: string }) => ws.id);
@@ -535,7 +524,7 @@ describe('RLS E2E Integration Tests', () => {
       // User 2 should NOT be able to access User 1's workspace by ID
       await request(app.getHttpServer())
         .get(`/workspaces/${ws1Id}`)
-        .set('Cookie', cookies2)
+        .set('Authorization', `Bearer ${token2}`)
         .expect(404);
     });
   });
