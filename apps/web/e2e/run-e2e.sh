@@ -106,7 +106,7 @@ echo -e "${GREEN}✓ API is ready${NC}"
 cd ../web
 echo -e "${YELLOW}🚀 Starting web app...${NC}"
 VITE_API_URL=http://localhost:6300 \
-npm run dev -- --port 6310 &
+npm run dev:e2e &
 WEB_PID=$!
 
 # Wait for web app to be ready

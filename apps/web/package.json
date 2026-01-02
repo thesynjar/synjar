@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 6210",
+    "dev:e2e": "vite --port 6310",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
