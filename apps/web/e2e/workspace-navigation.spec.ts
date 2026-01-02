@@ -88,8 +88,9 @@ test.describe('Workspace Navigation', () => {
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+    // Wait for navigation - /workspaces/[id] (Cloud auto-navigate), /workspaces (Cloud), or /register/success (self-hosted)
     const navigationResult = await Promise.race([
+      page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 }).then(() => 'workspace-detail'),
       page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
       page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
     ]);
@@ -110,14 +111,16 @@ test.describe('Workspace Navigation', () => {
       await page.getByRole('button', { name: /sign in/i }).click();
 
       // Should see workspaces page after login
-      await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+      await expect(page).toHaveURL(/\/workspaces/, { timeout: 10000 });
     }
-    // else: Cloud mode - already at /workspaces from auto-login
+    // else: Cloud mode - already at /workspaces or /workspaces/[id] from auto-login/auto-navigate
 
-    await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible();
+    // With Cloud mode auto-navigate, single-workspace users go directly to workspace detail
+    // Wait for auto-navigate to complete
+    await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
 
-    // Should see our workspace card
-    await expect(page.getByText(user.workspaceName)).toBeVisible();
+    // Verify we're on workspace detail page with Documents heading
+    await expect(page.getByRole('heading', { name: /Documents/i })).toBeVisible({ timeout: 5000 });
   });
 
   test('should navigate to workspace and see workspace page', async ({
@@ -135,8 +138,9 @@ test.describe('Workspace Navigation', () => {
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+    // Wait for navigation - /workspaces/[id] (Cloud auto-navigate), /workspaces (Cloud), or /register/success (self-hosted)
     const navigationResult = await Promise.race([
+      page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 }).then(() => 'workspace-detail'),
       page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
       page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
     ]);
@@ -149,16 +153,17 @@ test.describe('Workspace Navigation', () => {
       await page.getByLabel('Email').fill(user.email);
       await page.getByLabel('Password').fill(user.password);
       await page.getByRole('button', { name: /sign in/i }).click();
-      await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+      await expect(page).toHaveURL(/\/workspaces/, { timeout: 10000 });
     }
-    // else: Cloud mode - already at /workspaces from auto-login
 
-    // Click on workspace card
-    const workspaceCard = page.locator('div.cursor-pointer').first();
-    await workspaceCard.waitFor({ state: 'visible', timeout: 5000 });
-    await workspaceCard.click();
+    // If not already on workspace detail, click on workspace card
+    if (!/\/workspaces\/[a-f0-9-]+/.test(page.url())) {
+      const workspaceCard = page.locator('div.cursor-pointer').first();
+      await workspaceCard.waitFor({ state: 'visible', timeout: 5000 });
+      await workspaceCard.click();
+    }
 
-    // Should navigate to workspace detail page
+    // Should be on workspace detail page
     await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
 
     // Take screenshot to see what's on this page
@@ -184,8 +189,9 @@ test.describe('Workspace Navigation', () => {
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+    // Wait for navigation - /workspaces/[id] (Cloud auto-navigate), /workspaces (Cloud), or /register/success (self-hosted)
     const navigationResult = await Promise.race([
+      page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 }).then(() => 'workspace-detail'),
       page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
       page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
     ]);
@@ -198,13 +204,14 @@ test.describe('Workspace Navigation', () => {
       await page.getByLabel('Email').fill(user.email);
       await page.getByLabel('Password').fill(user.password);
       await page.getByRole('button', { name: /sign in/i }).click();
-      await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+      await expect(page).toHaveURL(/\/workspaces/, { timeout: 10000 });
     }
-    // else: Cloud mode - already at /workspaces from auto-login
 
-    // Navigate to workspace
-    const workspaceCard = page.locator('div.cursor-pointer').first();
-    await workspaceCard.click();
+    // If not already on workspace detail, navigate to workspace
+    if (!/\/workspaces\/[a-f0-9-]+/.test(page.url())) {
+      const workspaceCard = page.locator('div.cursor-pointer').first();
+      await workspaceCard.click();
+    }
     await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
 
     // Wait for page to load and take screenshot

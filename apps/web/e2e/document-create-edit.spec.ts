@@ -92,8 +92,9 @@ async function setupUserAndWorkspace(page: Page) {
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+  // Wait for navigation - /workspaces/[id] (Cloud auto-navigate), /workspaces (Cloud), or /register/success (self-hosted)
   const navigationResult = await Promise.race([
+    page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 }).then(() => 'workspace-detail'),
     page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
     page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
   ]);
@@ -137,13 +138,13 @@ test.describe('Document Create and Edit', () => {
   test('should create a new text document via modal', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Click "New Text Document" button - opens modal
-    const newDocButton = page.getByRole('button', { name: 'New Text Document' });
+    // Click "New Text" button - opens modal
+    const newDocButton = page.getByRole('button', { name: 'New Text' });
     await expect(newDocButton).toBeVisible({ timeout: 5000 });
     await newDocButton.click();
 
-    // Modal should appear with title "New Text Document"
-    await expect(page.getByRole('heading', { name: 'New Text Document' })).toBeVisible();
+    // Modal should appear with title "New Text"
+    await expect(page.getByRole('heading', { name: 'New Text' })).toBeVisible();
 
     // Fill in document title (using placeholder since label might not be properly connected)
     const titleInput = page.getByPlaceholder('Document title');
@@ -157,7 +158,7 @@ test.describe('Document Create and Edit', () => {
     await page.getByRole('button', { name: 'Create Document' }).click();
 
     // Wait for modal to close and document to appear in list
-    await expect(page.getByRole('heading', { name: 'New Text Document' })).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: 'New Text' })).not.toBeVisible({ timeout: 5000 });
 
     // Verify document appears in list
     await expect(page.getByText('Test Document Title')).toBeVisible({ timeout: 5000 });
@@ -275,13 +276,13 @@ test.describe('Document Create and Edit', () => {
   test('should create document with INSTRUCTION purpose and persist', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Click "New Text Document" button - opens modal
-    const newDocButton = page.getByRole('button', { name: 'New Text Document' });
+    // Click "New Text" button - opens modal
+    const newDocButton = page.getByRole('button', { name: 'New Text' });
     await expect(newDocButton).toBeVisible({ timeout: 5000 });
     await newDocButton.click();
 
     // Modal should appear
-    await expect(page.getByRole('heading', { name: 'New Text Document' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'New Text' })).toBeVisible();
 
     // Fill in document title
     await page.getByPlaceholder('Document title').fill('System Prompt Document');
@@ -299,7 +300,7 @@ test.describe('Document Create and Edit', () => {
     await page.getByRole('button', { name: 'Create Document' }).click();
 
     // Wait for modal to close and document to appear in list
-    await expect(page.getByRole('heading', { name: 'New Text Document' })).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: 'New Text' })).not.toBeVisible({ timeout: 5000 });
 
     // Verify document appears in list
     await expect(page.getByText('System Prompt Document')).toBeVisible({ timeout: 5000 });
@@ -322,7 +323,7 @@ test.describe('Document Create and Edit', () => {
     await setupUserAndWorkspace(page);
 
     // Create document with default KNOWLEDGE purpose
-    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByRole('button', { name: 'New Text' }).click();
     await page.getByPlaceholder('Document title').fill('Knowledge to Instruction Test');
     await page.getByPlaceholder(/document content/i).fill('Initial knowledge content.');
     // Default is KNOWLEDGE, so no need to click radio
@@ -373,7 +374,7 @@ test.describe('Document Create and Edit', () => {
     await setupUserAndWorkspace(page);
 
     // Create document with INSTRUCTION purpose
-    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByRole('button', { name: 'New Text' }).click();
     await page.getByPlaceholder('Document title').fill('Persistence Test Document');
     await page.getByPlaceholder(/document content/i).fill('Testing persistence of purpose field.');
 
@@ -526,7 +527,7 @@ test.describe('Document Create and Edit', () => {
     await setupUserAndWorkspace(page);
 
     // Create document
-    await page.getByRole('button', { name: 'New Text Document' }).click();
+    await page.getByRole('button', { name: 'New Text' }).click();
     await page.getByPlaceholder('Document title').fill('Draft Button Test');
     await page.getByPlaceholder(/document content/i).fill('Initial content.');
     await page.getByRole('button', { name: 'Create Document' }).click();

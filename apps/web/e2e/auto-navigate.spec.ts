@@ -136,8 +136,8 @@ test.describe('Auto-Navigate Behavior', () => {
     const url = page.url();
     expect(url).toMatch(/\/workspaces\/[a-f0-9-]+$/);
 
-    // Verify workspace name is visible
-    await expect(page.getByText(user.workspaceName)).toBeVisible({ timeout: 5000 });
+    // Verify we're on workspace detail page by checking for Documents heading
+    await expect(page.getByRole('heading', { name: /Documents/i })).toBeVisible({ timeout: 5000 });
 
     console.log('Single workspace user auto-navigated to:', url);
   });
@@ -256,9 +256,9 @@ test.describe('Auto-Navigate Behavior', () => {
     await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible();
 
     // Verify multiple workspace cards are visible (only for THIS user)
-    // Check that both workspaces created in this test are visible
-    await expect(page.getByText(user.workspaceName)).toBeVisible();
-    await expect(page.getByText(/Second Workspace/)).toBeVisible();
+    // Check that both workspaces created in this test are visible (use .first() for multiple matches)
+    await expect(page.getByText(user.workspaceName).first()).toBeVisible();
+    await expect(page.getByText(/Second Workspace/).first()).toBeVisible();
 
     console.log('Multi-workspace user without lastWorkspaceId sees workspace list page');
   });

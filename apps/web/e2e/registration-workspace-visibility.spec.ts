@@ -171,39 +171,27 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     // ACT 3: Submit registration form
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // ASSERT 2: Cloud mode - auto-login, redirect to workspaces
-    await expect(page).toHaveURL(/\/(workspaces|dashboard)/, { timeout: 10000 });
-    await page.waitForURL('/workspaces', { timeout: 5000 });
+    // ASSERT 2: Cloud mode - auto-login, auto-navigate to workspace detail (single workspace)
+    await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
 
     // ACT 4: Verify verification email was sent (even though user is auto-logged in)
     const verificationLink = await getVerificationLink(user.email);
     expect(verificationLink).toContain('/auth/verify');
     expect(verificationLink).toContain('token=');
 
-    // ACT 5: Wait for workspaces API call to complete
-    // Dashboard fetches workspaces on mount via GET /workspaces
-    await page.waitForResponse(
-      (response) =>
-        response.url().includes('/workspaces') && response.status() === 200,
-      { timeout: 5000 },
-    );
+    // ASSERT 3: Workspace detail page is visible (auto-navigated from single workspace)
+    await expect(page.getByRole('heading', { name: /Documents/i })).toBeVisible({ timeout: 5000 });
 
-    // ASSERT 3: Workspace is visible in dashboard (already auto-logged in)
+    // ASSERT 6: Navigate to workspaces list to verify workspace card
+    await page.goto('/workspaces');
+    await page.waitForLoadState('networkidle');
+
+    // ASSERT 7: Workspace is visible in dashboard
     await expect(page.getByText('No workspaces yet')).toBeHidden({ timeout: 2000 });
-    await expect(page.getByText(user.workspaceName)).toBeVisible({ timeout: 2000 });
+    await expect(page.getByText(user.workspaceName).first()).toBeVisible({ timeout: 2000 });
 
-    // ASSERT 6: Workspace card displays expected information
-    // Workspace card should show: name, member count, document count
-    const workspaceCard = page.locator(`[data-testid="workspace-card"]`).first();
-    await expect(workspaceCard).toBeVisible();
-
-    // Alternative assertion if data-testid is not available:
-    // Use text content matching (less brittle than testid)
-    await expect(page.getByText(user.workspaceName)).toBeVisible();
-
-    // ASSERT 7: Verify workspace card shows "0 documents" (newly created)
-    // This confirms workspace was just created during registration
-    await expect(page.getByText(/0 documents/i)).toBeVisible();
+    // ASSERT 8: Verify workspace card shows "0 documents" (newly created)
+    await expect(page.getByText(/0 documents/i).first()).toBeVisible();
   });
 
   /**
@@ -231,23 +219,19 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // ASSERT 1: Cloud mode - auto-login, redirect to workspaces
-    // Wait for either /workspaces or /dashboard (both redirect to /workspaces)
-    await expect(page).toHaveURL(/\/(workspaces|dashboard)/);
+    // ASSERT 1: Cloud mode - auto-login, auto-navigate to workspace detail (single workspace)
+    await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
 
-    // Dashboard redirects to /workspaces, so wait for final URL
-    await page.waitForURL('/workspaces', { timeout: 5000 });
+    // ASSERT 2: Workspace detail page is visible (Documents heading)
+    await expect(page.getByRole('heading', { name: /Documents/i })).toBeVisible({ timeout: 5000 });
 
-    // ACT 3: Wait for workspaces API call
-    await page.waitForResponse(
-      (response) =>
-        response.url().includes('/workspaces') && response.status() === 200,
-      { timeout: 5000 },
-    );
+    // ASSERT 3: Navigate to list to verify workspace is visible there too
+    await page.goto('/workspaces');
+    await page.waitForLoadState('networkidle');
 
-    // ASSERT 3: Workspace is visible (TEST WILL FAIL IF BUG EXISTS)
+    // ASSERT 4: Workspace is visible (TEST WILL FAIL IF BUG EXISTS)
     await expect(page.getByText('No workspaces yet')).toBeHidden({ timeout: 2000 });
-    await expect(page.getByText(user.workspaceName)).toBeVisible({ timeout: 2000 });
+    await expect(page.getByText(user.workspaceName).first()).toBeVisible({ timeout: 2000 });
   });
 
   /**
@@ -285,9 +269,12 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Cloud mode - auto-login, redirect to workspaces
-    await expect(page).toHaveURL(/\/(workspaces|dashboard)/);
-    await page.waitForURL('/workspaces', { timeout: 5000 });
+    // Cloud mode - auto-login, auto-navigate to workspace detail
+    await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
+
+    // Navigate to workspaces list to trigger API call for verification
+    await page.goto('/workspaces');
+    await page.waitForLoadState('networkidle');
 
     // Wait for API call
     await page.waitForResponse(

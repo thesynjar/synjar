@@ -85,8 +85,10 @@ DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6311/synjar_test?
 npx prisma migrate deploy
 
 # Start API in background
+# IMPORTANT: Use synjar_app user (non-superuser) for RLS enforcement
+# Migrations use postgres superuser, but API runtime needs RLS to work
 echo -e "${YELLOW}🚀 Starting API server...${NC}"
-DATABASE_URL="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
+DATABASE_URL="postgresql://synjar_app:synjar_app_password@localhost:6311/synjar_test?schema=public" \
 SMTP_HOST=localhost \
 SMTP_PORT=6312 \
 SMTP_SECURE=false \

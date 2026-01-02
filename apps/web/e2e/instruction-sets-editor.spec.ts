@@ -97,8 +97,9 @@ async function setupUserAndWorkspace(page: Page) {
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+  // Wait for navigation - /workspaces/[id] (Cloud auto-navigate), /workspaces (Cloud), or /register/success (self-hosted)
   const navigationResult = await Promise.race([
+    page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 }).then(() => 'workspace-detail'),
     page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
     page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
   ]);
@@ -143,7 +144,7 @@ async function createDocument(
   content: string,
   purpose: 'KNOWLEDGE' | 'INSTRUCTION' = 'KNOWLEDGE',
 ) {
-  const newDocButton = page.getByRole('button', { name: 'New Text Document' });
+  const newDocButton = page.getByRole('button', { name: 'New Text' });
   await expect(newDocButton).toBeVisible({ timeout: 5000 });
   await newDocButton.click();
 

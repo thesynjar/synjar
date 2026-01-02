@@ -96,11 +96,11 @@ test.describe('Registration Flow', () => {
     // Step 3: Submit form
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Step 4: Cloud mode - auto-login, redirect to workspaces
-    await expect(page).toHaveURL('/workspaces');
+    // Step 4: Cloud mode - auto-login, redirect to workspace detail (auto-navigate for single workspace)
+    await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
 
-    // Step 5: Verify workspace is visible (created during registration)
-    await expect(page.getByText(user.workspaceName)).toBeVisible();
+    // Step 5: Verify we're on workspace detail page (Documents heading is visible)
+    await expect(page.getByRole('heading', { name: /Documents/i })).toBeVisible({ timeout: 5000 });
 
     // Step 6: Verify verification email was sent (even though user is auto-logged in)
     const verificationLink = await getVerificationLink(user.email);
@@ -118,8 +118,8 @@ test.describe('Registration Flow', () => {
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Cloud mode - auto-login, redirect to workspaces
-    await expect(page).toHaveURL('/workspaces');
+    // Cloud mode - auto-login, redirect to workspace detail (auto-navigate for single workspace)
+    await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
 
     // Try to register again with same email
     await page.goto('/register');
