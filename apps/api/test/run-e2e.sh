@@ -7,10 +7,24 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Script directory (needed for cleanup)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Cleanup function - stops containers on interrupt
+cleanup() {
+  echo -e "\n${YELLOW}🧹 Cleaning up...${NC}"
+  cd "$SCRIPT_DIR/../../.."
+  docker compose -f docker-compose.test.yml down 2>/dev/null || true
+  echo -e "${YELLOW}✓ Cleanup complete${NC}"
+}
+
+# Trap signals for cleanup on interrupt (Ctrl+C, kill, exit)
+trap cleanup EXIT INT TERM
+
 echo -e "${YELLOW}🚀 Starting E2E test environment...${NC}"
 
 # Navigate to community root
-cd "$(dirname "$0")/../../.."
+cd "$SCRIPT_DIR/../../.."
 
 # Start test containers
 echo -e "${YELLOW}📦 Starting Docker containers...${NC}"
@@ -58,11 +72,7 @@ export B2_ENDPOINT="https://s3.us-east-005.backblazeb2.com"
 
 npx jest --config ./test/jest-e2e.json --testPathPattern="${1:-registration}" --maxWorkers=50% || TEST_RESULT=$?
 
-# Cleanup
-cd ../..
-echo -e "${YELLOW}🧹 Stopping Docker containers...${NC}"
-docker compose -f docker-compose.test.yml down
-
+# Report result (cleanup is handled by trap)
 if [ $TEST_RESULT -eq 0 ]; then
   echo -e "${GREEN}✅ All tests passed!${NC}"
 else
