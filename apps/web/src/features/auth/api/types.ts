@@ -13,6 +13,8 @@ export interface RegisterRequest {
 export interface RegisterResponse {
   message: string;
   userId: string;
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 export interface VerifyEmailRequest {

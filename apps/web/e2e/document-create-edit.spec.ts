@@ -74,7 +74,10 @@ async function clearMailpit() {
 }
 
 /**
- * Helper: Register, verify email, login, navigate to workspace
+ * Helper: Register, verify email (if needed), login (if needed), navigate to workspace
+ *
+ * Cloud mode: Auto-login after registration (no email verification)
+ * Self-hosted: Email verification flow
  */
 async function setupUserAndWorkspace(page: Page) {
   const user = generateTestUser();
@@ -88,20 +91,28 @@ async function setupUserAndWorkspace(page: Page) {
   await page.getByLabel('Workspace name').fill(user.workspaceName);
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page).toHaveURL('/register/success', { timeout: 10000 });
 
-  // Verify email
-  const verificationLink = await getVerificationLink(user.email);
-  await page.goto(verificationLink);
+  // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+  const navigationResult = await Promise.race([
+    page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
+    page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
+  ]);
 
-  // Login
-  await page.getByRole('link', { name: /sign in/i }).click();
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL(/\/workspaces(\/[a-f0-9-]+)?/, { timeout: 10000 });
+  if (navigationResult === 'success') {
+    // Self-hosted mode: Need email verification and manual login
+    const verificationLink = await getVerificationLink(user.email);
+    await page.goto(verificationLink);
 
-  // Navigate to workspace if not auto-redirected
+    // Login
+    await page.getByRole('link', { name: /sign in/i }).click();
+    await page.getByLabel('Email').fill(user.email);
+    await page.getByLabel('Password').fill(user.password);
+    await page.getByRole('button', { name: /sign in/i }).click();
+    await page.waitForURL(/\/workspaces(\/[a-f0-9-]+)?/, { timeout: 10000 });
+  }
+  // else: Already at /workspaces from Cloud auto-login
+
+  // Navigate to workspace detail page if not already there
   if (!/\/workspaces\/[a-f0-9-]+/.test(page.url())) {
     const workspaceHeading = page.getByRole('heading', { name: user.workspaceName });
     const nextStep = await Promise.race([

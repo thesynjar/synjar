@@ -73,7 +73,7 @@ test.describe('Workspace Navigation', () => {
     await clearMailpit();
   });
 
-  test('should register, verify email, and see workspaces page', async ({
+  test('should register, verify email (if needed), and see workspaces page', async ({
     page,
   }) => {
     const user = generateTestUser();
@@ -88,23 +88,32 @@ test.describe('Workspace Navigation', () => {
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Should redirect to success page
-    await expect(page).toHaveURL('/register/success', { timeout: 10000 });
-    await expect(page.getByText('Check your email')).toBeVisible();
+    // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+    const navigationResult = await Promise.race([
+      page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
+      page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
+    ]);
 
-    // Verify email
-    const verificationLink = await getVerificationLink(user.email);
-    await page.goto(verificationLink);
-    await expect(page.getByText('Email verified!')).toBeVisible();
+    if (navigationResult === 'success') {
+      // Self-hosted mode: Email verification required
+      await expect(page.getByText('Check your email')).toBeVisible();
 
-    // Login
-    await page.getByRole('link', { name: /sign in/i }).click();
-    await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Password').fill(user.password);
-    await page.getByRole('button', { name: /sign in/i }).click();
+      // Verify email
+      const verificationLink = await getVerificationLink(user.email);
+      await page.goto(verificationLink);
+      await expect(page.getByText('Email verified!')).toBeVisible();
 
-    // Should see workspaces page
-    await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+      // Login
+      await page.getByRole('link', { name: /sign in/i }).click();
+      await page.getByLabel('Email').fill(user.email);
+      await page.getByLabel('Password').fill(user.password);
+      await page.getByRole('button', { name: /sign in/i }).click();
+
+      // Should see workspaces page after login
+      await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+    }
+    // else: Cloud mode - already at /workspaces from auto-login
+
     await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible();
 
     // Should see our workspace card
@@ -116,7 +125,7 @@ test.describe('Workspace Navigation', () => {
   }) => {
     const user = generateTestUser();
 
-    // Quick registration + verification + login flow
+    // Quick registration + verification (if needed) + login flow
     await page.goto('/register');
     await page.getByLabel('Email').fill(user.email);
     await page
@@ -125,15 +134,24 @@ test.describe('Workspace Navigation', () => {
     await page.getByLabel('Workspace name').fill(user.workspaceName);
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page).toHaveURL('/register/success', { timeout: 10000 });
 
-    const verificationLink = await getVerificationLink(user.email);
-    await page.goto(verificationLink);
-    await page.getByRole('link', { name: /sign in/i }).click();
-    await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Password').fill(user.password);
-    await page.getByRole('button', { name: /sign in/i }).click();
-    await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+    // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+    const navigationResult = await Promise.race([
+      page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
+      page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
+    ]);
+
+    if (navigationResult === 'success') {
+      // Self-hosted mode: Email verification required
+      const verificationLink = await getVerificationLink(user.email);
+      await page.goto(verificationLink);
+      await page.getByRole('link', { name: /sign in/i }).click();
+      await page.getByLabel('Email').fill(user.email);
+      await page.getByLabel('Password').fill(user.password);
+      await page.getByRole('button', { name: /sign in/i }).click();
+      await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+    }
+    // else: Cloud mode - already at /workspaces from auto-login
 
     // Click on workspace card
     const workspaceCard = page.locator('div.cursor-pointer').first();
@@ -156,7 +174,7 @@ test.describe('Workspace Navigation', () => {
   test('should see workspace page content', async ({ page }) => {
     const user = generateTestUser();
 
-    // Registration + login
+    // Registration + verification (if needed) + login
     await page.goto('/register');
     await page.getByLabel('Email').fill(user.email);
     await page
@@ -165,15 +183,24 @@ test.describe('Workspace Navigation', () => {
     await page.getByLabel('Workspace name').fill(user.workspaceName);
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page).toHaveURL('/register/success', { timeout: 10000 });
 
-    const verificationLink = await getVerificationLink(user.email);
-    await page.goto(verificationLink);
-    await page.getByRole('link', { name: /sign in/i }).click();
-    await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Password').fill(user.password);
-    await page.getByRole('button', { name: /sign in/i }).click();
-    await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+    // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+    const navigationResult = await Promise.race([
+      page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
+      page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
+    ]);
+
+    if (navigationResult === 'success') {
+      // Self-hosted mode: Email verification required
+      const verificationLink = await getVerificationLink(user.email);
+      await page.goto(verificationLink);
+      await page.getByRole('link', { name: /sign in/i }).click();
+      await page.getByLabel('Email').fill(user.email);
+      await page.getByLabel('Password').fill(user.password);
+      await page.getByRole('button', { name: /sign in/i }).click();
+      await expect(page).toHaveURL('/workspaces', { timeout: 10000 });
+    }
+    // else: Cloud mode - already at /workspaces from auto-login
 
     // Navigate to workspace
     const workspaceCard = page.locator('div.cursor-pointer').first();

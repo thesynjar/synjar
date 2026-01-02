@@ -75,7 +75,9 @@ async function clearMailpit() {
 }
 
 /**
- * Helper: Register, verify email, and login user
+ * Helper: Register, verify email (if needed), and login user
+ * Cloud mode: Auto-login after registration (no email verification)
+ * Self-hosted: Email verification flow
  * Returns the user data for further assertions
  */
 async function registerAndLogin(page: Page, user: ReturnType<typeof generateTestUser>) {
@@ -88,17 +90,26 @@ async function registerAndLogin(page: Page, user: ReturnType<typeof generateTest
   await page.getByLabel('Workspace name').fill(user.workspaceName);
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page).toHaveURL('/register/success', { timeout: 10000 });
 
-  // Verify email
-  const verificationLink = await getVerificationLink(user.email);
-  await page.goto(verificationLink);
+  // Wait for navigation - either /workspaces (Cloud auto-login) or /register/success (self-hosted)
+  const navigationResult = await Promise.race([
+    page.waitForURL('/workspaces', { timeout: 10000 }).then(() => 'workspaces'),
+    page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 }).then(() => 'workspace-detail'),
+    page.waitForURL('/register/success', { timeout: 10000 }).then(() => 'success'),
+  ]);
 
-  // Login
-  await page.getByRole('link', { name: /sign in/i }).click();
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  if (navigationResult === 'success') {
+    // Self-hosted mode: Need email verification and manual login
+    const verificationLink = await getVerificationLink(user.email);
+    await page.goto(verificationLink);
+
+    // Login
+    await page.getByRole('link', { name: /sign in/i }).click();
+    await page.getByLabel('Email').fill(user.email);
+    await page.getByLabel('Password').fill(user.password);
+    await page.getByRole('button', { name: /sign in/i }).click();
+  }
+  // else: Already logged in from Cloud auto-login
 }
 
 test.describe('Auto-Navigate Behavior', () => {
@@ -244,12 +255,12 @@ test.describe('Auto-Navigate Behavior', () => {
     // Verify workspace list heading is visible
     await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible();
 
-    // Verify multiple workspace cards are visible
-    const workspaceCards = page.locator('div.cursor-pointer');
-    const cardCount = await workspaceCards.count();
-    expect(cardCount).toBeGreaterThanOrEqual(2);
+    // Verify multiple workspace cards are visible (only for THIS user)
+    // Check that both workspaces created in this test are visible
+    await expect(page.getByText(user.workspaceName)).toBeVisible();
+    await expect(page.getByText(/Second Workspace/)).toBeVisible();
 
-    console.log('Multi-workspace user without lastWorkspaceId sees list with', cardCount, 'workspaces');
+    console.log('Multi-workspace user without lastWorkspaceId sees workspace list page');
   });
 
   test('should prevent redirect loops with hasAutoNavigated flag', async ({

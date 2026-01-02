@@ -765,6 +765,9 @@ export class DocumentService {
       const oldPurpose = purposeChanged ? document.purpose : null;
 
       // Save draft
+      // IMPORTANT: Only title/content go to draftTitle/draftContent (isolated from RAG)
+      // Metadata (verificationStatus, purpose, sourceDescription, tags) updates document.* directly
+      // This design ensures metadata is searchable/filterable even when document has unpublished draft
       const now = new Date();
       const updated = await tx.document.update({
         where: { id: documentId },
@@ -773,6 +776,7 @@ export class DocumentService {
           draftContent: dto.content !== undefined ? dto.content : document.draftContent,
           draftUpdatedAt: now,
           updatedAt: now,
+          // Metadata updates document.* directly (NOT draft.* fields)
           sourceDescription: dto.sourceDescription,
           verificationStatus: dto.verificationStatus,
           purpose: dto.purpose,
@@ -880,6 +884,8 @@ export class DocumentService {
       }
 
       // Copy draft to published, clear draft
+      // IMPORTANT: Preserve metadata fields (verificationStatus, purpose, sourceDescription, tags)
+      // These are already saved via saveDraft endpoint and must persist after publish
       const now = new Date();
       const updated = await tx.document.update({
         where: { id: documentId },
@@ -893,6 +899,8 @@ export class DocumentService {
           updatedAt: now,
           processingStatus: requiresReprocessing ? ProcessingStatus.PENDING : document.processingStatus,
           scheduledProcessingAt: requiresReprocessing ? now : document.scheduledProcessingAt,
+          // NOTE: verificationStatus, purpose, sourceDescription, tags are NOT updated here
+          // They persist from saveDraft (already saved to document.* fields, not draft.* fields)
         },
       });
 

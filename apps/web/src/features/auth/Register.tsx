@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi, ApiError } from './api';
+import { useAuthStore } from './model/authStore';
 
 interface FormErrors {
   email?: string;
@@ -11,6 +12,7 @@ interface FormErrors {
 
 export function Register() {
   const navigate = useNavigate();
+  const { setTokens } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,13 +57,27 @@ export function Register() {
     setIsLoading(true);
 
     try {
-      await authApi.register({
+      const response = await authApi.register({
         email,
         password,
         workspaceName,
         name: name || undefined,
       });
-      navigate('/register/success', { state: { email } });
+
+      // Cloud mode: Backend returns tokens for auto-login
+      // Self-hosted (first user): Backend also returns tokens
+      if (response.accessToken && response.refreshToken) {
+        // Auto-login: Set tokens and navigate to workspaces
+        setTokens({
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
+          expiresIn: 900, // 15 minutes (backend default)
+        });
+        navigate('/workspaces');
+      } else {
+        // Self-hosted (non-first user) or legacy flow: Navigate to success page
+        navigate('/register/success', { state: { email } });
+      }
     } catch (error) {
       if (error instanceof ApiError) {
         const body = error.body as { message?: string | string[] } | undefined;
