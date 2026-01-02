@@ -232,6 +232,11 @@ describe('AuthService', () => {
         userId: 'user-id-123',
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
+        user: {
+          id: 'user-id-123',
+          email: 'test@example.com',
+          name: 'Test User',
+        },
       });
       expect(userRepositoryStub.findByEmail).toHaveBeenCalledWith(registerDto.email);
     });
@@ -1077,6 +1082,11 @@ describe('AuthService', () => {
         userId: createdUser.id,
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
+        user: {
+          id: createdUser.id,
+          email: createdUser.email,
+          name: createdUser.name,
+        },
       });
       expect(emailQueueServiceStub.queueEmailVerification).toHaveBeenCalled();
     });

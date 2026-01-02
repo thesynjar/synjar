@@ -30,6 +30,11 @@ export interface RegisterResult {
   userId: string;
   accessToken?: string;
   refreshToken?: string;
+  user?: {
+    id: string;
+    email: string;
+    name: string | null;
+  };
 }
 
 export interface LoginDto {

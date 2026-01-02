@@ -438,6 +438,11 @@ describe('Registration E2E Integration Tests', () => {
         userId: expect.any(String),
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
+        user: {
+          id: expect.any(String),
+          email,
+          name: 'Test User',
+        },
       });
 
       // 2. Verify email was sent

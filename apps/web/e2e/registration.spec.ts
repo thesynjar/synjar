@@ -62,7 +62,7 @@ test.describe('Registration Flow', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Synjar');
     await expect(page.getByText('Create your account')).toBeVisible();
     await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Name')).toBeVisible();
+    await expect(page.getByPlaceholder('John Doe')).toBeVisible();
     await expect(page.getByLabel('Workspace name')).toBeVisible();
     await expect(page.getByLabel('Password')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible();
@@ -89,7 +89,7 @@ test.describe('Registration Flow', () => {
 
     // Step 2: Fill registration form
     await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Name').fill(user.name);
+    await page.getByPlaceholder('John Doe').fill(user.name);
     await page.getByLabel('Workspace name').fill(user.workspaceName);
     await page.getByLabel('Password').fill(user.password);
 
@@ -131,7 +131,7 @@ test.describe('Registration Flow', () => {
     // First registration
     await page.goto('/register');
     await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Name').fill(user.name);
+    await page.getByPlaceholder('John Doe').fill(user.name);
     await page.getByLabel('Workspace name').fill(user.workspaceName);
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
@@ -141,7 +141,7 @@ test.describe('Registration Flow', () => {
     // Try to register again with same email
     await page.goto('/register');
     await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Name').fill('Another User');
+    await page.getByPlaceholder('John Doe').fill('Another User');
     await page.getByLabel('Workspace name').fill('Another Workspace');
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();

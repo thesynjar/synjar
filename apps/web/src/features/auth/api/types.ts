@@ -15,6 +15,7 @@ export interface RegisterResponse {
   userId: string;
   accessToken?: string;
   refreshToken?: string;
+  user?: AuthenticatedUser;
 }
 
 export interface VerifyEmailRequest {

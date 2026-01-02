@@ -128,6 +128,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     login,
     logout,
     error,
+    setUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

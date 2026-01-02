@@ -103,6 +103,12 @@ export class RegisterResponseDto {
     description: 'JWT refresh token (returned for cloud mode and self-hosted first user)',
   })
   refreshToken?: string;
+
+  @ApiPropertyOptional({
+    description: 'User data (returned with tokens for auto-login)',
+    type: UserDto,
+  })
+  user?: UserDto;
 }
 
 export class AcceptInviteDto {
