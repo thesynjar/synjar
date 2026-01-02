@@ -138,8 +138,8 @@ test.describe('Document Create and Edit', () => {
   test('should create a new text document via modal', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Click "New Text" button - opens modal
-    const newDocButton = page.getByRole('button', { name: 'New Text' });
+    // Click "New Text" button - opens modal (use .first() as there are two buttons: header + empty state)
+    const newDocButton = page.getByRole('button', { name: 'New Text' }).first();
     await expect(newDocButton).toBeVisible({ timeout: 5000 });
     await newDocButton.click();
 
@@ -276,8 +276,8 @@ test.describe('Document Create and Edit', () => {
   test('should create document with INSTRUCTION purpose and persist', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Click "New Text" button - opens modal
-    const newDocButton = page.getByRole('button', { name: 'New Text' });
+    // Click "New Text" button - opens modal (use .first() as there are two buttons: header + empty state)
+    const newDocButton = page.getByRole('button', { name: 'New Text' }).first();
     await expect(newDocButton).toBeVisible({ timeout: 5000 });
     await newDocButton.click();
 
@@ -322,8 +322,8 @@ test.describe('Document Create and Edit', () => {
   test('should change purpose from KNOWLEDGE to INSTRUCTION and auto-save', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Create document with default KNOWLEDGE purpose
-    await page.getByRole('button', { name: 'New Text' }).click();
+    // Create document with default KNOWLEDGE purpose (use .first() as there are two buttons)
+    await page.getByRole('button', { name: 'New Text' }).first().click();
     await page.getByPlaceholder('Document title').fill('Knowledge to Instruction Test');
     await page.getByPlaceholder(/document content/i).fill('Initial knowledge content.');
     // Default is KNOWLEDGE, so no need to click radio
@@ -373,8 +373,8 @@ test.describe('Document Create and Edit', () => {
   test('should verify purpose persists after page reload', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Create document with INSTRUCTION purpose
-    await page.getByRole('button', { name: 'New Text' }).click();
+    // Create document with INSTRUCTION purpose (use .first() as there are two buttons)
+    await page.getByRole('button', { name: 'New Text' }).first().click();
     await page.getByPlaceholder('Document title').fill('Persistence Test Document');
     await page.getByPlaceholder(/document content/i).fill('Testing persistence of purpose field.');
 
@@ -526,8 +526,8 @@ test.describe('Document Create and Edit', () => {
   test('should save draft using Save Draft button', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Create document
-    await page.getByRole('button', { name: 'New Text' }).click();
+    // Create document (use .first() as there are two buttons)
+    await page.getByRole('button', { name: 'New Text' }).first().click();
     await page.getByPlaceholder('Document title').fill('Draft Button Test');
     await page.getByPlaceholder(/document content/i).fill('Initial content.');
     await page.getByRole('button', { name: 'Create Document' }).click();
@@ -552,8 +552,8 @@ test.describe('Document Create and Edit', () => {
     await page.waitForTimeout(2000);
 
     // Check for success toast or saved indicator
-    // (exact selector depends on toast implementation)
-    const successIndicator = page.getByText(/saved|draft saved/i);
+    // Use exact text to avoid matching "Unsaved changes" status badge
+    const successIndicator = page.getByText('Draft saved');
     await expect(successIndicator).toBeVisible({ timeout: 5000 });
 
     console.log('✅ Save Draft button works correctly');

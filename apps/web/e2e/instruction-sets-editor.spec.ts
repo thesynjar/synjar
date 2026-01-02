@@ -144,7 +144,15 @@ async function createDocument(
   content: string,
   purpose: 'KNOWLEDGE' | 'INSTRUCTION' = 'KNOWLEDGE',
 ) {
-  const newDocButton = page.getByRole('button', { name: 'New Text' });
+  // First ensure we're on the Documents tab/list (not on document editor)
+  const backToDocsButton = page.getByRole('button', { name: 'Back to Documents' });
+  if (await backToDocsButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await backToDocsButton.click();
+    await page.waitForTimeout(500);
+  }
+
+  // Use .first() as there are two "New Text" buttons: header + empty state
+  const newDocButton = page.getByRole('button', { name: 'New Text' }).first();
   await expect(newDocButton).toBeVisible({ timeout: 5000 });
   await newDocButton.click();
 
@@ -158,6 +166,15 @@ async function createDocument(
   }
 
   await page.getByRole('button', { name: 'Create Document' }).click();
+
+  // After creating, the modal might auto-navigate to the editor
+  // If so, go back to the documents list
+  const backButton = page.getByRole('button', { name: 'Back to Documents' });
+  if (await backButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await backButton.click();
+    await page.waitForTimeout(500);
+  }
+
   await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
 }
 
@@ -165,10 +182,12 @@ async function createDocument(
  * Helper: Navigate to Instruction Sets tab
  */
 async function navigateToInstructionSets(page: Page) {
-  const instructionSetsTab = page.getByRole('button', { name: /instruction sets/i });
-  if (await instructionSetsTab.isVisible().catch(() => false)) {
-    await instructionSetsTab.click();
-  }
+  // The tab is a link with name "Sets" in the workspace navigation
+  const setsTab = page.getByRole('link', { name: 'Sets' });
+  await expect(setsTab).toBeVisible({ timeout: 5000 });
+  await setsTab.click();
+  // Wait for the Sets tab content to load
+  await page.waitForTimeout(500);
 }
 
 /**
@@ -177,20 +196,58 @@ async function navigateToInstructionSets(page: Page) {
 async function createInstructionSet(page: Page, name: string, description = '') {
   await navigateToInstructionSets(page);
 
-  const createButton = page.getByRole('button', { name: /new instruction set/i });
+  // Button is "Create Your First Set" in empty state, or "New Instruction Set" otherwise
+  const emptyStateButton = page.getByRole('button', { name: /create your first set/i });
+  const newSetButton = page.getByRole('button', { name: /new instruction set/i });
+
+  // Try empty state button first, then the regular one
+  let createButton;
+  if (await emptyStateButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    createButton = emptyStateButton;
+  } else {
+    createButton = newSetButton;
+  }
+
   await expect(createButton).toBeVisible({ timeout: 5000 });
   await createButton.click();
 
-  // Fill in modal
-  await page.getByLabel(/name/i).fill(name);
+  // Wait for modal to appear
+  await page.waitForTimeout(500);
+
+  // Step 1: Fill in modal - use placeholder selectors since labels aren't properly associated
+  const nameInput = page.getByPlaceholder(/brand voice/i);
+  await expect(nameInput).toBeVisible({ timeout: 5000 });
+  await nameInput.fill(name);
+
   if (description) {
-    const descInput = page.getByLabel(/description/i);
-    if (await descInput.isVisible().catch(() => false)) {
+    const descInput = page.getByPlaceholder(/what is this instruction set for/i);
+    if (await descInput.isVisible({ timeout: 1000 }).catch(() => false)) {
       await descInput.fill(description);
     }
   }
 
-  await page.getByRole('button', { name: /create/i }).click();
+  // Click through the wizard steps (modal has 3 steps)
+  // Step 1 → Step 2: Click Next
+  let nextButton = page.getByRole('button', { name: /^next$/i });
+  if (await nextButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await nextButton.click();
+    await page.waitForTimeout(500);
+  }
+
+  // Step 2: Select Documents → Click Next (skip document selection)
+  nextButton = page.getByRole('button', { name: /^next$/i });
+  if (await nextButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await nextButton.click();
+    await page.waitForTimeout(500);
+  }
+
+  // Step 3: Final step → Click Create Instruction Set
+  const createFinalButton = page.getByRole('button', { name: /create instruction set/i });
+  if (await createFinalButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await createFinalButton.click();
+  }
+
+  // Wait for modal to close and instruction set to appear
   await expect(page.getByText(name)).toBeVisible({ timeout: 5000 });
 }
 

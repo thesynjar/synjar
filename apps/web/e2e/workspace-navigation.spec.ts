@@ -156,15 +156,25 @@ test.describe('Workspace Navigation', () => {
       await expect(page).toHaveURL(/\/workspaces/, { timeout: 10000 });
     }
 
-    // If not already on workspace detail, click on workspace card
-    if (!/\/workspaces\/[a-f0-9-]+/.test(page.url())) {
+    // Wait for page to stabilize after navigation
+    await page.waitForTimeout(1000);
+
+    // In Cloud mode with single workspace, user is auto-navigated to workspace detail
+    // Check if we're already on workspace detail page
+    const currentUrl = page.url();
+    const isOnWorkspaceDetail = /\/workspaces\/[a-f0-9-]+/.test(currentUrl) && !currentUrl.endsWith('/workspaces');
+
+    if (!isOnWorkspaceDetail) {
+      // Need to click on workspace card
       const workspaceCard = page.locator('div.cursor-pointer').first();
-      await workspaceCard.waitFor({ state: 'visible', timeout: 5000 });
-      await workspaceCard.click();
+      if (await workspaceCard.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await workspaceCard.click();
+        await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
+      }
     }
 
-    // Should be on workspace detail page
-    await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
+    // Should now be on workspace detail page
+    await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
 
     // Take screenshot to see what's on this page
     await page.screenshot({
@@ -207,12 +217,23 @@ test.describe('Workspace Navigation', () => {
       await expect(page).toHaveURL(/\/workspaces/, { timeout: 10000 });
     }
 
-    // If not already on workspace detail, navigate to workspace
-    if (!/\/workspaces\/[a-f0-9-]+/.test(page.url())) {
+    // Wait for page to stabilize after navigation
+    await page.waitForTimeout(1000);
+
+    // In Cloud mode with single workspace, user is auto-navigated to workspace detail
+    const currentUrl = page.url();
+    const isOnWorkspaceDetail = /\/workspaces\/[a-f0-9-]+/.test(currentUrl) && !currentUrl.endsWith('/workspaces');
+
+    if (!isOnWorkspaceDetail) {
       const workspaceCard = page.locator('div.cursor-pointer').first();
-      await workspaceCard.click();
+      if (await workspaceCard.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await workspaceCard.click();
+        await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
+      }
     }
-    await page.waitForURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
+
+    // Should now be on workspace detail page
+    await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 5000 });
 
     // Wait for page to load and take screenshot
     await page.waitForLoadState('networkidle');
