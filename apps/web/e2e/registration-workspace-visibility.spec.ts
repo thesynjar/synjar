@@ -279,26 +279,6 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
   });
 
   /**
-   * REGRESSION: Self-hosted mode - First user workspace should be visible
-   *
-   * This test verifies self-hosted mode (first user registration):
-   * 1. User registers as first user (self-hosted mode)
-   * 2. Backend instantly verifies email (no verification required)
-   * 3. User is auto-logged in
-   * 4. Dashboard should display workspace immediately
-   *
-   * Note: This test requires backend to be in self-hosted mode.
-   * Since Playwright tests run against shared backend, we skip this test.
-   * It's covered by backend integration test instead.
-   */
-  test.skip('REGRESSION: Workspace should be visible in self-hosted mode (first user)', async () => {
-    // Skipped: Backend mode (cloud/self-hosted) is shared across all tests
-    // Cannot toggle mode in Playwright test without restarting backend
-    // This scenario is covered by backend integration test:
-    // community/apps/api/test/registration-workspace-visibility.integration.spec.ts
-  });
-
-  /**
    * DEBUG: Network inspection - Verify API returns empty array
    *
    * This test verifies the bug at network level:

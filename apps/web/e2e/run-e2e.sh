@@ -7,10 +7,32 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Script directory (needed for cleanup)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Track PIDs for cleanup
+API_PID=""
+WEB_PID=""
+
+# Cleanup function - kills background processes and stops containers
+cleanup() {
+  echo -e "\n${YELLOW}🧹 Cleaning up...${NC}"
+  [ -n "$WEB_PID" ] && kill $WEB_PID 2>/dev/null || true
+  [ -n "$API_PID" ] && kill $API_PID 2>/dev/null || true
+
+  # Navigate to community root for docker-compose
+  cd "$SCRIPT_DIR/../../.."
+  docker compose -f docker-compose.test.yml down 2>/dev/null || true
+
+  echo -e "${YELLOW}✓ Cleanup complete${NC}"
+}
+
+# Trap signals for cleanup on interrupt (Ctrl+C, kill, exit)
+trap cleanup EXIT INT TERM
+
 echo -e "${YELLOW}🚀 Starting E2E test environment for Playwright...${NC}"
 
 # Navigate to community root
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/../../.."
 
 # Kill any existing processes on test ports
@@ -84,15 +106,9 @@ CI=true \
 API_URL=http://localhost:6300 \
 MAILPIT_URL=http://localhost:6313 \
 BASE_URL=http://localhost:6310 \
-npx playwright test --workers=1 "$@" || TEST_RESULT=$?
+npx playwright test "$@" || TEST_RESULT=$?
 
-# Cleanup
-echo -e "${YELLOW}🧹 Stopping services...${NC}"
-kill $WEB_PID 2>/dev/null || true
-kill $API_PID 2>/dev/null || true
-cd ../..
-docker compose -f docker-compose.test.yml down
-
+# Report result (cleanup is handled by trap)
 if [ $TEST_RESULT -eq 0 ]; then
   echo -e "${GREEN}✅ All Playwright tests passed!${NC}"
 else
