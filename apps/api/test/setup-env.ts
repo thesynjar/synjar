@@ -13,8 +13,10 @@ const testEnv: Record<string, string> = {
   // Node environment
   NODE_ENV: 'test',
 
-  // Database
-  DATABASE_URL: 'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public',
+  // Database - use synjar_app (nobypassrls) for RLS enforcement
+  DATABASE_URL: 'postgresql://synjar_app:synjar_app_password@localhost:6311/synjar_test?schema=public',
+  // Superuser for migrations
+  DATABASE_URL_MIGRATE: 'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public',
 
   // JWT
   JWT_SECRET: 'test-jwt-secret-for-e2e-tests',

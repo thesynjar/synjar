@@ -13,7 +13,10 @@ export default async function globalSetup() {
   // Test ports are different from dev to avoid conflicts
   // Dev: postgres 6201, mailpit 6202/6203
   // Test: postgres 6311, mailpit 6312/6313
-  process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public';
+  // Use synjar_app (nobypassrls) for RLS enforcement in tests
+  process.env.DATABASE_URL = 'postgresql://synjar_app:synjar_app_password@localhost:6311/synjar_test?schema=public';
+  // Use postgres superuser for migrations (requires elevated privileges)
+  process.env.DATABASE_URL_MIGRATE = 'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public';
   process.env.JWT_SECRET = 'test-jwt-secret-for-e2e-tests';
   process.env.JWT_EXPIRES_IN = '7d';
   process.env.SMTP_HOST = 'localhost';

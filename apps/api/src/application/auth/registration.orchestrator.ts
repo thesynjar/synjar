@@ -92,13 +92,26 @@ export class RegistrationOrchestrator {
         SELECT set_config('app.current_user_id', ${user.id}::text, true)
       `;
 
-      // Step 3: Create workspace (RLS policy check passes: createdById = user.id ✅)
-      const workspace = await tx.workspace.create({
-        data: {
-          name: data.workspaceName,
-          createdById: user.id,
-        },
-      });
+      // Step 3: Create workspace using raw SQL
+      // WORKAROUND: Prisma Client has a bug where set_config() doesn't affect
+      // subsequent Prisma operations within the same transaction for RLS policy checks.
+      // Raw SQL INSERT works correctly with RLS context.
+      // See: https://github.com/prisma/prisma/issues/12735
+      const workspaceId = randomUUID();
+      const now = new Date();
+      await tx.$executeRaw`
+        INSERT INTO "Workspace" (id, name, "createdById", "createdAt", "updatedAt")
+        VALUES (${workspaceId}, ${data.workspaceName}, ${user.id}, ${now}, ${now})
+      `;
+
+      // Construct workspace object manually (can't fetch due to RLS)
+      const workspace: Workspace = {
+        id: workspaceId,
+        name: data.workspaceName,
+        createdById: user.id,
+        createdAt: now,
+        updatedAt: now,
+      };
 
       // Step 3b: Set RLS workspace context now that workspace exists
       // This satisfies WorkspaceMember INSERT policy: "workspaceId" = get_current_workspace_id()
@@ -106,16 +119,14 @@ export class RegistrationOrchestrator {
         SELECT set_config('app.current_workspace_id', ${workspace.id}::text, true)
       `;
 
-      // Step 4: Create workspace member with OWNER role
-      // (Same pattern as WorkspaceService.create:49-54)
-      await tx.workspaceMember.create({
-        data: {
-          workspaceId: workspace.id,
-          userId: user.id,
-          role: 'OWNER',
-          permissions: data.ownerPermissions,
-        },
-      });
+      // Step 4: Create workspace member with OWNER role using raw SQL
+      // WORKAROUND: Same Prisma RLS bug as above
+      const memberId = randomUUID();
+      const permissionsArray = data.ownerPermissions;
+      await tx.$executeRaw`
+        INSERT INTO "WorkspaceMember" (id, "workspaceId", "userId", role, permissions, "createdAt")
+        VALUES (${memberId}, ${workspace.id}, ${user.id}, 'OWNER', ${permissionsArray}, NOW())
+      `;
 
       // Step 5: Emit domain event for workspace membership
       // (Same pattern as WorkspaceService.create:65-68)

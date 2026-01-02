@@ -41,7 +41,8 @@ npx prisma migrate deploy
 echo -e "${YELLOW}🧪 Running E2E tests...${NC}"
 TEST_RESULT=0
 export NODE_ENV=test
-export DATABASE_URL="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public"
+# Use synjar_app (nobypassrls) for RLS enforcement in tests
+export DATABASE_URL="postgresql://synjar_app:synjar_app_password@localhost:6311/synjar_test?schema=public"
 export JWT_SECRET="test-jwt-secret-for-e2e-tests"
 export JWT_EXPIRES_IN="7d"
 export SMTP_HOST="localhost"
