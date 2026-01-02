@@ -25,7 +25,7 @@ const testEnv: Record<string, string> = {
   SMTP_PORT: '6312',
   SMTP_SECURE: 'false',
   EMAIL_VERIFICATION_URL: 'http://localhost:6310/auth/verify',
-  MAILPIT_API_URL: 'http://localhost:6313',
+  MAILPIT_API_URL: 'http://localhost:6313/api/v1',
 
   // OpenAI (mock for tests that don't need it)
   OPENAI_API_KEY: 'sk-test-dummy-key-for-testing',

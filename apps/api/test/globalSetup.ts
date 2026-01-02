@@ -20,7 +20,7 @@ export default async function globalSetup() {
   process.env.SMTP_PORT = '6312';
   process.env.SMTP_SECURE = 'false';
   process.env.EMAIL_VERIFICATION_URL = 'http://localhost:6310/auth/verify';
-  process.env.MAILPIT_API_URL = 'http://localhost:6313';
+  process.env.MAILPIT_API_URL = 'http://localhost:6313/api/v1';
   process.env.OPENAI_API_KEY = 'sk-test-dummy-key-for-testing';
   process.env.B2_KEY_ID = 'test-key';
   process.env.B2_APPLICATION_KEY = 'test-app-key';

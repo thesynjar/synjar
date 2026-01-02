@@ -18,6 +18,8 @@ services:
       POSTGRES_DB: synjar_test
     ports:
       - "6311:5432"
+    volumes:
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s

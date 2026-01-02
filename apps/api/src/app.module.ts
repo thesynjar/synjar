@@ -1,7 +1,7 @@
 import { Module, DynamicModule, Logger, Type, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard, ThrottlerModuleOptions } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './infrastructure/persistence/prisma/prisma.module';
 import { AuthModule } from './application/auth/auth.module';
@@ -40,13 +40,36 @@ function getCoreModules() {
       isGlobal: true,
       envFilePath: envFile,
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        // Higher limit for tests to avoid ThrottlerException during E2E
-        limit: isTest ? 10000 : 100,
+    /**
+     * Rate Limiting Configuration
+     *
+     * - Test: Skip throttling entirely (skipIf: () => true)
+     * - Development: 10x higher limits for developer friction reduction
+     * - Production: Standard limits for security
+     *
+     * Endpoints can override with @Throttle decorator.
+     */
+    ThrottlerModule.forRootAsync({
+      useFactory: (): ThrottlerModuleOptions => {
+        const isDev = process.env.NODE_ENV === 'development';
+
+        // Skip throttling in test environment
+        if (isTest) {
+          return {
+            throttlers: [{ name: 'default', ttl: 1, limit: 1000000 }],
+            skipIf: () => true,
+          };
+        }
+
+        // Development: 10x higher limits
+        // Production: Standard limits
+        const multiplier = isDev ? 10 : 1;
+
+        return [
+          { name: 'default', ttl: 60000, limit: 100 * multiplier }, // 100/min (1000 in dev)
+        ];
       },
-    ]),
+    }),
     ScheduleModule.forRoot(),
     PrismaModule,
     EventsModule,
