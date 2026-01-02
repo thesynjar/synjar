@@ -4,6 +4,7 @@
   "testEnvironment": "node",
   "testRegex": ".integration.spec.ts$",
   "setupFiles": ["<rootDir>/setup-env.ts"],
+  "maxWorkers": "50%",
   "transform": {
     "^.+\\.(t|j)s$": ["ts-jest", {
       "tsconfig": {

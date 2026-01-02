@@ -56,7 +56,7 @@ export B2_APPLICATION_KEY="test-app-key"
 export B2_BUCKET_NAME="test-bucket"
 export B2_ENDPOINT="https://s3.us-east-005.backblazeb2.com"
 
-npx jest --config ./test/jest-e2e.json --testPathPattern="${1:-registration}" --runInBand || TEST_RESULT=$?
+npx jest --config ./test/jest-e2e.json --testPathPattern="${1:-registration}" --maxWorkers=50% || TEST_RESULT=$?
 
 # Cleanup
 cd ../..
