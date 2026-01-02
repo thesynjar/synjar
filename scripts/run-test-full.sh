@@ -12,22 +12,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMMUNITY_ROOT="$SCRIPT_DIR/.."
 
 # Track what we started for cleanup
-DEV_DOCKER_STARTED=false
+TEST_DOCKER_STARTED=false
 
 # Cleanup function
 cleanup() {
   echo -e "\n${YELLOW}🧹 Cleaning up...${NC}"
 
-  # Stop dev docker if we started it
-  if [ "$DEV_DOCKER_STARTED" = true ]; then
+  # Stop test docker if we started it
+  if [ "$TEST_DOCKER_STARTED" = true ]; then
     cd "$COMMUNITY_ROOT"
-    docker compose -f docker-compose.dev.yml down 2>/dev/null || true
-    echo -e "${YELLOW}✓ Dev containers stopped${NC}"
+    docker compose -f docker-compose.test.yml down 2>/dev/null || true
+    echo -e "${YELLOW}✓ Test containers stopped${NC}"
   fi
-
-  # E2E scripts handle their own cleanup via trap, but ensure test containers are down
-  cd "$COMMUNITY_ROOT"
-  docker compose -f docker-compose.test.yml down 2>/dev/null || true
 
   echo -e "${YELLOW}✓ Cleanup complete${NC}"
 }
@@ -52,35 +48,36 @@ echo -e "\n${YELLOW}📋 Phase 1: Unit Tests${NC}"
 pnpm test
 echo -e "${GREEN}✓ Unit tests passed${NC}"
 
-# === PHASE 2: Integration Tests (needs dev docker) ===
+# === PHASE 2: Integration Tests (needs test docker) ===
 echo -e "\n${YELLOW}📋 Phase 2: Integration Tests${NC}"
 
-# Start dev docker for integration tests
-echo -e "${YELLOW}📦 Starting dev containers for integration tests...${NC}"
-docker compose -f docker-compose.dev.yml up -d postgres
-DEV_DOCKER_STARTED=true
+# Start test docker for integration tests (same stack as E2E)
+echo -e "${YELLOW}📦 Starting test containers...${NC}"
+docker compose -f docker-compose.test.yml up -d
+TEST_DOCKER_STARTED=true
 
 # Wait for PostgreSQL
-echo -e "${YELLOW}⏳ Waiting for PostgreSQL (dev)...${NC}"
-until docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do
+echo -e "${YELLOW}⏳ Waiting for PostgreSQL (test)...${NC}"
+until docker compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U postgres > /dev/null 2>&1; do
   sleep 1
 done
-echo -e "${GREEN}✓ PostgreSQL (dev) is ready${NC}"
+echo -e "${GREEN}✓ PostgreSQL (test) is ready${NC}"
 
-# Run migrations
+# Run migrations on test database
 echo -e "${YELLOW}🔄 Applying migrations...${NC}"
 cd apps/api
+DATABASE_URL="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
+DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
 npx prisma migrate deploy
 cd "$COMMUNITY_ROOT"
 
-# Run integration tests
+# Run integration tests with test database
+DATABASE_URL="postgresql://synjar_app:synjar_app_password@localhost:6311/synjar_test?schema=public" \
+DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public" \
 pnpm test:integration
 echo -e "${GREEN}✓ Integration tests passed${NC}"
 
-# Stop dev docker before E2E (E2E uses different ports)
-echo -e "${YELLOW}🧹 Stopping dev containers...${NC}"
-docker compose -f docker-compose.dev.yml down
-DEV_DOCKER_STARTED=false
+# Note: Test containers stay running for E2E phases
 
 # === PHASE 3: E2E API Tests ===
 echo -e "\n${YELLOW}📋 Phase 3: E2E API Tests${NC}"

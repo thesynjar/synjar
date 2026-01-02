@@ -52,7 +52,7 @@ describe('Instruction Set Integration Tests', () => {
         db: {
           url:
             process.env.DATABASE_URL_MIGRATE ||
-            'postgresql://postgres:postgres@localhost:6201/synjar?schema=public',
+            'postgresql://postgres:postgres@localhost:6311/synjar_test?schema=public',
         },
       },
     });
