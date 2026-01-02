@@ -17,8 +17,17 @@ WEB_PID=""
 # Cleanup function - kills background processes and stops containers
 cleanup() {
   echo -e "\n${YELLOW}🧹 Cleaning up...${NC}"
-  [ -n "$WEB_PID" ] && kill $WEB_PID 2>/dev/null || true
-  [ -n "$API_PID" ] && kill $API_PID 2>/dev/null || true
+
+  # Kill process groups (negative PID kills entire process group including children)
+  [ -n "$WEB_PID" ] && kill -- -$WEB_PID 2>/dev/null || true
+  [ -n "$API_PID" ] && kill -- -$API_PID 2>/dev/null || true
+
+  # Wait a bit for graceful shutdown
+  sleep 1
+
+  # Force kill if still running
+  [ -n "$WEB_PID" ] && kill -9 -- -$WEB_PID 2>/dev/null || true
+  [ -n "$API_PID" ] && kill -9 -- -$API_PID 2>/dev/null || true
 
   # Navigate to community root for docker-compose
   cd "$SCRIPT_DIR/../../.."
