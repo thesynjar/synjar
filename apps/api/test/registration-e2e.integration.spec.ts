@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
+import { v4 as uuidv4 } from 'uuid';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.service';
 
@@ -20,7 +21,15 @@ import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.s
  * Run with: pnpm test:e2e -- --testPathPattern=registration-e2e
  *
  * Spec: docs/specifications/2025-12-26-dual-mode-registration.md (Section 6.2)
+ *
+ * Test Isolation Strategy:
+ * - Each test file uses a unique email domain to prevent conflicts
+ * - No database cleanup (tests run in parallel with isolated data)
+ * - Each test generates unique emails using UUID
  */
+
+// Unique domain for this test file (prevents conflicts with parallel tests)
+const TEST_EMAIL_DOMAIN = `@registration-e2e-${uuidv4()}.test.com`;
 
 // Mailpit API configuration (loaded from setup-env.ts or environment)
 const MAILPIT_API_URL = process.env.MAILPIT_API_URL || 'http://localhost:6313/api/v1';
@@ -151,35 +160,9 @@ describe('Registration E2E Integration Tests', () => {
   });
 
   afterAll(async () => {
-    // Cleanup test data
-    try {
-      await prisma.$executeRawUnsafe(`
-        DO $$
-        BEGIN
-          -- Delete WorkspaceMember entries
-          DELETE FROM "WorkspaceMember"
-          WHERE "workspaceId" IN (
-            SELECT id FROM "Workspace"
-            WHERE "createdById" IN (
-              SELECT id FROM "User" WHERE email LIKE '%@registration-e2e-test.com'
-            )
-          );
-
-          -- Delete Workspace entries
-          DELETE FROM "Workspace"
-          WHERE "createdById" IN (
-            SELECT id FROM "User" WHERE email LIKE '%@registration-e2e-test.com'
-          );
-
-          -- Delete User entries
-          DELETE FROM "User" WHERE email LIKE '%@registration-e2e-test.com';
-        END $$;
-      `);
-    } catch (error) {
-      console.warn('Cleanup failed:', (error as Error).message);
-    } finally {
-      await app.close();
-    }
+    // No database cleanup - tests use unique email domains for isolation
+    // This allows parallel test execution without conflicts
+    await app.close();
   });
 
   beforeEach(async () => {
@@ -220,7 +203,7 @@ describe('Registration E2E Integration Tests', () => {
       const times: number[] = [];
 
       // Create one existing user
-      const existingEmail = `existing-${Date.now()}@registration-e2e-test.com`;
+      const existingEmail = `existing-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
       await request(app.getHttpServer())
         .post('/auth/register')
         .send({
@@ -238,7 +221,7 @@ describe('Registration E2E Integration Tests', () => {
 
       // Test 10 registrations (mix of new and existing users)
       for (let i = 0; i < 10; i++) {
-        const email = i % 2 === 0 ? `new-${Date.now()}-${i}@registration-e2e-test.com` : existingEmail;
+        const email = i % 2 === 0 ? `new-${uuidv4()}${TEST_EMAIL_DOMAIN}` : existingEmail;
         const start = Date.now();
 
         await request(app.getHttpServer())
@@ -310,7 +293,7 @@ describe('Registration E2E Integration Tests', () => {
         const res = await request(app.getHttpServer())
           .post('/auth/register')
           .send({
-            email: `weak-${Date.now()}@registration-e2e-test.com`,
+            email: `weak-${uuidv4()}${TEST_EMAIL_DOMAIN}`,
             password,
             workspaceName: 'Test Workspace',
           })
@@ -382,7 +365,7 @@ describe('Registration E2E Integration Tests', () => {
     });
 
     it('should send verification email without ENOENT error when user registers in cloud mode', async () => {
-      const email = `template-path-${Date.now()}@registration-e2e-test.com`;
+      const email = `template-path-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // ARRANGE: Clear Mailpit
       await clearMailpit();
@@ -436,7 +419,7 @@ describe('Registration E2E Integration Tests', () => {
 
   describe('Registration Flow', () => {
     it('should register user with workspace and send verification email', async () => {
-      const email = `user-${Date.now()}@registration-e2e-test.com`;
+      const email = `user-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user
       const registerRes = await request(app.getHttpServer())
@@ -469,7 +452,7 @@ describe('Registration E2E Integration Tests', () => {
     });
 
     it('should allow login before email verification (but workspace access shows unverified status)', async () => {
-      const email = `unverified-${Date.now()}@registration-e2e-test.com`;
+      const email = `unverified-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // Register user
       await request(app.getHttpServer())
@@ -500,7 +483,7 @@ describe('Registration E2E Integration Tests', () => {
     });
 
     it('should verify email with valid token', async () => {
-      const email = `verify-${Date.now()}@registration-e2e-test.com`;
+      const email = `verify-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user
       await request(app.getHttpServer())
@@ -560,7 +543,7 @@ describe('Registration E2E Integration Tests', () => {
        * @see register-user.use-case.ts handleExistingVerifiedUser()
        * @see auth.service.spec.ts "should NOT return tokens for existing verified user"
        */
-      const email = `duplicate-${Date.now()}@registration-e2e-test.com`;
+      const email = `duplicate-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // First registration - NEW user gets tokens
       const firstRes = await request(app.getHttpServer())
@@ -601,7 +584,7 @@ describe('Registration E2E Integration Tests', () => {
 
   describe('Resend Verification', () => {
     it('should resend verification email', async () => {
-      const email = `resend-${Date.now()}@registration-e2e-test.com`;
+      const email = `resend-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user
       await request(app.getHttpServer())
@@ -641,7 +624,7 @@ describe('Registration E2E Integration Tests', () => {
     });
 
     it('should enforce cooldown on resend', async () => {
-      const email = `cooldown-${Date.now()}@registration-e2e-test.com`;
+      const email = `cooldown-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user
       await request(app.getHttpServer())
@@ -666,7 +649,7 @@ describe('Registration E2E Integration Tests', () => {
     it('should return generic message for non-existent email', async () => {
       const resendRes = await request(app.getHttpServer())
         .post('/auth/resend-verification')
-        .send({ email: 'nonexistent@registration-e2e-test.com' })
+        .send({ email: 'nonexistent${TEST_EMAIL_DOMAIN}' })
         .expect(200);
 
       // Generic message to prevent email enumeration
@@ -685,7 +668,7 @@ describe('Registration E2E Integration Tests', () => {
       const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({
-          email: 'weak@registration-e2e-test.com',
+          email: 'weak${TEST_EMAIL_DOMAIN}',
           password: 'weak', // Too short, no special chars
           workspaceName: 'Test',
         })
@@ -711,7 +694,7 @@ describe('Registration E2E Integration Tests', () => {
       const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send({
-          email: 'short-ws@registration-e2e-test.com',
+          email: 'short-ws${TEST_EMAIL_DOMAIN}',
           password: 'MyP@ssw0rd123!',
           workspaceName: 'X', // Too short (min 2)
         })

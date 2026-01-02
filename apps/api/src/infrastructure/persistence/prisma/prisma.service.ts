@@ -102,13 +102,6 @@ export class PrismaService
       throw new BadRequestException('Invalid workspace ID format');
     }
 
-    // Audit log
-    this.logger.debug({
-      event: 'WORKSPACE_CONTEXT_SET',
-      workspaceId,
-      timestamp: new Date().toISOString(),
-    });
-
     return this.$transaction(async (tx) => {
       // Set the workspace ID in the database session for RLS policies
       // Using set_config with is_local=true ensures the setting is transaction-scoped

@@ -98,14 +98,6 @@ export class RlsMiddleware implements NestMiddleware {
     // SAFE: User verified as member, set workspace context
     await this.setWorkspaceContext(workspaceId);
 
-    // Audit log for workspace access
-    this.logger.debug({
-      event: 'WORKSPACE_CONTEXT_SET',
-      workspaceId,
-      userId: user.sub,
-      path: req.path,
-    });
-
     next();
   }
 
