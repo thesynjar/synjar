@@ -1,2 +1,3 @@
-echo "Running full test suite before push..."
+#!/bin/bash
+echo "Running full test suite before push... (Ctrl+C to cancel)"
 pnpm test:full
