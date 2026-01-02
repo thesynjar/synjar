@@ -70,7 +70,8 @@ function getCoreModules() {
         ];
       },
     }),
-    ScheduleModule.forRoot(),
+    // Disable scheduled tasks in test environment (DocumentProcessingScheduler, etc.)
+    ...(isTest ? [] : [ScheduleModule.forRoot()]),
     PrismaModule,
     EventsModule,
     EmbeddingsModule,

@@ -18,6 +18,10 @@ TEST_DOCKER_STARTED=false
 cleanup() {
   echo -e "\n${YELLOW}🧹 Cleaning up...${NC}"
 
+  # Kill any processes on test ports (API: 6300, Web: 6310)
+  # This ensures no orphan processes remain from E2E tests
+  lsof -ti:6300 -ti:6310 2>/dev/null | xargs kill -9 2>/dev/null || true
+
   # Stop test docker if we started it
   if [ "$TEST_DOCKER_STARTED" = true ]; then
     cd "$COMMUNITY_ROOT"

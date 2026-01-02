@@ -18,16 +18,19 @@ WEB_PID=""
 cleanup() {
   echo -e "\n${YELLOW}🧹 Cleaning up...${NC}"
 
-  # Kill process groups (negative PID kills entire process group including children)
-  [ -n "$WEB_PID" ] && kill -- -$WEB_PID 2>/dev/null || true
-  [ -n "$API_PID" ] && kill -- -$API_PID 2>/dev/null || true
+  # Kill by port - more reliable than PID tracking with npm/node process trees
+  # Port 6300 = API, Port 6310 = Vite web app
+  lsof -ti:6300 -ti:6310 2>/dev/null | xargs kill -9 2>/dev/null || true
+
+  # Also try killing by PID (backup)
+  [ -n "$WEB_PID" ] && kill -9 $WEB_PID 2>/dev/null || true
+  [ -n "$API_PID" ] && kill -9 $API_PID 2>/dev/null || true
 
   # Wait a bit for graceful shutdown
   sleep 1
 
-  # Force kill if still running
-  [ -n "$WEB_PID" ] && kill -9 -- -$WEB_PID 2>/dev/null || true
-  [ -n "$API_PID" ] && kill -9 -- -$API_PID 2>/dev/null || true
+  # Final cleanup - kill any remaining processes on test ports
+  lsof -ti:6300 -ti:6310 2>/dev/null | xargs kill -9 2>/dev/null || true
 
   # Navigate to community root for docker-compose
   cd "$SCRIPT_DIR/../../.."
