@@ -171,38 +171,16 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     // ACT 3: Submit registration form
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // ASSERT 2: Redirect to success page
-    await expect(page).toHaveURL('/register/success', { timeout: 10000 });
-    await expect(page.getByText('Check your email')).toBeVisible();
-    await expect(page.getByText(user.email)).toBeVisible();
+    // ASSERT 2: Cloud mode - auto-login, redirect to workspaces
+    await expect(page).toHaveURL(/\/(workspaces|dashboard)/, { timeout: 10000 });
+    await page.waitForURL('/workspaces', { timeout: 5000 });
 
-    // ACT 4: Get verification link from Mailpit
+    // ACT 4: Verify verification email was sent (even though user is auto-logged in)
     const verificationLink = await getVerificationLink(user.email);
     expect(verificationLink).toContain('/auth/verify');
     expect(verificationLink).toContain('token=');
 
-    // ACT 5: Click verification link
-    await page.goto(verificationLink);
-
-    // ASSERT 3: Email verified successfully
-    await expect(page.getByText('Email verified!')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
-
-    // ACT 6: Navigate to login page
-    await page.getByRole('link', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL('/login');
-
-    // ACT 7: Fill login form
-    await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Password').fill(user.password);
-
-    // ACT 8: Submit login form
-    await page.getByRole('button', { name: 'Sign in' }).click();
-
-    // ASSERT 4: Redirect to dashboard
-    await expect(page).toHaveURL('/dashboard', { timeout: 10000 });
-
-    // ACT 9: Wait for workspaces API call to complete
+    // ACT 5: Wait for workspaces API call to complete
     // Dashboard fetches workspaces on mount via GET /workspaces
     await page.waitForResponse(
       (response) =>
@@ -210,9 +188,7 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
       { timeout: 5000 },
     );
 
-    // ASSERT 5: Workspace is visible in dashboard (TEST WILL FAIL IF BUG EXISTS)
-    // ❌ FAILS initially: "No workspaces yet" EmptyState is shown
-    // ✅ PASSES after fix: Workspace card is visible
+    // ASSERT 3: Workspace is visible in dashboard (already auto-logged in)
     await expect(page.getByText('No workspaces yet')).toBeHidden({ timeout: 2000 });
     await expect(page.getByText(user.workspaceName)).toBeVisible({ timeout: 2000 });
 
@@ -255,16 +231,12 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // ASSERT 1: Redirect to success page
-    await expect(page).toHaveURL('/register/success');
+    // ASSERT 1: Cloud mode - auto-login, redirect to workspaces
+    // Wait for either /workspaces or /dashboard (both redirect to /workspaces)
+    await expect(page).toHaveURL(/\/(workspaces|dashboard)/);
 
-    // ACT 2: Manually navigate to dashboard (user skips email verification)
-    // In Cloud mode, backend sets auto-login cookies during registration
-    // User can access dashboard within grace period (15 minutes)
-    await page.goto('/dashboard');
-
-    // ASSERT 2: Dashboard loads (user is authenticated via auto-login cookie)
-    await expect(page).toHaveURL('/dashboard');
+    // Dashboard redirects to /workspaces, so wait for final URL
+    await page.waitForURL('/workspaces', { timeout: 5000 });
 
     // ACT 3: Wait for workspaces API call
     await page.waitForResponse(
@@ -313,8 +285,9 @@ test.describe('Registration → Dashboard Workspace Visibility (REGRESSION)', ()
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    await expect(page).toHaveURL('/register/success');
-    await page.goto('/dashboard');
+    // Cloud mode - auto-login, redirect to workspaces
+    await expect(page).toHaveURL(/\/(workspaces|dashboard)/);
+    await page.waitForURL('/workspaces', { timeout: 5000 });
 
     // Wait for API call
     await page.waitForResponse(

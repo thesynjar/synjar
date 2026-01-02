@@ -59,7 +59,7 @@ test.describe('Registration Flow', () => {
   test('should show registration form', async ({ page }) => {
     await page.goto('/register');
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Synjar');
+    await expect(page.getByRole('link', { name: 'Synjar' })).toBeVisible();
     await expect(page.getByText('Create your account')).toBeVisible();
     await expect(page.getByLabel('Email')).toBeVisible();
     await expect(page.getByPlaceholder('John Doe')).toBeVisible();
@@ -96,33 +96,15 @@ test.describe('Registration Flow', () => {
     // Step 3: Submit form
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Step 4: Verify redirect to success page
-    await expect(page).toHaveURL('/register/success');
-    await expect(page.getByText('Check your email')).toBeVisible();
-    await expect(page.getByText(user.email)).toBeVisible();
+    // Step 4: Cloud mode - auto-login, redirect to workspaces
+    await expect(page).toHaveURL('/workspaces');
 
-    // Step 5: Get verification link from email
+    // Step 5: Verify workspace is visible (created during registration)
+    await expect(page.getByText(user.workspaceName)).toBeVisible();
+
+    // Step 6: Verify verification email was sent (even though user is auto-logged in)
     const verificationLink = await getVerificationLink(user.email);
     expect(verificationLink).toContain('/auth/verify');
-
-    // Step 6: Click verification link
-    await page.goto(verificationLink);
-
-    // Step 7: Verify email verified successfully
-    await expect(page.getByText('Email verified!')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
-
-    // Step 8: Navigate to login
-    await page.getByRole('link', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL('/login');
-
-    // Step 9: Login with new account
-    await page.getByLabel('Email').fill(user.email);
-    await page.getByLabel('Password').fill(user.password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-
-    // Step 10: Verify logged in successfully
-    await expect(page).toHaveURL('/dashboard');
   });
 
   test('should show error for duplicate email', async ({ page }) => {
@@ -136,7 +118,8 @@ test.describe('Registration Flow', () => {
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    await expect(page).toHaveURL('/register/success');
+    // Cloud mode - auto-login, redirect to workspaces
+    await expect(page).toHaveURL('/workspaces');
 
     // Try to register again with same email
     await page.goto('/register');
