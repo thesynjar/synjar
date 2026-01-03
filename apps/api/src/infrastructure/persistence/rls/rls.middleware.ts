@@ -123,19 +123,21 @@ export class RlsMiddleware implements NestMiddleware {
 
   /**
    * Verify user is a member of the workspace.
-   * Uses raw query to bypass RLS (we're verifying access, not querying data).
+   * Uses SECURITY DEFINER function to bypass RLS.
+   *
+   * Why SECURITY DEFINER?
+   * The raw query would be subject to RLS policies which require context.
+   * But we're verifying membership BEFORE we can set context (chicken-and-egg).
+   * The SECURITY DEFINER function runs as the function owner, bypassing RLS.
    */
   private async verifyMembership(
     userId: string,
     workspaceId: string,
   ): Promise<boolean> {
-    const result = await this.prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*)::bigint as count
-      FROM "WorkspaceMember"
-      WHERE "userId" = ${userId}
-        AND "workspaceId" = ${workspaceId}
+    const result = await this.prisma.$queryRaw<{ check_workspace_membership: boolean }[]>`
+      SELECT check_workspace_membership(${userId}::text, ${workspaceId}::text)
     `;
 
-    return result[0]?.count > 0;
+    return result[0]?.check_workspace_membership === true;
   }
 }

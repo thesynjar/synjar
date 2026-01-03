@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const MAILPIT_URL = process.env.MAILPIT_URL || 'http://localhost:6203';
+const MAILPIT_URL = process.env.MAILPIT_URL || 'http://localhost:6313';
 
 // Helper to generate unique test data
 function generateTestUser() {
@@ -107,7 +107,7 @@ test.describe('Registration Flow', () => {
     expect(verificationLink).toContain('/auth/verify');
   });
 
-  test('should show error for duplicate email', async ({ page }) => {
+  test('should handle duplicate email securely (no error revealed)', async ({ page, context }) => {
     const user = generateTestUser();
 
     // First registration
@@ -121,7 +121,10 @@ test.describe('Registration Flow', () => {
     // Cloud mode - auto-login, redirect to workspace detail (auto-navigate for single workspace)
     await expect(page).toHaveURL(/\/workspaces\/[a-f0-9-]+/, { timeout: 10000 });
 
-    // Try to register again with same email
+    // Clear cookies to simulate a different browser session
+    await context.clearCookies();
+
+    // Try to register again with same email (from fresh session)
     await page.goto('/register');
     await page.getByLabel('Email').fill(user.email);
     await page.getByPlaceholder('John Doe').fill('Another User');
@@ -129,8 +132,14 @@ test.describe('Registration Flow', () => {
     await page.getByLabel('Password').fill(user.password);
     await page.getByRole('button', { name: 'Create account' }).click();
 
-    // Should show error
-    await expect(page.getByText(/already exists|already registered/i)).toBeVisible();
+    // Security: API returns success to prevent email enumeration attacks
+    // For duplicate emails, no auto-login tokens are returned
+    // User sees "check email" page, but no new account is created
+    await expect(page.getByText(/check your email/i)).toBeVisible();
+
+    // Verify user is NOT auto-logged in (no redirect to workspace)
+    await page.waitForTimeout(2000);
+    await expect(page).not.toHaveURL(/\/workspaces\/[a-f0-9-]+/);
   });
 
   test('should navigate between login and register', async ({ page }) => {

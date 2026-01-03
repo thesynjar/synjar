@@ -25,7 +25,8 @@ describe('RlsMiddleware', () => {
           provide: PrismaService,
           useValue: {
             $executeRaw: jest.fn().mockResolvedValue(1),
-            $queryRaw: jest.fn().mockResolvedValue([{ count: BigInt(1) }]),
+            // Mock the SECURITY DEFINER function response
+            $queryRaw: jest.fn().mockResolvedValue([{ check_workspace_membership: true }]),
           },
         },
       ],
@@ -123,7 +124,7 @@ describe('RlsMiddleware', () => {
     });
 
     it('should throw ForbiddenException when user is not a member', async () => {
-      (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ count: BigInt(0) }]);
+      (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ check_workspace_membership: false }]);
 
       await expect(
         middleware.use(
@@ -192,7 +193,7 @@ describe('RlsMiddleware', () => {
 
       (prisma.$queryRaw as jest.Mock).mockImplementation(async () => {
         callOrder.push('membership_check');
-        return [{ count: BigInt(1) }];
+        return [{ check_workspace_membership: true }];
       });
 
       (prisma.$executeRaw as jest.Mock).mockImplementation(async () => {
@@ -210,7 +211,7 @@ describe('RlsMiddleware', () => {
     });
 
     it('should NOT set context when membership verification fails', async () => {
-      (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ count: BigInt(0) }]);
+      (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ check_workspace_membership: false }]);
 
       await expect(
         middleware.use(

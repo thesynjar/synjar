@@ -91,7 +91,50 @@ export class InstructionSetService {
   async findAll(workspaceId: string, userId: string) {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    const sets = await this.repository.findByWorkspace(workspaceId);
+    // Use forWorkspace for RLS context
+    const sets = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const data = await tx.instructionSet.findMany({
+        where: { workspaceId },
+        include: {
+          documents: {
+            include: {
+              document: {
+                select: {
+                  id: true,
+                  title: true,
+                  content: true,
+                  fileUrl: true,
+                  verificationStatus: true,
+                  purpose: true,
+                },
+              },
+            },
+            orderBy: { order: 'asc' as const },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return data.map(d => InstructionSetEntity.reconstitute({
+        id: d.id,
+        workspaceId: d.workspaceId,
+        name: d.name,
+        description: d.description,
+        isPublic: d.isPublic,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+        documents: d.documents.map(doc => ({
+          id: doc.id,
+          instructionSetId: doc.instructionSetId,
+          documentId: doc.documentId,
+          order: doc.order,
+          title: doc.document.title,
+          content: doc.document.content,
+          sizeBytes: Buffer.byteLength(doc.document.content, 'utf8'),
+          fileUrl: doc.document.fileUrl,
+        })),
+      }));
+    });
+
     const count = sets.length;
     const limit = MAX_SETS_PER_WORKSPACE;
 
@@ -108,14 +151,55 @@ export class InstructionSetService {
   /**
    * Get a single instruction set by ID
    */
-  async findOne(id: string, userId: string) {
-    const set = await this.repository.findById(id);
+  async findOne(workspaceId: string, id: string, userId: string) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    const set = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const data = await tx.instructionSet.findUnique({
+        where: { id },
+        include: {
+          documents: {
+            include: {
+              document: {
+                select: {
+                  id: true,
+                  title: true,
+                  content: true,
+                  fileUrl: true,
+                  verificationStatus: true,
+                  purpose: true,
+                },
+              },
+            },
+            orderBy: { order: 'asc' as const },
+          },
+        },
+      });
+      if (!data) return null;
+      return InstructionSetEntity.reconstitute({
+        id: data.id,
+        workspaceId: data.workspaceId,
+        name: data.name,
+        description: data.description,
+        isPublic: data.isPublic,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        documents: data.documents.map(d => ({
+          id: d.id,
+          instructionSetId: d.instructionSetId,
+          documentId: d.documentId,
+          order: d.order,
+          title: d.document.title,
+          content: d.document.content,
+          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+          fileUrl: d.document.fileUrl,
+        })),
+      });
+    });
+
     if (!set) {
       throw new NotFoundException('Instruction set not found');
     }
-
-    // Verify user has access to this workspace
-    await this.workspaceService.ensureMember(set.workspaceId, userId);
 
     return this.toDetailResponse(set);
   }
@@ -126,8 +210,10 @@ export class InstructionSetService {
   async create(workspaceId: string, userId: string, dto: CreateInstructionSetDto) {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    // Check workspace limit
-    const count = await this.repository.countByWorkspace(workspaceId);
+    // Check workspace limit with RLS context
+    const count = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      return tx.instructionSet.count({ where: { workspaceId } });
+    });
     if (count >= MAX_SETS_PER_WORKSPACE) {
       throw new BadRequestException({
         error: {
@@ -147,8 +233,55 @@ export class InstructionSetService {
         description: dto.description,
       });
 
-      // Save to database
-      let savedEntity = await this.repository.create(entity);
+      // Save to database with RLS context
+      // Use forWorkspace() to set workspace context for INSERT policy
+      let savedEntity = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+        const data = await tx.instructionSet.create({
+          data: {
+            workspaceId: entity.workspaceId,
+            name: entity.name,
+            description: entity.description,
+            isPublic: entity.isPublic,
+          },
+          include: {
+            documents: {
+              include: {
+                document: {
+                  select: {
+                    id: true,
+                    title: true,
+                    content: true,
+                    fileUrl: true,
+                    verificationStatus: true,
+                    purpose: true,
+                  },
+                },
+              },
+              orderBy: { order: 'asc' as const },
+            },
+          },
+        });
+        // Convert Prisma result to entity
+        return InstructionSetEntity.reconstitute({
+          id: data.id,
+          workspaceId: data.workspaceId,
+          name: data.name,
+          description: data.description,
+          isPublic: data.isPublic,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          documents: data.documents.map(d => ({
+            id: d.id,
+            instructionSetId: d.instructionSetId,
+            documentId: d.documentId,
+            order: d.order,
+            title: d.document.title,
+            content: d.document.content,
+            sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+            fileUrl: d.document.fileUrl,
+          })),
+        });
+      });
 
       // Add initial documents if provided
       if (dto.documentIds?.length) {
@@ -178,13 +311,56 @@ export class InstructionSetService {
   /**
    * Update an instruction set
    */
-  async update(id: string, userId: string, dto: UpdateInstructionSetDto) {
-    const set = await this.repository.findById(id);
+  async update(workspaceId: string, id: string, userId: string, dto: UpdateInstructionSetDto) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    // Find with RLS context
+    const set = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const data = await tx.instructionSet.findUnique({
+        where: { id },
+        include: {
+          documents: {
+            include: {
+              document: {
+                select: {
+                  id: true,
+                  title: true,
+                  content: true,
+                  fileUrl: true,
+                  verificationStatus: true,
+                  purpose: true,
+                },
+              },
+            },
+            orderBy: { order: 'asc' as const },
+          },
+        },
+      });
+      if (!data) return null;
+      return InstructionSetEntity.reconstitute({
+        id: data.id,
+        workspaceId: data.workspaceId,
+        name: data.name,
+        description: data.description,
+        isPublic: data.isPublic,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        documents: data.documents.map(d => ({
+          id: d.id,
+          instructionSetId: d.instructionSetId,
+          documentId: d.documentId,
+          order: d.order,
+          title: d.document.title,
+          content: d.document.content,
+          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+          fileUrl: d.document.fileUrl,
+        })),
+      });
+    });
+
     if (!set) {
       throw new NotFoundException('Instruction set not found');
     }
-
-    await this.workspaceService.ensureMember(set.workspaceId, userId);
 
     // Optimistic locking check
     this.checkOptimisticLock(set, dto.expectedUpdatedAt);
@@ -200,7 +376,54 @@ export class InstructionSetService {
         set.setPublic(dto.isPublic);
       }
 
-      const updated = await this.repository.update(set);
+      // Update with RLS context
+      const updated = await this.prisma.forWorkspace(set.workspaceId, async (tx) => {
+        const data = await tx.instructionSet.update({
+          where: { id: set.id },
+          data: {
+            name: set.name,
+            description: set.description,
+            isPublic: set.isPublic,
+          },
+          include: {
+            documents: {
+              include: {
+                document: {
+                  select: {
+                    id: true,
+                    title: true,
+                    content: true,
+                    fileUrl: true,
+                    verificationStatus: true,
+                    purpose: true,
+                  },
+                },
+              },
+              orderBy: { order: 'asc' as const },
+            },
+          },
+        });
+        return InstructionSetEntity.reconstitute({
+          id: data.id,
+          workspaceId: data.workspaceId,
+          name: data.name,
+          description: data.description,
+          isPublic: data.isPublic,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          documents: data.documents.map(d => ({
+            id: d.id,
+            instructionSetId: d.instructionSetId,
+            documentId: d.documentId,
+            order: d.order,
+            title: d.document.title,
+            content: d.document.content,
+            sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+            fileUrl: d.document.fileUrl,
+          })),
+        });
+      });
+
       return this.toDetailResponse(updated);
     } catch (error) {
       if (error instanceof InvalidInstructionSetNameError) {
@@ -219,27 +442,74 @@ export class InstructionSetService {
   /**
    * Delete an instruction set
    */
-  async delete(id: string, userId: string) {
-    const set = await this.repository.findById(id);
-    if (!set) {
+  async delete(workspaceId: string, id: string, userId: string) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    // Check if exists with RLS context
+    const exists = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const data = await tx.instructionSet.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      return !!data;
+    });
+
+    if (!exists) {
       throw new NotFoundException('Instruction set not found');
     }
 
-    await this.workspaceService.ensureMember(set.workspaceId, userId);
-
-    await this.repository.delete(id);
+    // Delete with RLS context
+    await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      await tx.instructionSet.delete({ where: { id } });
+    });
   }
 
   /**
    * Add a document to an instruction set
    */
-  async addDocument(instructionSetId: string, userId: string, dto: AddDocumentDto) {
-    const set = await this.repository.findById(instructionSetId);
+  async addDocument(workspaceId: string, instructionSetId: string, userId: string, dto: AddDocumentDto) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    // Find with RLS context
+    const set = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const data = await tx.instructionSet.findUnique({
+        where: { id: instructionSetId },
+        include: {
+          documents: {
+            include: {
+              document: {
+                select: { id: true, title: true, content: true, fileUrl: true, verificationStatus: true, purpose: true },
+              },
+            },
+            orderBy: { order: 'asc' as const },
+          },
+        },
+      });
+      if (!data) return null;
+      return InstructionSetEntity.reconstitute({
+        id: data.id,
+        workspaceId: data.workspaceId,
+        name: data.name,
+        description: data.description,
+        isPublic: data.isPublic,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        documents: data.documents.map(d => ({
+          id: d.id,
+          instructionSetId: d.instructionSetId,
+          documentId: d.documentId,
+          order: d.order,
+          title: d.document.title,
+          content: d.document.content,
+          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+          fileUrl: d.document.fileUrl,
+        })),
+      });
+    });
+
     if (!set) {
       throw new NotFoundException('Instruction set not found');
     }
-
-    await this.workspaceService.ensureMember(set.workspaceId, userId);
 
     // Optimistic locking check
     this.checkOptimisticLock(set, dto.expectedUpdatedAt);
@@ -248,14 +518,20 @@ export class InstructionSetService {
       const docEntity = await this.addDocumentInternal(set, dto.documentId, set.documentCount);
 
       // Reload to get updated timestamp
-      const updatedSet = await this.repository.findById(set.id);
+      const updatedAt = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+        const data = await tx.instructionSet.findUnique({
+          where: { id: set.id },
+          select: { updatedAt: true },
+        });
+        return data?.updatedAt ?? new Date();
+      });
 
       return {
         id: docEntity.id,
         documentId: docEntity.documentId,
         order: docEntity.order,
         sizeBytes: docEntity.sizeBytes,
-        updatedAt: updatedSet?.updatedAt ?? new Date(),
+        updatedAt,
       };
     } catch (error) {
       if (error instanceof DocumentAlreadyInSetError) {
@@ -282,12 +558,14 @@ export class InstructionSetService {
   }
 
   private async addDocumentInternal(set: InstructionSetEntity, documentId: string, order: number) {
-    // Get document from database
-    const document = await this.prisma.document.findFirst({
-      where: {
-        id: documentId,
-        workspaceId: set.workspaceId,
-      },
+    // Get document from database with RLS context
+    const document = await this.prisma.forWorkspace(set.workspaceId, async (tx) => {
+      return tx.document.findFirst({
+        where: {
+          id: documentId,
+          workspaceId: set.workspaceId,
+        },
+      });
     });
 
     if (!document) {
@@ -312,8 +590,16 @@ export class InstructionSetService {
       fileUrl: document.fileUrl,
     });
 
-    // Persist
-    await this.repository.addDocument(set.id, documentId, order);
+    // Persist with RLS context
+    await this.prisma.forWorkspace(set.workspaceId, async (tx) => {
+      await tx.instructionSetDocument.create({
+        data: {
+          instructionSetId: set.id,
+          documentId,
+          order,
+        },
+      });
+    });
 
     return docEntity;
   }
@@ -322,33 +608,85 @@ export class InstructionSetService {
    * Remove a document from an instruction set
    */
   async removeDocument(
+    workspaceId: string,
     instructionSetId: string,
     documentId: string,
     userId: string,
     dto?: RemoveDocumentDto,
   ) {
-    const set = await this.repository.findById(instructionSetId);
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    // Find with RLS context
+    const set = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const data = await tx.instructionSet.findUnique({
+        where: { id: instructionSetId },
+        include: {
+          documents: {
+            include: {
+              document: {
+                select: { id: true, title: true, content: true, fileUrl: true, verificationStatus: true, purpose: true },
+              },
+            },
+            orderBy: { order: 'asc' as const },
+          },
+        },
+      });
+      if (!data) return null;
+      return InstructionSetEntity.reconstitute({
+        id: data.id,
+        workspaceId: data.workspaceId,
+        name: data.name,
+        description: data.description,
+        isPublic: data.isPublic,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        documents: data.documents.map(d => ({
+          id: d.id,
+          instructionSetId: d.instructionSetId,
+          documentId: d.documentId,
+          order: d.order,
+          title: d.document.title,
+          content: d.document.content,
+          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+          fileUrl: d.document.fileUrl,
+        })),
+      });
+    });
+
     if (!set) {
       throw new NotFoundException('Instruction set not found');
     }
-
-    await this.workspaceService.ensureMember(set.workspaceId, userId);
 
     // Optimistic locking check
     this.checkOptimisticLock(set, dto?.expectedUpdatedAt);
 
     try {
       set.removeDocument(documentId);
-      await this.repository.removeDocument(instructionSetId, documentId);
 
-      // Update orders for remaining documents
-      const reorderedDocs = set.documents.map(d => ({
-        documentId: d.documentId,
-        order: d.order,
-      }));
-      if (reorderedDocs.length > 0) {
-        await this.repository.updateDocumentOrders(instructionSetId, reorderedDocs);
-      }
+      // Remove document and update orders with RLS context
+      await this.prisma.forWorkspace(set.workspaceId, async (tx) => {
+        // Remove the document
+        await tx.instructionSetDocument.deleteMany({
+          where: {
+            instructionSetId,
+            documentId,
+          },
+        });
+
+        // Update orders for remaining documents
+        const reorderedDocs = set.documents.map(d => ({
+          documentId: d.documentId,
+          order: d.order,
+        }));
+
+        // Update each document's order in a batch
+        for (const doc of reorderedDocs) {
+          await tx.instructionSetDocument.updateMany({
+            where: { instructionSetId, documentId: doc.documentId },
+            data: { order: doc.order },
+          });
+        }
+      });
     } catch (error) {
       if (error instanceof DocumentNotInSetError) {
         throw new NotFoundException({
@@ -366,13 +704,49 @@ export class InstructionSetService {
   /**
    * Reorder documents in an instruction set
    */
-  async reorderDocuments(instructionSetId: string, userId: string, dto: ReorderDocumentsDto) {
-    const set = await this.repository.findById(instructionSetId);
+  async reorderDocuments(workspaceId: string, instructionSetId: string, userId: string, dto: ReorderDocumentsDto) {
+    await this.workspaceService.ensureMember(workspaceId, userId);
+
+    // Find with RLS context
+    const set = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      const data = await tx.instructionSet.findUnique({
+        where: { id: instructionSetId },
+        include: {
+          documents: {
+            include: {
+              document: {
+                select: { id: true, title: true, content: true, fileUrl: true, verificationStatus: true, purpose: true },
+              },
+            },
+            orderBy: { order: 'asc' as const },
+          },
+        },
+      });
+      if (!data) return null;
+      return InstructionSetEntity.reconstitute({
+        id: data.id,
+        workspaceId: data.workspaceId,
+        name: data.name,
+        description: data.description,
+        isPublic: data.isPublic,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        documents: data.documents.map(d => ({
+          id: d.id,
+          instructionSetId: d.instructionSetId,
+          documentId: d.documentId,
+          order: d.order,
+          title: d.document.title,
+          content: d.document.content,
+          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+          fileUrl: d.document.fileUrl,
+        })),
+      });
+    });
+
     if (!set) {
       throw new NotFoundException('Instruction set not found');
     }
-
-    await this.workspaceService.ensureMember(set.workspaceId, userId);
 
     // Optimistic locking check
     this.checkOptimisticLock(set, dto.expectedUpdatedAt);
@@ -385,14 +759,28 @@ export class InstructionSetService {
         order: d.order,
       }));
 
-      await this.repository.updateDocumentOrders(instructionSetId, documentOrders);
+      // Update orders with RLS context
+      await this.prisma.forWorkspace(workspaceId, async (tx) => {
+        for (const doc of documentOrders) {
+          await tx.instructionSetDocument.updateMany({
+            where: { instructionSetId, documentId: doc.documentId },
+            data: { order: doc.order },
+          });
+        }
+      });
 
       // Reload to get updated timestamp
-      const updatedSet = await this.repository.findById(instructionSetId);
+      const updatedAt = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+        const data = await tx.instructionSet.findUnique({
+          where: { id: instructionSetId },
+          select: { updatedAt: true },
+        });
+        return data?.updatedAt ?? new Date();
+      });
 
       return {
         documents: documentOrders,
-        updatedAt: updatedSet?.updatedAt ?? new Date(),
+        updatedAt,
       };
     } catch (error) {
       if (error instanceof DocumentNotInSetError) {

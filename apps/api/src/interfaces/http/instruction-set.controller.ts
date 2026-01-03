@@ -72,10 +72,11 @@ export class InstructionSetController {
   @ApiResponse({ status: 200, type: InstructionSetDetailResponseDto })
   @ApiResponse({ status: 404, description: 'Instruction set not found' })
   async findOne(
+    @Param('workspaceId') workspaceId: string,
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return this.instructionSetService.findOne(id, user.id);
+    return this.instructionSetService.findOne(workspaceId, id, user.id);
   }
 
   @Patch(':id')
@@ -84,11 +85,12 @@ export class InstructionSetController {
   @ApiResponse({ status: 200, type: InstructionSetDetailResponseDto })
   @ApiResponse({ status: 404, description: 'Instruction set not found' })
   async update(
+    @Param('workspaceId') workspaceId: string,
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
     @Body() dto: UpdateInstructionSetDto,
   ) {
-    return this.instructionSetService.update(id, user.id, dto);
+    return this.instructionSetService.update(workspaceId, id, user.id, dto);
   }
 
   @Delete(':id')
@@ -97,10 +99,11 @@ export class InstructionSetController {
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 404, description: 'Instruction set not found' })
   async delete(
+    @Param('workspaceId') workspaceId: string,
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
   ) {
-    await this.instructionSetService.delete(id, user.id);
+    await this.instructionSetService.delete(workspaceId, id, user.id);
   }
 
   // ============ Document Management ============
@@ -113,11 +116,12 @@ export class InstructionSetController {
   @ApiResponse({ status: 404, description: 'Instruction set or document not found' })
   @ApiResponse({ status: 409, type: ErrorResponseDto, description: 'Document already in set' })
   async addDocument(
+    @Param('workspaceId') workspaceId: string,
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
     @Body() dto: AddDocumentDto,
   ) {
-    return this.instructionSetService.addDocument(id, user.id, dto);
+    return this.instructionSetService.addDocument(workspaceId, id, user.id, dto);
   }
 
   @Delete(':id/documents/:docId')
@@ -128,12 +132,13 @@ export class InstructionSetController {
   @ApiResponse({ status: 404, description: 'Instruction set or document not found' })
   @ApiResponse({ status: 409, type: ErrorResponseDto, description: 'Conflict - set modified by another user' })
   async removeDocument(
+    @Param('workspaceId') workspaceId: string,
     @Param('id') id: string,
     @Param('docId') docId: string,
     @CurrentUser() user: CurrentUserData,
     @Query() dto: RemoveDocumentDto,
   ) {
-    await this.instructionSetService.removeDocument(id, docId, user.id, dto);
+    await this.instructionSetService.removeDocument(workspaceId, id, docId, user.id, dto);
   }
 
   @Patch(':id/documents/reorder')
@@ -144,10 +149,11 @@ export class InstructionSetController {
   @ApiResponse({ status: 404, description: 'Instruction set not found' })
   @ApiResponse({ status: 409, type: ErrorResponseDto, description: 'Conflict - set modified by another user' })
   async reorderDocuments(
+    @Param('workspaceId') workspaceId: string,
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
     @Body() dto: ReorderDocumentsDto,
   ) {
-    return this.instructionSetService.reorderDocuments(id, user.id, dto);
+    return this.instructionSetService.reorderDocuments(workspaceId, id, user.id, dto);
   }
 }
