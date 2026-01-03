@@ -1,8 +1,9 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Header, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, Header, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '@/application/auth/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from '@/application/auth/auth.service';
+import { CurrentUser, CurrentUserData } from '@/application/auth/current-user.decorator';
 import {
   RegisterDto,
   LoginDto,
@@ -53,6 +54,20 @@ export class AuthController {
     // Tokens are managed client-side (Bearer token auth)
     // JWT guard provides CSRF protection via Bearer auth
     return { message: 'Logout successful' };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current user info' })
+  @ApiResponse({ status: 200, description: 'Current user info' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - valid JWT required' })
+  async getCurrentUser(@CurrentUser() user: CurrentUserData): Promise<{
+    id: string;
+    email: string;
+    name: string | null;
+  }> {
+    return this.authService.validateUser(user.id);
   }
 
   @Post('refresh')
