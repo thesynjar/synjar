@@ -52,6 +52,10 @@ describe('WorkspaceService', () => {
       forUser: jest.fn().mockImplementation((_userId, callback) => {
         return callback(mockTx);
       }),
+      // forWorkspace executes the callback immediately with mockTx
+      forWorkspace: jest.fn().mockImplementation((_workspaceId, callback) => {
+        return callback(mockTx);
+      }),
       workspace: mockTx.workspace as unknown as PrismaService['workspace'],
       workspaceMember: mockTx.workspaceMember as unknown as PrismaService['workspaceMember'],
       user: mockTx.user as unknown as PrismaService['user'],

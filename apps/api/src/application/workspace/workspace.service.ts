@@ -189,8 +189,18 @@ export class WorkspaceService {
   }
 
   async getMembers(workspaceId: string, userId: string) {
-    return this.prisma.forUser(userId, async (tx) => {
-      await this.ensureMemberTx(tx, workspaceId, userId);
+    // Use forWorkspace to properly query ALL members (not just current user)
+    // RLS policy: workspaceId = get_current_workspace_id() OR userId = get_current_user_id()
+    // With forUser(), only returns current user's membership
+    // With forWorkspace(), returns all members of the workspace
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
+      // Verify caller is a member first (using the transaction)
+      const membership = await tx.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId } },
+      });
+      if (!membership) {
+        throw new ForbiddenException('Not a member of this workspace');
+      }
 
       return tx.workspaceMember.findMany({
         where: { workspaceId },
