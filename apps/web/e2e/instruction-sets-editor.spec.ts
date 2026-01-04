@@ -136,14 +136,124 @@ async function setupUserAndWorkspace(page: Page) {
 }
 
 /**
- * Helper: Create a test document
+ * Helper: Create a test document via UI with VERIFIED status
+ * Uses UI flow but sets verification status through the editor
+ * Retries if verification fails to persist
+ */
+async function createVerifiedDocument(
+  page: Page,
+  title: string,
+  content: string,
+  _purpose: 'KNOWLEDGE' | 'INSTRUCTION' = 'KNOWLEDGE',
+) {
+  // First ensure we're on the Documents tab/list
+  const backToDocsButton = page.getByRole('button', { name: 'Back to Documents' });
+  if (await backToDocsButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await backToDocsButton.click();
+    await page.waitForTimeout(500);
+  }
+
+  // Create document via UI
+  const newDocButton = page.getByRole('button', { name: 'New Text' }).first();
+  await expect(newDocButton).toBeVisible({ timeout: 5000 });
+  await newDocButton.click();
+
+  await page.getByPlaceholder('Document title').fill(title);
+  await page.getByPlaceholder(/document content/i).fill(content);
+
+  await page.getByRole('button', { name: 'Create Document' }).click();
+
+  // Wait for modal to close and document to appear in list
+  await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
+
+  // Retry verification up to 3 times
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Click on the document to open editor
+    await page.getByText(title).first().click();
+
+    // Wait for editor to fully load
+    await expect(page.getByPlaceholder(/document title/i)).toBeVisible({ timeout: 5000 });
+
+    // Wait for the lock to be acquired and editing status to appear
+    const editingStatus = page.getByText(/you are editing/i);
+    await expect(editingStatus).toBeVisible({ timeout: 10000 });
+
+    // Wait a bit more for the lock to be fully established
+    await page.waitForTimeout(1000);
+
+    // Reload the page to get fresh state with correct expectedUpdatedAt
+    await page.reload();
+    await page.waitForTimeout(1000);
+
+    // Wait for the editing status again after reload
+    await expect(page.getByText(/you are editing/i)).toBeVisible({ timeout: 10000 });
+
+    // Now click the Verified radio button
+    const radioLabel = page.locator('label').filter({ hasText: /^Verified$/ });
+    await expect(radioLabel).toBeVisible({ timeout: 3000 });
+    await radioLabel.click();
+
+    // Wait for auto-save to trigger and complete
+    await page.waitForTimeout(4000);
+
+    // Check for saved status or handle conflict
+    const savedStatus = page.getByText(/saved/i);
+    const conflictStatus = page.getByText(/conflict/i);
+
+    if (await savedStatus.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Successfully saved
+      break;
+    } else if (await conflictStatus.isVisible({ timeout: 500 }).catch(() => false)) {
+      // Conflict detected - reload and try again
+      const retryButton = page.getByRole('button', { name: /retry/i });
+      if (await retryButton.isVisible({ timeout: 500 }).catch(() => false)) {
+        await retryButton.click();
+        await page.waitForTimeout(2000);
+      }
+    }
+
+    // Navigate back to documents list and try again if needed
+    const currentUrl = page.url();
+    const workspaceUrl = currentUrl.replace(/\/documents\/[^/]+\/edit.*$/, '?tab=documents');
+    await page.goto(workspaceUrl);
+    await page.waitForTimeout(500);
+
+    if (attempt < 2) {
+      // Will retry
+      continue;
+    }
+  }
+
+  // Navigate back to documents list
+  const currentUrl = page.url();
+  if (currentUrl.includes('/documents/') && currentUrl.includes('/edit')) {
+    const workspaceUrl = currentUrl.replace(/\/documents\/[^/]+\/edit.*$/, '?tab=documents');
+    await page.goto(workspaceUrl);
+    await page.waitForTimeout(1000);
+  }
+
+  // Verify we're back at the documents list and the document is visible
+  await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
+}
+
+/**
+ * Helper: Create a test document via UI
+ * @param verificationStatus - Set to 'VERIFIED' to mark document as verified (required for instruction sets)
  */
 async function createDocument(
   page: Page,
   title: string,
   content: string,
   purpose: 'KNOWLEDGE' | 'INSTRUCTION' = 'KNOWLEDGE',
+  verificationStatus: 'VERIFIED' | 'UNVERIFIED' = 'UNVERIFIED',
 ) {
+  // For VERIFIED documents, use the full verification flow
+  if (verificationStatus === 'VERIFIED') {
+    await createVerifiedDocument(page, title, content, purpose);
+    return;
+  }
+
+  // For UNVERIFIED documents, use simple UI flow
   // First ensure we're on the Documents tab/list (not on document editor)
   const backToDocsButton = page.getByRole('button', { name: 'Back to Documents' });
   if (await backToDocsButton.isVisible({ timeout: 1000 }).catch(() => false)) {
@@ -159,22 +269,9 @@ async function createDocument(
   await page.getByPlaceholder('Document title').fill(title);
   await page.getByPlaceholder(/document content/i).fill(content);
 
-  // Set purpose if there's a selector (assuming there might be one)
-  const purposeSelect = page.locator('select[name="purpose"]');
-  if (await purposeSelect.isVisible().catch(() => false)) {
-    await purposeSelect.selectOption(purpose);
-  }
-
   await page.getByRole('button', { name: 'Create Document' }).click();
 
-  // After creating, the modal might auto-navigate to the editor
-  // If so, go back to the documents list
-  const backButton = page.getByRole('button', { name: 'Back to Documents' });
-  if (await backButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await backButton.click();
-    await page.waitForTimeout(500);
-  }
-
+  // Wait for modal to close and document to appear in list
   await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
 }
 
@@ -253,16 +350,18 @@ async function createInstructionSet(page: Page, name: string, description = '') 
 
 /**
  * Helper: Setup instruction set with document for testing
+ * Documents are created as VERIFIED so they appear in the instruction set editor
  */
 async function setupInstructionSetWithDocument(page: Page) {
   await setupUserAndWorkspace(page);
 
-  // Create a test document
+  // Create a test document (VERIFIED so it appears in instruction set editor)
   await createDocument(
     page,
     'Test Document',
     'This is test content for the instruction set.',
     'KNOWLEDGE',
+    'VERIFIED',
   );
 
   // Create instruction set
@@ -378,9 +477,9 @@ test.describe('Instruction Sets Editor', () => {
   test('should reorder documents via drag & drop', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Create two documents
-    await createDocument(page, 'First Document', 'Content 1', 'KNOWLEDGE');
-    await createDocument(page, 'Second Document', 'Content 2', 'KNOWLEDGE');
+    // Create two VERIFIED documents (required for instruction set editor)
+    await createDocument(page, 'First Document', 'Content 1', 'KNOWLEDGE', 'VERIFIED');
+    await createDocument(page, 'Second Document', 'Content 2', 'KNOWLEDGE', 'VERIFIED');
 
     // Create instruction set
     await createInstructionSet(page, 'Reorder Test Set');
@@ -434,9 +533,9 @@ test.describe('Instruction Sets Editor', () => {
   test('should reorder documents via keyboard', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Create two documents
-    await createDocument(page, 'Doc A', 'Content A', 'KNOWLEDGE');
-    await createDocument(page, 'Doc B', 'Content B', 'KNOWLEDGE');
+    // Create two VERIFIED documents (required for instruction set editor)
+    await createDocument(page, 'Doc A', 'Content A', 'KNOWLEDGE', 'VERIFIED');
+    await createDocument(page, 'Doc B', 'Content B', 'KNOWLEDGE', 'VERIFIED');
 
     // Create instruction set and add documents
     await createInstructionSet(page, 'Keyboard Reorder Set');
@@ -491,10 +590,10 @@ test.describe('Instruction Sets Editor', () => {
   test('should filter documents by search', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Create documents with different titles
-    await createDocument(page, 'Apple Document', 'Content', 'KNOWLEDGE');
-    await createDocument(page, 'Banana Document', 'Content', 'KNOWLEDGE');
-    await createDocument(page, 'Cherry Document', 'Content', 'KNOWLEDGE');
+    // Create VERIFIED documents with different titles (required for instruction set editor)
+    await createDocument(page, 'Apple Document', 'Content', 'KNOWLEDGE', 'VERIFIED');
+    await createDocument(page, 'Banana Document', 'Content', 'KNOWLEDGE', 'VERIFIED');
+    await createDocument(page, 'Cherry Document', 'Content', 'KNOWLEDGE', 'VERIFIED');
 
     await createInstructionSet(page, 'Filter Test Set');
 
@@ -523,9 +622,9 @@ test.describe('Instruction Sets Editor', () => {
   test('should filter documents by purpose', async ({ page }) => {
     await setupUserAndWorkspace(page);
 
-    // Create documents with different purposes
-    await createDocument(page, 'Knowledge Doc', 'Content', 'KNOWLEDGE');
-    await createDocument(page, 'Instruction Doc', 'Content', 'INSTRUCTION');
+    // Create VERIFIED documents with different purposes (required for instruction set editor)
+    await createDocument(page, 'Knowledge Doc', 'Content', 'KNOWLEDGE', 'VERIFIED');
+    await createDocument(page, 'Instruction Doc', 'Content', 'INSTRUCTION', 'VERIFIED');
 
     await createInstructionSet(page, 'Purpose Filter Set');
 
@@ -714,12 +813,13 @@ test.describe('Instruction Sets Editor', () => {
   }) => {
     await setupUserAndWorkspace(page);
 
-    // Create a large document (close to 100 KB limit)
+    // Create VERIFIED documents (required for instruction set editor)
+    // Large document (close to 100 KB limit)
     const largeContent = 'x'.repeat(95000); // 95 KB
-    await createDocument(page, 'Large Doc', largeContent, 'KNOWLEDGE');
+    await createDocument(page, 'Large Doc', largeContent, 'KNOWLEDGE', 'VERIFIED');
 
-    // Create small document
-    await createDocument(page, 'Small Doc', 'Small content', 'KNOWLEDGE');
+    // Small document
+    await createDocument(page, 'Small Doc', 'Small content', 'KNOWLEDGE', 'VERIFIED');
 
     await createInstructionSet(page, 'Size Limit Test');
 
@@ -762,9 +862,9 @@ test.describe('Instruction Sets Editor', () => {
   }) => {
     await setupUserAndWorkspace(page);
 
-    // Create 21 documents (over the 20 document limit)
+    // Create 21 VERIFIED documents (over the 20 document limit, required for instruction set editor)
     for (let i = 1; i <= 21; i++) {
-      await createDocument(page, `Doc ${i}`, `Content ${i}`, 'KNOWLEDGE');
+      await createDocument(page, `Doc ${i}`, `Content ${i}`, 'KNOWLEDGE', 'VERIFIED');
     }
 
     await createInstructionSet(page, 'Count Limit Test');
@@ -830,9 +930,9 @@ test.describe('Instruction Sets Editor', () => {
     const selectedSection = page.getByText(/Selected Documents/i).locator('..');
     await expect(selectedSection.getByText(/no documents selected/i)).toBeVisible();
 
-    // Create a document and test "no results" empty state
+    // Create a VERIFIED document and test "no results" empty state
     await page.goto(page.url().replace(/\/instruction-sets.*/, ''));
-    await createDocument(page, 'Search Test Doc', 'Content', 'KNOWLEDGE');
+    await createDocument(page, 'Search Test Doc', 'Content', 'KNOWLEDGE', 'VERIFIED');
 
     // Go back to editor
     await navigateToInstructionSets(page);
