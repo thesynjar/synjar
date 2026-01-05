@@ -90,6 +90,52 @@ export class InstructionSetService {
   }
 
   /**
+   * Maps Prisma data to InstructionSetEntity.
+   * Centralizes the mapping logic to avoid DRY violations.
+   */
+  private mapToEntity(data: {
+    id: string;
+    workspaceId: string;
+    name: string;
+    description: string | null;
+    isPublic: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    documents: Array<{
+      id: string;
+      instructionSetId: string;
+      documentId: string;
+      order: number;
+      document: {
+        id: string;
+        title: string;
+        content: string;
+        fileUrl: string | null;
+      };
+    }>;
+  }): InstructionSetEntity {
+    return InstructionSetEntity.reconstitute({
+      id: data.id,
+      workspaceId: data.workspaceId,
+      name: data.name,
+      description: data.description,
+      isPublic: data.isPublic,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+      documents: data.documents.map(d => ({
+        id: d.id,
+        instructionSetId: d.instructionSetId,
+        documentId: d.documentId,
+        order: d.order,
+        title: d.document.title,
+        content: d.document.content,
+        sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+        fileUrl: d.document.fileUrl,
+      })),
+    });
+  }
+
+  /**
    * List all instruction sets in a workspace
    */
   async findAll(workspaceId: string, userId: string) {
@@ -118,25 +164,7 @@ export class InstructionSetService {
         },
         orderBy: { createdAt: 'desc' },
       });
-      return data.map(d => InstructionSetEntity.reconstitute({
-        id: d.id,
-        workspaceId: d.workspaceId,
-        name: d.name,
-        description: d.description,
-        isPublic: d.isPublic,
-        createdAt: d.createdAt,
-        updatedAt: d.updatedAt,
-        documents: d.documents.map(doc => ({
-          id: doc.id,
-          instructionSetId: doc.instructionSetId,
-          documentId: doc.documentId,
-          order: doc.order,
-          title: doc.document.title,
-          content: doc.document.content,
-          sizeBytes: Buffer.byteLength(doc.document.content, 'utf8'),
-          fileUrl: doc.document.fileUrl,
-        })),
-      }));
+      return data.map(d => this.mapToEntity(d));
     });
 
     const count = sets.length;
@@ -180,25 +208,7 @@ export class InstructionSetService {
         },
       });
       if (!data) return null;
-      return InstructionSetEntity.reconstitute({
-        id: data.id,
-        workspaceId: data.workspaceId,
-        name: data.name,
-        description: data.description,
-        isPublic: data.isPublic,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        documents: data.documents.map(d => ({
-          id: d.id,
-          instructionSetId: d.instructionSetId,
-          documentId: d.documentId,
-          order: d.order,
-          title: d.document.title,
-          content: d.document.content,
-          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-          fileUrl: d.document.fileUrl,
-        })),
-      });
+      return this.mapToEntity(data);
     });
 
     if (!set) {
@@ -265,26 +275,7 @@ export class InstructionSetService {
             },
           },
         });
-        // Convert Prisma result to entity
-        return InstructionSetEntity.reconstitute({
-          id: data.id,
-          workspaceId: data.workspaceId,
-          name: data.name,
-          description: data.description,
-          isPublic: data.isPublic,
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-          documents: data.documents.map(d => ({
-            id: d.id,
-            instructionSetId: d.instructionSetId,
-            documentId: d.documentId,
-            order: d.order,
-            title: d.document.title,
-            content: d.document.content,
-            sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-            fileUrl: d.document.fileUrl,
-          })),
-        });
+        return this.mapToEntity(data);
       });
 
       // Add initial documents if provided
@@ -316,25 +307,7 @@ export class InstructionSetService {
             },
           });
           if (!data) return null;
-          return InstructionSetEntity.reconstitute({
-            id: data.id,
-            workspaceId: data.workspaceId,
-            name: data.name,
-            description: data.description,
-            isPublic: data.isPublic,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-            documents: data.documents.map(d => ({
-              id: d.id,
-              instructionSetId: d.instructionSetId,
-              documentId: d.documentId,
-              order: d.order,
-              title: d.document.title,
-              content: d.document.content,
-              sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-              fileUrl: d.document.fileUrl,
-            })),
-          });
+          return this.mapToEntity(data);
         });
         if (reloaded) {
           savedEntity = reloaded;
@@ -385,25 +358,7 @@ export class InstructionSetService {
         },
       });
       if (!data) return null;
-      return InstructionSetEntity.reconstitute({
-        id: data.id,
-        workspaceId: data.workspaceId,
-        name: data.name,
-        description: data.description,
-        isPublic: data.isPublic,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        documents: data.documents.map(d => ({
-          id: d.id,
-          instructionSetId: d.instructionSetId,
-          documentId: d.documentId,
-          order: d.order,
-          title: d.document.title,
-          content: d.document.content,
-          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-          fileUrl: d.document.fileUrl,
-        })),
-      });
+      return this.mapToEntity(data);
     });
 
     if (!set) {
@@ -451,25 +406,7 @@ export class InstructionSetService {
             },
           },
         });
-        return InstructionSetEntity.reconstitute({
-          id: data.id,
-          workspaceId: data.workspaceId,
-          name: data.name,
-          description: data.description,
-          isPublic: data.isPublic,
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-          documents: data.documents.map(d => ({
-            id: d.id,
-            instructionSetId: d.instructionSetId,
-            documentId: d.documentId,
-            order: d.order,
-            title: d.document.title,
-            content: d.document.content,
-            sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-            fileUrl: d.document.fileUrl,
-          })),
-        });
+        return this.mapToEntity(data);
       });
 
       return this.toDetailResponse(updated);
@@ -534,25 +471,7 @@ export class InstructionSetService {
         },
       });
       if (!data) return null;
-      return InstructionSetEntity.reconstitute({
-        id: data.id,
-        workspaceId: data.workspaceId,
-        name: data.name,
-        description: data.description,
-        isPublic: data.isPublic,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        documents: data.documents.map(d => ({
-          id: d.id,
-          instructionSetId: d.instructionSetId,
-          documentId: d.documentId,
-          order: d.order,
-          title: d.document.title,
-          content: d.document.content,
-          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-          fileUrl: d.document.fileUrl,
-        })),
-      });
+      return this.mapToEntity(data);
     });
 
     if (!set) {
@@ -680,25 +599,7 @@ export class InstructionSetService {
         },
       });
       if (!data) return null;
-      return InstructionSetEntity.reconstitute({
-        id: data.id,
-        workspaceId: data.workspaceId,
-        name: data.name,
-        description: data.description,
-        isPublic: data.isPublic,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        documents: data.documents.map(d => ({
-          id: d.id,
-          instructionSetId: d.instructionSetId,
-          documentId: d.documentId,
-          order: d.order,
-          title: d.document.title,
-          content: d.document.content,
-          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-          fileUrl: d.document.fileUrl,
-        })),
-      });
+      return this.mapToEntity(data);
     });
 
     if (!set) {
@@ -771,25 +672,7 @@ export class InstructionSetService {
         },
       });
       if (!data) return null;
-      return InstructionSetEntity.reconstitute({
-        id: data.id,
-        workspaceId: data.workspaceId,
-        name: data.name,
-        description: data.description,
-        isPublic: data.isPublic,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        documents: data.documents.map(d => ({
-          id: d.id,
-          instructionSetId: d.instructionSetId,
-          documentId: d.documentId,
-          order: d.order,
-          title: d.document.title,
-          content: d.document.content,
-          sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-          fileUrl: d.document.fileUrl,
-        })),
-      });
+      return this.mapToEntity(data);
     });
 
     if (!set) {
