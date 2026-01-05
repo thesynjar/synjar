@@ -102,11 +102,26 @@ describe('DocumentProcessingScheduler', () => {
       await scheduler.processPendingDocuments();
 
       // Then
-      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(mockWorkspaceId, expect.any(Function));
+      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        expect.any(Function),
+      );
       expect(documentProcessorStub.processDocument).toHaveBeenCalledTimes(3);
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(1, 'doc-1');
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(2, 'doc-2');
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(3, 'doc-3');
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
+        1,
+        'doc-1',
+        mockWorkspaceId,
+      );
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
+        2,
+        'doc-2',
+        mockWorkspaceId,
+      );
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
+        3,
+        'doc-3',
+        mockWorkspaceId,
+      );
     });
   });
 
@@ -183,9 +198,21 @@ describe('DocumentProcessingScheduler', () => {
 
       // Then: All 3 documents attempted, error doesn't stop processing
       expect(documentProcessorStub.processDocument).toHaveBeenCalledTimes(3);
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(1, 'doc-1');
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(2, 'doc-2');
-      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(3, 'doc-3');
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
+        1,
+        'doc-1',
+        mockWorkspaceId,
+      );
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
+        2,
+        'doc-2',
+        mockWorkspaceId,
+      );
+      expect(documentProcessorStub.processDocument).toHaveBeenNthCalledWith(
+        3,
+        'doc-3',
+        mockWorkspaceId,
+      );
     });
 
     it('should release lock even when processing fails', async () => {
@@ -307,11 +334,23 @@ describe('DocumentProcessingScheduler', () => {
 
       // Then: Both workspaces processed
       expect(prismaStub.forWorkspace).toHaveBeenCalledTimes(2);
-      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(workspace1Id, expect.any(Function));
-      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(workspace2Id, expect.any(Function));
+      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(
+        workspace1Id,
+        expect.any(Function),
+      );
+      expect(prismaStub.forWorkspace).toHaveBeenCalledWith(
+        workspace2Id,
+        expect.any(Function),
+      );
       expect(documentProcessorStub.processDocument).toHaveBeenCalledTimes(2);
-      expect(documentProcessorStub.processDocument).toHaveBeenCalledWith('doc-w1');
-      expect(documentProcessorStub.processDocument).toHaveBeenCalledWith('doc-w2');
+      expect(documentProcessorStub.processDocument).toHaveBeenCalledWith(
+        'doc-w1',
+        workspace1Id,
+      );
+      expect(documentProcessorStub.processDocument).toHaveBeenCalledWith(
+        'doc-w2',
+        workspace2Id,
+      );
     });
   });
 

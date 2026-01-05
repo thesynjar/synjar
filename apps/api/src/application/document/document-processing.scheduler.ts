@@ -127,21 +127,24 @@ export class DocumentProcessingScheduler {
     );
 
     // 1. Fetch pending documents with RLS context (short transaction)
-    const pendingDocs = await this.prisma.forWorkspace(workspaceId, async (tx) => {
-      return tx.document.findMany({
-        where: {
-          processingStatus: ProcessingStatus.PENDING,
-        },
-        select: { id: true, title: true },
-        take: batchSize,
-        orderBy: { createdAt: 'asc' },
-      });
-    });
+    const pendingDocs = await this.prisma.forWorkspace(
+      workspaceId,
+      async (tx) => {
+        return tx.document.findMany({
+          where: {
+            processingStatus: ProcessingStatus.PENDING,
+          },
+          select: { id: true, title: true },
+          take: batchSize,
+          orderBy: { createdAt: 'asc' },
+        });
+      },
+    );
 
     // 2. Process documents OUTSIDE the transaction (can take a long time)
     for (const doc of pendingDocs) {
       try {
-        await this.processWithTimeout(doc.id, timeoutMs);
+        await this.processWithTimeout(doc.id, workspaceId, timeoutMs);
         this.logger.log(`Processed: ${doc.title} (workspace: ${workspaceId})`);
       } catch (error) {
         this.logger.error(
@@ -164,6 +167,7 @@ export class DocumentProcessingScheduler {
    */
   private async processWithTimeout(
     documentId: string,
+    workspaceId: string,
     timeoutMs: number,
   ): Promise<void> {
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -173,7 +177,7 @@ export class DocumentProcessingScheduler {
     });
 
     await Promise.race([
-      this.documentProcessor.processDocument(documentId),
+      this.documentProcessor.processDocument(documentId, workspaceId),
       timeoutPromise,
     ]);
   }

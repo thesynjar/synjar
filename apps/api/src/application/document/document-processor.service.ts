@@ -37,48 +37,57 @@ export class DocumentProcessorService {
     private readonly eventPublisher: IDomainEventPublisher,
   ) {}
 
-  async processDocument(documentId: string): Promise<void> {
+  async processDocument(
+    documentId: string,
+    workspaceId: string,
+  ): Promise<void> {
     try {
-      await this.markAsProcessing(documentId);
+      // All DB operations must run within workspace RLS context
+      const document = await this.prisma.forWorkspace(
+        workspaceId,
+        async (tx) => {
+          await tx.document.update({
+            where: { id: documentId },
+            data: { processingStatus: ProcessingStatus.PROCESSING },
+          });
 
-      const document = await this.prisma.document.findUnique({
-        where: { id: documentId },
-      });
+          return tx.document.findUnique({
+            where: { id: documentId },
+          });
+        },
+      );
 
       if (!document) {
         this.logger.warn(`Document ${documentId} not found`);
         return;
       }
 
-      await this.deleteExistingChunks(documentId);
+      await this.prisma.forWorkspace(workspaceId, async (tx) => {
+        await tx.chunk.deleteMany({
+          where: { documentId },
+        });
+      });
 
       const chunks = await this.createChunks(document.content);
       const embeddedChunks = await this.generateEmbeddings(chunks);
-      await this.saveChunks(documentId, embeddedChunks);
+      await this.saveChunks(documentId, workspaceId, embeddedChunks);
 
-      await this.markAsCompleted(documentId);
+      await this.prisma.forWorkspace(workspaceId, async (tx) => {
+        await tx.document.update({
+          where: { id: documentId },
+          data: { processingStatus: ProcessingStatus.COMPLETED },
+        });
+      });
+
       await this.publishProcessedEvent(
         document.id,
         document.workspaceId,
         embeddedChunks.length,
       );
     } catch (error) {
-      await this.handleProcessingError(documentId, error);
+      await this.handleProcessingError(documentId, workspaceId, error);
       throw error;
     }
-  }
-
-  private async markAsProcessing(documentId: string): Promise<void> {
-    await this.prisma.document.update({
-      where: { id: documentId },
-      data: { processingStatus: ProcessingStatus.PROCESSING },
-    });
-  }
-
-  private async deleteExistingChunks(documentId: string): Promise<void> {
-    await this.prisma.chunk.deleteMany({
-      where: { documentId },
-    });
   }
 
   private async createChunks(content: string) {
@@ -100,6 +109,7 @@ export class DocumentProcessorService {
 
   private async saveChunks(
     documentId: string,
+    workspaceId: string,
     chunks: Array<{
       content: string;
       embedding: { embedding: number[]; tokenCount: number };
@@ -107,29 +117,24 @@ export class DocumentProcessorService {
       metadata?: Record<string, unknown>;
     }>,
   ) {
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
 
-      await this.prisma.$executeRaw`
-        INSERT INTO "Chunk" (id, "documentId", content, embedding, "chunkIndex", "chunkType", metadata, "createdAt")
-        VALUES (
-          gen_random_uuid(),
-          ${documentId}::uuid,
-          ${chunk.content},
-          ${JSON.stringify(chunk.embedding.embedding)}::vector,
-          ${i},
-          ${chunk.chunkType || null},
-          ${JSON.stringify(chunk.metadata || {})}::jsonb,
-          NOW()
-        )
-      `;
-    }
-  }
-
-  private async markAsCompleted(documentId: string): Promise<void> {
-    await this.prisma.document.update({
-      where: { id: documentId },
-      data: { processingStatus: ProcessingStatus.COMPLETED },
+        await tx.$executeRaw`
+          INSERT INTO "Chunk" (id, "documentId", content, embedding, "chunkIndex", "chunkType", metadata, "createdAt")
+          VALUES (
+            gen_random_uuid(),
+            ${documentId}::uuid,
+            ${chunk.content},
+            ${JSON.stringify(chunk.embedding.embedding)}::vector,
+            ${i},
+            ${chunk.chunkType || null},
+            ${JSON.stringify(chunk.metadata || {})}::jsonb,
+            NOW()
+          )
+        `;
+      }
     });
   }
 
@@ -145,21 +150,25 @@ export class DocumentProcessorService {
 
   private async handleProcessingError(
     documentId: string,
+    workspaceId: string,
     error: unknown,
   ): Promise<void> {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
 
     this.logger.error(
       `Failed to process document ${documentId}`,
       error instanceof Error ? error.stack : undefined,
     );
 
-    await this.prisma.document.update({
-      where: { id: documentId },
-      data: {
-        processingStatus: ProcessingStatus.FAILED,
-        processingError: errorMessage,
-      },
+    await this.prisma.forWorkspace(workspaceId, async (tx) => {
+      await tx.document.update({
+        where: { id: documentId },
+        data: {
+          processingStatus: ProcessingStatus.FAILED,
+          processingError: errorMessage,
+        },
+      });
     });
   }
 }
