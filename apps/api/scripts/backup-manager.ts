@@ -153,15 +153,29 @@ export class BackupManager {
         );
       }
 
-      const { S3Client } = this.loadS3Module();
-      this.s3Client = new S3Client({
-        endpoint: `https://${this.config.b2Endpoint}`,
-        credentials: {
-          accessKeyId: this.config.b2KeyId!,
-          secretAccessKey: this.config.b2AppKey!,
-        },
-        region: 'eu-central-003',
-      });
+      // Try to load S3 module - if not available, gracefully disable B2
+      const s3Module = this.tryLoadS3Module();
+      if (s3Module) {
+        const { S3Client } = s3Module;
+        this.s3Client = new S3Client({
+          endpoint: `https://${this.config.b2Endpoint}`,
+          credentials: {
+            accessKeyId: this.config.b2KeyId!,
+            secretAccessKey: this.config.b2AppKey!,
+          },
+          region: 'eu-central-003',
+        });
+      } else {
+        // Disable B2 if SDK not available
+        this.b2Enabled = false;
+        console.warn(
+          '⚠️  B2 credentials configured but @aws-sdk/client-s3 not installed. ' +
+          'Backups will be stored locally only.',
+        );
+        console.warn(
+          '   To enable B2 uploads, install: npm install @aws-sdk/client-s3',
+        );
+      }
     }
 
     // Ensure backup directory exists
@@ -187,7 +201,7 @@ export class BackupManager {
     return crypto.randomBytes(32).toString('hex');
   }
 
-  private loadS3Module(): AwsSdkModule {
+  private tryLoadS3Module(): AwsSdkModule | null {
     if (this.s3Module) {
       return this.s3Module;
     }
@@ -197,14 +211,13 @@ export class BackupManager {
       this.s3Module = require('@aws-sdk/client-s3') as AwsSdkModule;
       return this.s3Module;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
       const code = (error as NodeJS.ErrnoException)?.code;
       if (code === 'MODULE_NOT_FOUND') {
-        throw new Error(
-          'Missing @aws-sdk/client-s3 dependency. Install it to enable Backblaze B2 backups.',
-        );
+        return null;
       }
-      throw new Error(`Failed to load @aws-sdk/client-s3: ${message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to load @aws-sdk/client-s3: ${message}`);
+      return null;
     }
   }
 
