@@ -4,6 +4,7 @@ import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { toast } from '@/shared/ui';
 import { DocumentPurpose } from '@/shared/types/document.types';
+import { VerificationStatus } from '../types';
 import { DocumentFilters } from './DocumentFilters';
 import { DocumentRow } from './DocumentRow';
 import { DocumentUploadModal } from './DocumentUploadModal';
@@ -71,12 +72,13 @@ export function DocumentListPanel({ workspaceId }: DocumentListPanelProps) {
     limit: DEFAULT_LIMIT,
   });
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (file: File, isVerified: boolean) => {
     setIsUploading(true);
     try {
       const formData = new FormData();
       formData.append('title', file.name);
       formData.append('file', file);
+      formData.append('verificationStatus', isVerified ? 'VERIFIED' : 'UNVERIFIED');
 
       await apiClient.post(`workspaces/${workspaceId}/documents`, {
         body: formData,
@@ -91,10 +93,10 @@ export function DocumentListPanel({ workspaceId }: DocumentListPanelProps) {
     }
   };
 
-  const handleCreateTextDocument = async (title: string, content: string, purpose: DocumentPurpose) => {
+  const handleCreateTextDocument = async (title: string, content: string, purpose: DocumentPurpose, verificationStatus: VerificationStatus) => {
     try {
       await apiClient.post(`workspaces/${workspaceId}/documents`, {
-        json: { title, content, purpose },
+        json: { title, content, purpose, verificationStatus },
       }).json();
 
       setShowNewDocModal(false);

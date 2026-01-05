@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { DocumentPurpose, DEFAULT_DOCUMENT_PURPOSE } from '@/shared/types/document.types';
 import { DocumentPurposeSelector } from '../DocumentPurposeSelector';
+import { VerificationStatus } from '../types';
 
 interface NewDocumentModalProps {
   onClose: () => void;
-  onCreate: (title: string, content: string, purpose: DocumentPurpose) => void;
+  onCreate: (title: string, content: string, purpose: DocumentPurpose, verificationStatus: VerificationStatus) => void;
 }
 
 export function NewDocumentModal({ onClose, onCreate }: NewDocumentModalProps) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [purpose, setPurpose] = useState<DocumentPurpose>(DEFAULT_DOCUMENT_PURPOSE);
+  const [isVerified, setIsVerified] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -18,7 +20,7 @@ export function NewDocumentModal({ onClose, onCreate }: NewDocumentModalProps) {
     if (!title.trim()) return;
 
     setIsSubmitting(true);
-    await onCreate(title, content, purpose);
+    await onCreate(title, content, purpose, isVerified ? 'VERIFIED' : 'UNVERIFIED');
     setIsSubmitting(false);
   };
 
@@ -47,6 +49,27 @@ export function NewDocumentModal({ onClose, onCreate }: NewDocumentModalProps) {
           </div>
           <div className="mb-4">
             <DocumentPurposeSelector value={purpose} onChange={setPurpose} />
+          </div>
+          <div className="mb-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isVerified}
+                onChange={(event) => setIsVerified(event.target.checked)}
+                aria-describedby="verification-hint"
+                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+              />
+              <span className="text-sm text-slate-300">Mark as verified</span>
+              <span
+                id="verification-hint"
+                className="text-slate-500 cursor-help"
+                title="Verified documents are used in Search and Instruction Sets by default. Leave unchecked if the document needs review."
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+            </label>
           </div>
           <div className="mb-6">
             <label className="block text-sm font-medium text-slate-300 mb-1">Content</label>

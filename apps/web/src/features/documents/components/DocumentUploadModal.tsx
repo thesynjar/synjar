@@ -1,14 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LoadingSpinner } from '@/shared/ui';
 
 interface DocumentUploadModalProps {
   isUploading: boolean;
   onClose: () => void;
-  onUpload: (file: File) => void;
+  onUpload: (file: File, isVerified: boolean) => void;
 }
 
 export function DocumentUploadModal({ isUploading, onClose, onUpload }: DocumentUploadModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isVerified, setIsVerified] = useState(true);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -26,7 +27,7 @@ export function DocumentUploadModal({ isUploading, onClose, onUpload }: Document
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      onUpload(file);
+      onUpload(file, isVerified);
     }
   };
 
@@ -34,7 +35,7 @@ export function DocumentUploadModal({ isUploading, onClose, onUpload }: Document
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (file) {
-      onUpload(file);
+      onUpload(file, isVerified);
     }
   };
 
@@ -55,6 +56,27 @@ export function DocumentUploadModal({ isUploading, onClose, onUpload }: Document
         </div>
 
         <div className="p-6">
+          <div className="mb-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isVerified}
+                onChange={(event) => setIsVerified(event.target.checked)}
+                aria-describedby="upload-verification-hint"
+                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+              />
+              <span className="text-sm text-slate-300">Mark as verified</span>
+              <span
+                id="upload-verification-hint"
+                className="text-slate-500 cursor-help"
+                title="Verified documents are used in Search and Instruction Sets by default. Leave unchecked if the document needs review."
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+            </label>
+          </div>
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
