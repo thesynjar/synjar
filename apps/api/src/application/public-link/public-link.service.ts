@@ -182,7 +182,6 @@ export class PublicLinkService {
     totalCount: number;
   }> {
     const link = await this.validateToken(token);
-    const ownerId = link.workspace.createdById;
 
     const limit = dto.limit || 20;
 
@@ -214,8 +213,8 @@ export class PublicLinkService {
       }),
     };
 
-    // Use workspace owner as RLS context for public access
-    return this.prisma.forUser(ownerId, async (tx) => {
+    // Use workspace context for RLS - Document policies check current_workspace_id
+    return this.prisma.forWorkspace(link.workspaceId, async (tx) => {
       const [documents, totalCount] = await Promise.all([
         tx.document.findMany({
           where,
@@ -284,7 +283,6 @@ export class PublicLinkService {
     totalCount: number;
   }> {
     const link = await this.validateToken(token);
-    const ownerId = link.workspace.createdById;
 
     if (!dto.query) {
       return this.getPublicDocuments(token, dto);
@@ -322,8 +320,8 @@ export class PublicLinkService {
         )`
       : Prisma.empty;
 
-    // Use workspace owner context for RLS
-    return this.prisma.forUser(ownerId, async (tx) => {
+    // Use workspace context for RLS - Document policies check current_workspace_id
+    return this.prisma.forWorkspace(link.workspaceId, async (tx) => {
       const results = await tx.$queryRaw<
         Array<{
           chunk_id: string;
