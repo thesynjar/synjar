@@ -13,48 +13,50 @@ function generateTestUser() {
   };
 }
 
-// Helper to get verification link from Mailpit
+// Helper to get verification link from Mailpit with polling
 async function getVerificationLink(email: string): Promise<string> {
-  // Wait for email to arrive
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  const maxWaitMs = 10000;
+  const pollIntervalMs = 500;
+  const startTime = Date.now();
 
-  // Get messages from Mailpit
-  const response = await fetch(`${MAILPIT_URL}/api/v1/messages`);
-  const data = await response.json();
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      // Get messages from Mailpit
+      const response = await fetch(`${MAILPIT_URL}/api/v1/messages`);
+      const data = await response.json();
 
-  // Find email for our user
-  const message = data.messages?.find((m: { To: { Address: string }[] }) =>
-    m.To?.some((to: { Address: string }) => to.Address === email)
-  );
+      // Find email for our user
+      const message = data.messages?.find((m: { To: { Address: string }[] }) =>
+        m.To?.some((to: { Address: string }) => to.Address === email)
+      );
 
-  if (!message) {
-    throw new Error(`No email found for ${email}`);
+      if (message) {
+        // Get full message content
+        const messageResponse = await fetch(`${MAILPIT_URL}/api/v1/message/${message.ID}`);
+        const messageData = await messageResponse.json();
+
+        // Extract verification link from HTML body
+        const htmlBody = messageData.HTML || messageData.Text || '';
+        const linkMatch = htmlBody.match(/href="([^"]*\/auth\/verify[^"]*)"/);
+
+        if (linkMatch) {
+          return linkMatch[1];
+        }
+      }
+    } catch {
+      // Continue polling
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
   }
 
-  // Get full message content
-  const messageResponse = await fetch(`${MAILPIT_URL}/api/v1/message/${message.ID}`);
-  const messageData = await messageResponse.json();
-
-  // Extract verification link from HTML body
-  const htmlBody = messageData.HTML || messageData.Text || '';
-  const linkMatch = htmlBody.match(/href="([^"]*\/auth\/verify[^"]*)"/);
-
-  if (!linkMatch) {
-    throw new Error('Verification link not found in email');
-  }
-
-  return linkMatch[1];
-}
-
-// Helper to clear Mailpit inbox
-async function clearMailpit() {
-  await fetch(`${MAILPIT_URL}/api/v1/messages`, { method: 'DELETE' });
+  throw new Error(`No verification email found for ${email} within timeout`);
 }
 
 test.describe('Registration Flow', () => {
-  test.beforeEach(async () => {
-    await clearMailpit();
-  });
+  // NOTE: We don't clear Mailpit inbox because tests run in parallel
+  // and clearing would delete emails from other tests. Instead, each test
+  // looks for its specific email by unique recipient address.
 
   test('should show registration form', async ({ page }) => {
     await page.goto('/register');

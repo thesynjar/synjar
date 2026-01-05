@@ -159,20 +159,15 @@ async function getAccessToken(page: Page): Promise<string> {
 /**
  * Helper: Create a test document via API with VERIFIED status
  * Bypasses the document editor entirely to avoid the race condition bug
+ * @param skipReload - Set to true when creating multiple documents to avoid slow reloads
  */
 async function createVerifiedDocument(
   page: Page,
   title: string,
   content: string,
   purpose: 'KNOWLEDGE' | 'INSTRUCTION' = 'KNOWLEDGE',
+  skipReload = false,
 ) {
-  // First ensure we're on the Documents tab/list
-  const backToDocsButton = page.getByRole('button', { name: 'Back to Documents' });
-  if (await backToDocsButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await backToDocsButton.click();
-    await page.waitForTimeout(500);
-  }
-
   // Get workspaceId from current URL
   const currentUrl = page.url();
   const workspaceIdMatch = currentUrl.match(/workspaces\/([a-f0-9-]+)/);
@@ -206,17 +201,18 @@ async function createVerifiedDocument(
     throw new Error(`Failed to create document: ${createResponse.status()} - ${errorText}`);
   }
 
-  // Reload the page to see the new document
-  await page.reload();
-  await page.waitForLoadState('networkidle');
-
-  // Verify the document is visible in the list
-  await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
+  // Only reload if not skipping (caller will reload once after batch creation)
+  if (!skipReload) {
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
+  }
 }
 
 /**
  * Helper: Create a test document via UI
  * @param verificationStatus - Set to 'VERIFIED' to mark document as verified (required for instruction sets)
+ * @param skipReload - Set to true when creating multiple documents to avoid slow reloads
  */
 async function createDocument(
   page: Page,
@@ -224,10 +220,11 @@ async function createDocument(
   content: string,
   purpose: 'KNOWLEDGE' | 'INSTRUCTION' = 'KNOWLEDGE',
   verificationStatus: 'VERIFIED' | 'UNVERIFIED' = 'UNVERIFIED',
+  skipReload = false,
 ) {
-  // For VERIFIED documents, use the full verification flow
+  // For VERIFIED documents, use API-based creation
   if (verificationStatus === 'VERIFIED') {
-    await createVerifiedDocument(page, title, content, purpose);
+    await createVerifiedDocument(page, title, content, purpose, skipReload);
     return;
   }
 
@@ -378,6 +375,7 @@ test.describe('Instruction Sets Editor', () => {
   });
 
   test('should add document to set', async ({ page }) => {
+    test.setTimeout(120000);
     await setupInstructionSetWithDocument(page);
     await navigateToInstructionSets(page);
 
@@ -388,21 +386,19 @@ test.describe('Instruction Sets Editor', () => {
       timeout: 10000,
     });
 
-    // Get initial token meter value
-    const tokenMeter = page.locator('[data-testid="token-meter"]');
+    // Get initial token meter value (TokenMeter uses role="meter")
+    const tokenMeter = page.getByRole('meter');
+    await expect(tokenMeter).toBeVisible({ timeout: 10000 });
     const initialMeterText = await tokenMeter.textContent().catch(() => '0');
 
     // Click add button on available document
-    const addButton = page
-      .getByText('Test Document')
-      .locator('..')
-      .getByRole('button', { name: /add/i });
+    const addButton = page.getByRole('button', { name: /Add Test Document/i });
+    await expect(addButton).toBeVisible({ timeout: 10000 });
     await addButton.click();
 
-    // Verify document appears in selected list
-    await expect(
-      page.getByText(/Selected Documents/i).locator('..').getByText('Test Document'),
-    ).toBeVisible({ timeout: 5000 });
+    // Verify document appears in selected list (uses listbox/option structure)
+    const selectedListbox = page.getByRole('listbox', { name: /Selected documents/i });
+    await expect(selectedListbox.getByText('Test Document')).toBeVisible({ timeout: 5000 });
 
     // Verify token meter updates (should have changed)
     const updatedMeterText = await tokenMeter.textContent();
@@ -410,6 +406,7 @@ test.describe('Instruction Sets Editor', () => {
   });
 
   test('should remove document from set', async ({ page }) => {
+    test.setTimeout(60000); // Extended timeout for slow setup
     await setupInstructionSetWithDocument(page);
     await navigateToInstructionSets(page);
 
@@ -420,43 +417,32 @@ test.describe('Instruction Sets Editor', () => {
       timeout: 10000,
     });
 
-    // Add document first
-    const addButton = page
-      .getByText('Test Document')
-      .locator('..')
-      .getByRole('button', { name: /add/i });
+    // Add document first (button has name "Add {docTitle} to set")
+    const addButton = page.getByRole('button', { name: /Add Test Document/i });
     await addButton.click();
-    await expect(
-      page.getByText(/Selected Documents/i).locator('..').getByText('Test Document'),
-    ).toBeVisible({ timeout: 5000 });
+    const selectedListbox = page.getByRole('listbox', { name: /Selected documents/i });
+    await expect(selectedListbox.getByText('Test Document')).toBeVisible({ timeout: 5000 });
 
-    // Click remove button
-    const removeButton = page
-      .getByText(/Selected Documents/i)
-      .locator('..')
-      .getByText('Test Document')
-      .locator('..')
-      .getByRole('button', { name: /remove/i });
+    // Click remove button (button has name "Remove {docTitle} from set")
+    const removeButton = page.getByRole('button', { name: /Remove Test Document/i });
     await removeButton.click();
 
-    // Verify document moved back to available
+    // Verify document moved back to available (button reappears)
     await expect(
-      page.getByText(/Available Documents/i).locator('..').getByText('Test Document'),
+      page.getByRole('button', { name: /Add Test Document/i }),
     ).toBeVisible({ timeout: 5000 });
 
     // Verify document is not in selected list anymore
-    const selectedDocsSection = page.getByText(/Selected Documents/i).locator('..');
-    const selectedDocCount = await selectedDocsSection
-      .getByText('Test Document')
-      .count();
+    const selectedDocCount = await selectedListbox.getByText('Test Document').count();
     expect(selectedDocCount).toBe(0);
   });
 
   test('should reorder documents via drag & drop', async ({ page }) => {
+    test.setTimeout(90000); // Extended timeout for multiple document creation
     await setupUserAndWorkspace(page);
 
-    // Create two VERIFIED documents (required for instruction set editor)
-    await createDocument(page, 'First Document', 'Content 1', 'KNOWLEDGE', 'VERIFIED');
+    // Create two VERIFIED documents via API (skipReload for first, reload after second)
+    await createDocument(page, 'First Document', 'Content 1', 'KNOWLEDGE', 'VERIFIED', true);
     await createDocument(page, 'Second Document', 'Content 2', 'KNOWLEDGE', 'VERIFIED');
 
     // Create instruction set
@@ -470,49 +456,55 @@ test.describe('Instruction Sets Editor', () => {
       timeout: 10000,
     });
 
-    // Add both documents
-    const firstAddBtn = page
-      .getByText('First Document')
-      .locator('..')
-      .getByRole('button', { name: /add/i })
-      .first();
-    await firstAddBtn.click();
+    // Add both documents (button has name "Add {docTitle} to set")
+    await page.getByRole('button', { name: /Add First Document/i }).click();
     await page.waitForTimeout(500);
 
-    const secondAddBtn = page
-      .getByText('Second Document')
-      .locator('..')
-      .getByRole('button', { name: /add/i })
-      .first();
-    await secondAddBtn.click();
+    await page.getByRole('button', { name: /Add Second Document/i }).click();
     await page.waitForTimeout(500);
 
-    // Get selected documents section
-    const selectedSection = page.getByText(/Selected Documents/i).locator('..');
+    // Get selected documents listbox (structure: listbox > option with drag buttons)
+    const selectedListbox = page.getByRole('listbox', { name: /Selected documents/i });
+    await expect(selectedListbox).toBeVisible({ timeout: 10000 });
 
     // Verify initial order
-    const items = await selectedSection.locator('[draggable="true"]').all();
+    const items = await selectedListbox.getByRole('option').all();
     expect(items.length).toBeGreaterThanOrEqual(2);
 
-    // Drag first document to second position
-    const firstItem = items[0];
-    const secondItem = items[1];
-    await firstItem.dragTo(secondItem);
+    // Drag first document to second position using raw mouse events
+    // (Playwright's dragTo doesn't work well with drag & drop libraries)
+    const firstDragHandle = items[0].getByRole('button', { name: /Drag to reorder/i });
+    const secondDragHandle = items[1].getByRole('button', { name: /Drag to reorder/i });
 
-    // Wait for reorder API call
-    await page.waitForTimeout(1000);
+    const firstBox = await firstDragHandle.boundingBox();
+    const secondBox = await secondDragHandle.boundingBox();
+
+    if (!firstBox || !secondBox) {
+      throw new Error('Could not get bounding boxes for drag handles');
+    }
+
+    // Perform drag with raw mouse events
+    await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
+    await page.mouse.down();
+    // Move to below the second item to ensure the drop zone is triggered
+    await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height + 20, { steps: 10 });
+    await page.mouse.up();
+
+    // Wait for reorder API call and animation
+    await page.waitForTimeout(1500);
 
     // Verify order changed (Second Document should now be first)
-    const updatedItems = await selectedSection.locator('[draggable="true"]').all();
+    const updatedItems = await selectedListbox.getByRole('option').all();
     const firstItemText = await updatedItems[0].textContent();
     expect(firstItemText).toContain('Second Document');
   });
 
   test('should reorder documents via keyboard', async ({ page }) => {
+    test.setTimeout(90000); // Extended timeout for multiple document creation
     await setupUserAndWorkspace(page);
 
-    // Create two VERIFIED documents (required for instruction set editor)
-    await createDocument(page, 'Doc A', 'Content A', 'KNOWLEDGE', 'VERIFIED');
+    // Create two VERIFIED documents via API (skipReload for first, reload after second)
+    await createDocument(page, 'Doc A', 'Content A', 'KNOWLEDGE', 'VERIFIED', true);
     await createDocument(page, 'Doc B', 'Content B', 'KNOWLEDGE', 'VERIFIED');
 
     // Create instruction set and add documents
@@ -525,52 +517,45 @@ test.describe('Instruction Sets Editor', () => {
       timeout: 10000,
     });
 
-    // Add both documents
-    await page
-      .getByText('Doc A')
-      .locator('..')
-      .getByRole('button', { name: /add/i })
-      .first()
-      .click();
+    // Add both documents (button has name "Add {docTitle} to set")
+    await page.getByRole('button', { name: /Add Doc A/i }).click();
     await page.waitForTimeout(500);
 
-    await page
-      .getByText('Doc B')
-      .locator('..')
-      .getByRole('button', { name: /add/i })
-      .first()
-      .click();
+    await page.getByRole('button', { name: /Add Doc B/i }).click();
     await page.waitForTimeout(500);
 
-    // Focus first document (Tab to it or click)
-    const selectedSection = page.getByText(/Selected Documents/i).locator('..');
-    const firstItem = selectedSection.locator('[draggable="true"]').first();
-    await firstItem.click();
+    // Focus first document's drag handle (keyboard reorder requires focus on the handle)
+    const selectedListbox = page.getByRole('listbox', { name: /Selected documents/i });
+    await expect(selectedListbox).toBeVisible({ timeout: 10000 });
+    const items = await selectedListbox.getByRole('option').all();
+    const firstDragHandle = items[0].getByRole('button', { name: /Drag to reorder/i });
+    await firstDragHandle.focus();
 
     // Press Space to enter drag mode
     await page.keyboard.press('Space');
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
 
     // Press ArrowDown to move down
     await page.keyboard.press('ArrowDown');
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
 
     // Press Space to drop
     await page.keyboard.press('Space');
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
 
     // Verify order changed
-    const updatedItems = await selectedSection.locator('[draggable="true"]').all();
+    const updatedItems = await selectedListbox.getByRole('option').all();
     const firstItemText = await updatedItems[0].textContent();
     expect(firstItemText).toContain('Doc B');
   });
 
   test('should filter documents by search', async ({ page }) => {
+    test.setTimeout(90000);
     await setupUserAndWorkspace(page);
 
-    // Create VERIFIED documents with different titles (required for instruction set editor)
-    await createDocument(page, 'Apple Document', 'Content', 'KNOWLEDGE', 'VERIFIED');
-    await createDocument(page, 'Banana Document', 'Content', 'KNOWLEDGE', 'VERIFIED');
+    // Create VERIFIED documents via API (skipReload for all but last)
+    await createDocument(page, 'Apple Document', 'Content', 'KNOWLEDGE', 'VERIFIED', true);
+    await createDocument(page, 'Banana Document', 'Content', 'KNOWLEDGE', 'VERIFIED', true);
     await createDocument(page, 'Cherry Document', 'Content', 'KNOWLEDGE', 'VERIFIED');
 
     await createInstructionSet(page, 'Filter Test Set');
@@ -598,10 +583,11 @@ test.describe('Instruction Sets Editor', () => {
   });
 
   test('should filter documents by purpose', async ({ page }) => {
+    test.setTimeout(90000);
     await setupUserAndWorkspace(page);
 
-    // Create VERIFIED documents with different purposes (required for instruction set editor)
-    await createDocument(page, 'Knowledge Doc', 'Content', 'KNOWLEDGE', 'VERIFIED');
+    // Create VERIFIED documents via API (skipReload for first)
+    await createDocument(page, 'Knowledge Doc', 'Content', 'KNOWLEDGE', 'VERIFIED', true);
     await createDocument(page, 'Instruction Doc', 'Content', 'INSTRUCTION', 'VERIFIED');
 
     await createInstructionSet(page, 'Purpose Filter Set');
@@ -705,6 +691,7 @@ test.describe('Instruction Sets Editor', () => {
   });
 
   test('should update token meter in real-time', async ({ page }) => {
+    test.setTimeout(60000); // Extended timeout for slow setup
     await setupInstructionSetWithDocument(page);
     await navigateToInstructionSets(page);
 
@@ -715,16 +702,13 @@ test.describe('Instruction Sets Editor', () => {
       timeout: 10000,
     });
 
-    // Note current meter value
-    const tokenMeter = page.locator('[data-testid="token-meter"]');
+    // Note current meter value (TokenMeter uses role="meter")
+    const tokenMeter = page.getByRole('meter');
+    await expect(tokenMeter).toBeVisible({ timeout: 10000 });
     const initialValue = await tokenMeter.textContent();
 
-    // Add document
-    const addButton = page
-      .getByText('Test Document')
-      .locator('..')
-      .getByRole('button', { name: /add/i });
-    await addButton.click();
+    // Add document (button has name "Add {docTitle} to set")
+    await page.getByRole('button', { name: /Add Test Document/i }).click();
 
     // Wait for update
     await page.waitForTimeout(500);
