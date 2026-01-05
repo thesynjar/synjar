@@ -9,16 +9,26 @@
 -- The synjar_app user is used for RLS enforcement - it's a non-superuser
 -- that cannot bypass Row Level Security policies.
 
--- ============ STEP 1: Create role if not exists ============
+-- ============ STEP 1: Verify role exists ============
+--
+-- IMPORTANT: The synjar_app role MUST be created by infrastructure (Docker, CI, Kubernetes)
+-- with a secure password managed via secrets. This migration only grants permissions.
+--
+-- Infrastructure setup examples:
+-- - Docker: docker/postgres-init/01-create-app-user.sql
+-- - CI: .woodpecker/main.yml setup-test-db step
+-- - Production: Deploy secrets to environment, then:
+--   CREATE ROLE synjar_app WITH LOGIN PASSWORD '<from-secret>' NOSUPERUSER NOBYPASSRLS;
 
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'synjar_app') THEN
-    CREATE ROLE synjar_app WITH LOGIN PASSWORD 'synjar_app_password' NOSUPERUSER NOBYPASSRLS;
-    RAISE NOTICE 'Created synjar_app role';
-  ELSE
-    RAISE NOTICE 'synjar_app role already exists';
+    RAISE EXCEPTION 'Role synjar_app does not exist. Create it via infrastructure setup with secure password before running migrations.';
   END IF;
+
+  -- Ensure role has correct flags (update if it exists but was misconfigured)
+  ALTER ROLE synjar_app WITH LOGIN NOSUPERUSER NOBYPASSRLS;
+  RAISE NOTICE 'Verified synjar_app role exists with correct flags';
 END
 $$;
 

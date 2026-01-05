@@ -3,11 +3,26 @@
 --
 -- The main 'postgres' user remains superuser for migrations (DATABASE_URL_MIGRATE)
 -- This 'synjar_app' user is used by DATABASE_URL for application runtime
+--
+-- SECURITY: Password must be provided via SYNJAR_APP_PASSWORD environment variable
+-- For production, use secure secrets management (Kubernetes secrets, AWS Secrets Manager, etc.)
 
 DO $$
+DECLARE
+  app_password TEXT;
 BEGIN
+  -- Get password from environment variable
+  app_password := current_setting('app.synjar_app_password', true);
+
+  -- Fallback to default only for local development
+  IF app_password IS NULL OR app_password = '' THEN
+    app_password := 'synjar_app_password';
+    RAISE WARNING 'SYNJAR_APP_PASSWORD not set, using default password. NEVER use this in production!';
+  END IF;
+
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'synjar_app') THEN
-    CREATE ROLE synjar_app WITH LOGIN PASSWORD 'synjar_app_password' NOSUPERUSER NOBYPASSRLS;
+    EXECUTE format('CREATE ROLE synjar_app WITH LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS', app_password);
+    RAISE NOTICE 'Created synjar_app role';
   END IF;
 END
 $$;
