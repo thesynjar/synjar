@@ -34,11 +34,24 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO synjar_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO synjar_app;
 
 -- ============ STEP 4: Set default privileges for future objects ============
--- IMPORTANT: FOR ROLE postgres ensures tables created by superuser (migrations) are accessible
+-- IMPORTANT: Set default privileges for the current role (migration runner)
+-- This ensures tables created by the superuser (migrations) are accessible to synjar_app
+-- Works with both 'postgres' (production) and 'synjar_test' (test environment)
 
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO synjar_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO synjar_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO synjar_app;
+DO $$
+DECLARE
+  migration_role TEXT;
+BEGIN
+  -- Get the current session user (who's running the migration)
+  SELECT CURRENT_USER INTO migration_role;
+
+  RAISE NOTICE 'Setting default privileges for role: %', migration_role;
+
+  -- Set default privileges for the migration runner role
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT ALL ON TABLES TO synjar_app', migration_role);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT ALL ON SEQUENCES TO synjar_app', migration_role);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO synjar_app', migration_role);
+END $$;
 
 -- ============ VERIFICATION ============
 
