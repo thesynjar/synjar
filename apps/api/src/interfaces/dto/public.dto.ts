@@ -10,7 +10,7 @@ export class PublicSearchDto {
   })
   @IsOptional()
   @IsString()
-  @Transform(({ obj }) => obj.query || obj.q)
+  @Transform(({ value, obj }) => value || obj.q)
   query?: string;
 
   @ApiPropertyOptional({
