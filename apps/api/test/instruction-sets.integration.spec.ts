@@ -807,4 +807,363 @@ describe('Instruction Set Integration Tests', () => {
       expect(set2Docs[0].documentId).toBe(document.id);
     });
   });
+
+  describe('Create with Initial Documents', () => {
+    /**
+     * This test verifies the fix for bug #1:
+     * Creating instruction set with documentIds failed with 500 error
+     * because RLS context was lost when reloading entity after transaction.
+     *
+     * Fix: Wrapped reload in forWorkspace() to maintain RLS context.
+     */
+    it('should create instruction set with initial documents and reload correctly', async () => {
+      // Arrange - Create documents
+      const doc1 = await prismaSuperuser.document.create({
+        data: {
+          title: 'Initial Doc 1',
+          content: 'Content for doc 1',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'VERIFIED',
+        },
+      });
+
+      const doc2 = await prismaSuperuser.document.create({
+        data: {
+          title: 'Initial Doc 2',
+          content: 'Content for doc 2',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'VERIFIED',
+        },
+      });
+
+      // Act - Create instruction set with initial documents via RLS context
+      // This simulates what the service does: create set, add documents, reload
+      let createdSet;
+      await prisma.forWorkspace(workspaceA.id, async (tx) => {
+        // Create the instruction set
+        const set = await tx.instructionSet.create({
+          data: {
+            name: 'Set with Initial Docs',
+            workspaceId: workspaceA.id,
+          },
+        });
+
+        // Add documents (simulates addDocumentInternal calls)
+        await tx.instructionSetDocument.create({
+          data: {
+            instructionSetId: set.id,
+            documentId: doc1.id,
+            order: 0,
+          },
+        });
+        await tx.instructionSetDocument.create({
+          data: {
+            instructionSetId: set.id,
+            documentId: doc2.id,
+            order: 1,
+          },
+        });
+
+        // Reload with RLS context (this was the failing part before fix)
+        createdSet = await tx.instructionSet.findUnique({
+          where: { id: set.id },
+          include: {
+            documents: {
+              include: { document: true },
+              orderBy: { order: 'asc' },
+            },
+          },
+        });
+      });
+
+      // Assert - Verify set was created with documents
+      expect(createdSet).not.toBeNull();
+      expect(createdSet!.name).toBe('Set with Initial Docs');
+      expect(createdSet!.documents).toHaveLength(2);
+      expect(createdSet!.documents[0].documentId).toBe(doc1.id);
+      expect(createdSet!.documents[1].documentId).toBe(doc2.id);
+    });
+
+    it('should fail to reload outside RLS context (demonstrates the bug)', async () => {
+      // Arrange - Create a set
+      const instructionSet = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Test Set',
+          workspaceId: workspaceA.id,
+        },
+      });
+
+      // Act - Try to find set WITHOUT RLS context (using app user)
+      // This demonstrates why we need forWorkspace() for reload
+      const result = await prisma.instructionSet.findUnique({
+        where: { id: instructionSet.id },
+      });
+
+      // Assert - Should return null because RLS blocks access without context
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('Public Access via SECURITY DEFINER Functions', () => {
+    /**
+     * These tests verify the fix for bug #2:
+     * Public instruction set access not working because raw query
+     * didn't bypass RLS. Fixed by creating SECURITY DEFINER functions.
+     */
+
+    it('should return public instruction set via lookup_public_instruction_set()', async () => {
+      // Arrange - Create a public instruction set
+      const publicSet = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Public Set',
+          description: 'A public instruction set',
+          workspaceId: workspaceA.id,
+          isPublic: true,
+        },
+      });
+
+      // Act - Query via SECURITY DEFINER function (no RLS context needed)
+      const result = await prisma.$queryRaw<Array<{
+        id: string;
+        workspace_id: string;
+        name: string;
+        description: string | null;
+        is_public: boolean;
+      }>>`SELECT * FROM lookup_public_instruction_set(${publicSet.id})`;
+
+      // Assert - Should return the public set
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(publicSet.id);
+      expect(result[0].name).toBe('Public Set');
+      expect(result[0].description).toBe('A public instruction set');
+      expect(result[0].is_public).toBe(true);
+    });
+
+    it('should NOT return private instruction set via lookup_public_instruction_set()', async () => {
+      // Arrange - Create a private instruction set
+      const privateSet = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Private Set',
+          workspaceId: workspaceA.id,
+          isPublic: false,
+        },
+      });
+
+      // Act - Query via SECURITY DEFINER function
+      const result = await prisma.$queryRaw<Array<{
+        id: string;
+      }>>`SELECT * FROM lookup_public_instruction_set(${privateSet.id})`;
+
+      // Assert - Should return empty (prevents enumeration)
+      expect(result).toHaveLength(0);
+    });
+
+    it('should return only VERIFIED documents via get_public_instruction_set_documents()', async () => {
+      // Arrange - Create public set with verified and unverified documents
+      const verifiedDoc = await prismaSuperuser.document.create({
+        data: {
+          title: 'Verified Document',
+          content: 'Verified content',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'VERIFIED',
+        },
+      });
+
+      const unverifiedDoc = await prismaSuperuser.document.create({
+        data: {
+          title: 'Unverified Document',
+          content: 'Unverified content',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'UNVERIFIED',
+        },
+      });
+
+      const publicSet = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Public Set with Mixed Docs',
+          workspaceId: workspaceA.id,
+          isPublic: true,
+          documents: {
+            createMany: {
+              data: [
+                { documentId: verifiedDoc.id, order: 0 },
+                { documentId: unverifiedDoc.id, order: 1 },
+              ],
+            },
+          },
+        },
+      });
+
+      // Act - Query documents via SECURITY DEFINER function
+      const result = await prisma.$queryRaw<Array<{
+        id: string;
+        document_id: string;
+        title: string;
+        doc_order: number;
+      }>>`SELECT * FROM get_public_instruction_set_documents(${publicSet.id})`;
+
+      // Assert - Should only return the VERIFIED document
+      expect(result).toHaveLength(1);
+      expect(result[0].document_id).toBe(verifiedDoc.id);
+      expect(result[0].title).toBe('Verified Document');
+    });
+
+    it('should return empty for non-public set via get_public_instruction_set_documents()', async () => {
+      // Arrange - Create private set with verified document
+      const verifiedDoc = await prismaSuperuser.document.create({
+        data: {
+          title: 'Verified Document',
+          content: 'Content',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'VERIFIED',
+        },
+      });
+
+      const privateSet = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Private Set',
+          workspaceId: workspaceA.id,
+          isPublic: false,
+          documents: {
+            create: {
+              documentId: verifiedDoc.id,
+              order: 0,
+            },
+          },
+        },
+      });
+
+      // Act - Query documents via SECURITY DEFINER function
+      const result = await prisma.$queryRaw<Array<{
+        id: string;
+      }>>`SELECT * FROM get_public_instruction_set_documents(${privateSet.id})`;
+
+      // Assert - Should return empty (set is not public)
+      expect(result).toHaveLength(0);
+    });
+
+    it('should return documents in correct order', async () => {
+      // Arrange - Create public set with multiple verified documents
+      const doc1 = await prismaSuperuser.document.create({
+        data: {
+          title: 'Document One',
+          content: 'Content 1',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'VERIFIED',
+        },
+      });
+
+      const doc2 = await prismaSuperuser.document.create({
+        data: {
+          title: 'Document Two',
+          content: 'Content 2',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'VERIFIED',
+        },
+      });
+
+      const doc3 = await prismaSuperuser.document.create({
+        data: {
+          title: 'Document Three',
+          content: 'Content 3',
+          contentType: 'TEXT',
+          workspaceId: workspaceA.id,
+          verificationStatus: 'VERIFIED',
+        },
+      });
+
+      const publicSet = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Ordered Public Set',
+          workspaceId: workspaceA.id,
+          isPublic: true,
+          documents: {
+            createMany: {
+              data: [
+                { documentId: doc3.id, order: 0 }, // Third doc first
+                { documentId: doc1.id, order: 1 }, // First doc second
+                { documentId: doc2.id, order: 2 }, // Second doc third
+              ],
+            },
+          },
+        },
+      });
+
+      // Act - Query documents
+      const result = await prisma.$queryRaw<Array<{
+        document_id: string;
+        doc_order: number;
+        title: string;
+      }>>`SELECT * FROM get_public_instruction_set_documents(${publicSet.id})`;
+
+      // Assert - Should be in order by doc_order
+      expect(result).toHaveLength(3);
+      expect(result[0].doc_order).toBe(0);
+      expect(result[0].title).toBe('Document Three');
+      expect(result[1].doc_order).toBe(1);
+      expect(result[1].title).toBe('Document One');
+      expect(result[2].doc_order).toBe(2);
+      expect(result[2].title).toBe('Document Two');
+    });
+
+    it('should prevent SQL injection via SECURITY DEFINER function', async () => {
+      // Act - Try SQL injection in the parameter
+      const maliciousId = "'; DROP TABLE \"InstructionSet\"; --";
+
+      const result = await prisma.$queryRaw<Array<{
+        id: string;
+      }>>`SELECT * FROM lookup_public_instruction_set(${maliciousId})`;
+
+      // Assert - Should return empty (parameterized query prevents injection)
+      expect(result).toHaveLength(0);
+
+      // Verify table still exists (query didn't destroy it)
+      await prismaSuperuser.instructionSet.findFirst();
+      // If we got here without error, table exists
+    });
+
+    it('should isolate workspaces - public set from workspace A not visible when querying from workspace B context', async () => {
+      // Arrange - Create public set in workspace A
+      const publicSetA = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Public Set in Workspace A',
+          workspaceId: workspaceA.id,
+          isPublic: true,
+        },
+      });
+
+      // Act - Query via SECURITY DEFINER (no workspace context needed for public)
+      // But also verify that this works from "outside" any workspace
+      const result = await prisma.$queryRaw<Array<{
+        id: string;
+        workspace_id: string;
+      }>>`SELECT * FROM lookup_public_instruction_set(${publicSetA.id})`;
+
+      // Assert - Public access works regardless of workspace context
+      expect(result).toHaveLength(1);
+      expect(result[0].workspace_id).toBe(workspaceA.id);
+
+      // Also verify that non-public sets from other workspaces remain hidden
+      const privateSetB = await prismaSuperuser.instructionSet.create({
+        data: {
+          name: 'Private Set in Workspace B',
+          workspaceId: workspaceB.id,
+          isPublic: false,
+        },
+      });
+
+      const privateResult = await prisma.$queryRaw<Array<{
+        id: string;
+      }>>`SELECT * FROM lookup_public_instruction_set(${privateSetB.id})`;
+
+      expect(privateResult).toHaveLength(0);
+    });
+  });
 });

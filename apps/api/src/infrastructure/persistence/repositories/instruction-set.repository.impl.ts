@@ -68,70 +68,52 @@ export class PrismaInstructionSetRepository implements IInstructionSetRepository
   }
 
   async findByIdPublic(id: string): Promise<InstructionSetEntity | null> {
-    // Public access - bypass RLS by using raw query or direct access
-    // We need to check isPublic=true AND only return VERIFIED documents
-    const data = await this.prisma.$queryRaw<InstructionSetWithDocuments[]>`
-      SELECT
-        is_.*,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', isd."id",
-              'instructionSetId', isd."instructionSetId",
-              'documentId', isd."documentId",
-              'order', isd."order",
-              'document', json_build_object(
-                'id', d."id",
-                'title', d."title",
-                'content', d."content",
-                'fileUrl', d."fileUrl",
-                'verificationStatus', d."verificationStatus",
-                'purpose', d."purpose"
-              )
-            ) ORDER BY isd."order"
-          ) FILTER (WHERE isd."id" IS NOT NULL AND d."verificationStatus" = 'VERIFIED'),
-          '[]'
-        ) as documents
-      FROM "InstructionSet" is_
-      LEFT JOIN "InstructionSetDocument" isd ON isd."instructionSetId" = is_."id"
-      LEFT JOIN "Document" d ON d."id" = isd."documentId"
-      WHERE is_."id" = ${id}::text AND is_."isPublic" = true
-      GROUP BY is_."id"
-    `;
+    // Public access - use SECURITY DEFINER functions to bypass RLS
+    // Only returns instruction sets with isPublic=true and VERIFIED documents
 
-    if (!data || data.length === 0) return null;
+    // First, get the instruction set metadata
+    const setRows = await this.prisma.$queryRaw<Array<{
+      id: string;
+      workspace_id: string;
+      name: string;
+      description: string | null;
+      is_public: boolean;
+      created_at: Date;
+      updated_at: Date;
+    }>>`SELECT * FROM lookup_public_instruction_set(${id})`;
 
-    const row = data[0];
+    if (!setRows || setRows.length === 0) return null;
+
+    const setRow = setRows[0];
+
+    // Then, get the documents (only VERIFIED ones)
+    const docRows = await this.prisma.$queryRaw<Array<{
+      id: string;
+      instruction_set_id: string;
+      document_id: string;
+      doc_order: number;
+      title: string;
+      content: string;
+      file_url: string | null;
+    }>>`SELECT * FROM get_public_instruction_set_documents(${id})`;
+
     return InstructionSetEntity.reconstitute({
-      id: row.id,
-      workspaceId: row.workspaceId,
-      name: row.name,
-      description: row.description,
-      isPublic: row.isPublic,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      documents: (row.documents as unknown as Array<{
-        id: string;
-        instructionSetId: string;
-        documentId: string;
-        order: number;
-        document: {
-          id: string;
-          title: string;
-          content: string;
-          fileUrl: string | null;
-          verificationStatus: string;
-          purpose: string;
-        };
-      }>).map(d => ({
+      id: setRow.id,
+      workspaceId: setRow.workspace_id,
+      name: setRow.name,
+      description: setRow.description,
+      isPublic: setRow.is_public,
+      createdAt: setRow.created_at,
+      updatedAt: setRow.updated_at,
+      documents: (docRows || []).map(d => ({
         id: d.id,
-        instructionSetId: d.instructionSetId,
-        documentId: d.documentId,
-        order: d.order,
-        title: d.document.title,
-        content: d.document.content,
-        sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
-        fileUrl: d.document.fileUrl,
+        instructionSetId: d.instruction_set_id,
+        documentId: d.document_id,
+        order: d.doc_order,
+        title: d.title,
+        content: d.content,
+        sizeBytes: Buffer.byteLength(d.content, 'utf8'),
+        fileUrl: d.file_url,
       })),
     });
   }

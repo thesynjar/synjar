@@ -4,8 +4,10 @@ import {
   Inject,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { validate as isUUID } from 'uuid';
 import { PrismaService } from '@/infrastructure/persistence/prisma/prisma.service';
 import { WorkspaceService } from '../workspace/workspace.service';
 import {
@@ -53,6 +55,8 @@ interface RemoveDocumentDto {
 
 @Injectable()
 export class InstructionSetService {
+  private readonly logger = new Logger(InstructionSetService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly workspaceService: WorkspaceService,
@@ -289,8 +293,52 @@ export class InstructionSetService {
           const docId = dto.documentIds[i];
           await this.addDocumentInternal(savedEntity, docId, i);
         }
-        // Reload to get updated documents
-        savedEntity = (await this.repository.findById(savedEntity.id))!;
+        // Reload to get updated documents with RLS context
+        const reloaded = await this.prisma.forWorkspace(workspaceId, async (tx) => {
+          const data = await tx.instructionSet.findUnique({
+            where: { id: savedEntity.id },
+            include: {
+              documents: {
+                include: {
+                  document: {
+                    select: {
+                      id: true,
+                      title: true,
+                      content: true,
+                      fileUrl: true,
+                      verificationStatus: true,
+                      purpose: true,
+                    },
+                  },
+                },
+                orderBy: { order: 'asc' as const },
+              },
+            },
+          });
+          if (!data) return null;
+          return InstructionSetEntity.reconstitute({
+            id: data.id,
+            workspaceId: data.workspaceId,
+            name: data.name,
+            description: data.description,
+            isPublic: data.isPublic,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            documents: data.documents.map(d => ({
+              id: d.id,
+              instructionSetId: d.instructionSetId,
+              documentId: d.documentId,
+              order: d.order,
+              title: d.document.title,
+              content: d.document.content,
+              sizeBytes: Buffer.byteLength(d.document.content, 'utf8'),
+              fileUrl: d.document.fileUrl,
+            })),
+          });
+        });
+        if (reloaded) {
+          savedEntity = reloaded;
+        }
       }
 
       return this.toResponse(savedEntity);
@@ -800,12 +848,40 @@ export class InstructionSetService {
    * Get public set content (no authentication required)
    */
   async getPublicContent(id: string) {
+    // Validate UUID format to avoid unnecessary DB queries
+    if (!isUUID(id)) {
+      this.logger.log({
+        event: 'PUBLIC_INSTRUCTION_SET_ACCESS_DENIED',
+        instructionSetId: id,
+        reason: 'invalid_uuid_format',
+        timestamp: new Date().toISOString(),
+      });
+      throw new NotFoundException('Instruction set not found');
+    }
+
     const set = await this.repository.findByIdPublic(id);
 
     // Return 404 for both non-existent and non-public sets (security - prevent enumeration)
     if (!set) {
+      this.logger.log({
+        event: 'PUBLIC_INSTRUCTION_SET_ACCESS_DENIED',
+        instructionSetId: id,
+        reason: 'not_found_or_not_public',
+        timestamp: new Date().toISOString(),
+      });
       throw new NotFoundException('Instruction set not found');
     }
+
+    // Audit log for successful public access
+    this.logger.log({
+      event: 'PUBLIC_INSTRUCTION_SET_ACCESS',
+      instructionSetId: set.id,
+      workspaceId: set.workspaceId,
+      documentCount: set.documentCount,
+      totalSizeBytes: set.totalSizeBytes,
+      format: 'json',
+      timestamp: new Date().toISOString(),
+    });
 
     return {
       id: set.id,
@@ -828,11 +904,39 @@ export class InstructionSetService {
    * Get raw content for LLM agents (text/plain)
    */
   async getRawContent(id: string): Promise<string> {
+    // Validate UUID format to avoid unnecessary DB queries
+    if (!isUUID(id)) {
+      this.logger.log({
+        event: 'PUBLIC_INSTRUCTION_SET_ACCESS_DENIED',
+        instructionSetId: id,
+        reason: 'invalid_uuid_format',
+        timestamp: new Date().toISOString(),
+      });
+      throw new NotFoundException('Instruction set not found');
+    }
+
     const set = await this.repository.findByIdPublic(id);
 
     if (!set) {
+      this.logger.log({
+        event: 'PUBLIC_INSTRUCTION_SET_ACCESS_DENIED',
+        instructionSetId: id,
+        reason: 'not_found_or_not_public',
+        timestamp: new Date().toISOString(),
+      });
       throw new NotFoundException('Instruction set not found');
     }
+
+    // Audit log for successful public access
+    this.logger.log({
+      event: 'PUBLIC_INSTRUCTION_SET_ACCESS',
+      instructionSetId: set.id,
+      workspaceId: set.workspaceId,
+      documentCount: set.documentCount,
+      totalSizeBytes: set.totalSizeBytes,
+      format: 'raw',
+      timestamp: new Date().toISOString(),
+    });
 
     return set.getCombinedContent();
   }

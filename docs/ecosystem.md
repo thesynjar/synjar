@@ -16,31 +16,37 @@ Synjar to multi-tenant RAG (Retrieval Augmented Generation) system do zarządzan
 
 ## Bounded Contexts
 
-System składa się z 5 głównych Bounded Contexts:
+System składa się z 6 głównych Bounded Contexts:
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         SYNJAR SYSTEM                             │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌────────────────┐  ┌──────────────────┐  ┌─────────────────┐ │
-│  │  Auth Context  │  │ Workspace Context│  │Document Context │ │
-│  ├────────────────┤  ├──────────────────┤  ├─────────────────┤ │
-│  │ - User         │  │ - Workspace      │  │ - Document      │ │
-│  │ - Session      │  │ - WorkspaceMember│  │ - Chunk         │ │
-│  │ - JWT          │  │ - Role           │  │ - Tag           │ │
-│  └────────────────┘  └──────────────────┘  │ - DocumentTag   │ │
-│                                             └─────────────────┘ │
-│                                                                   │
-│  ┌─────────────────────┐  ┌──────────────────────────────────┐ │
-│  │  Public API Context │  │   Tenant Lookup Context          │ │
-│  ├─────────────────────┤  ├──────────────────────────────────┤ │
-│  │ - PublicLink        │  │ - TenantUserEmailLookup          │ │
-│  │ - Token validation  │  │ - Email hashing                  │ │
-│  │ - SECURITY DEFINER  │  │ - Workspace discovery            │ │
-│  └─────────────────────┘  └──────────────────────────────────┘ │
-│                                                                   │
-└──────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                           SYNJAR SYSTEM                                 │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌────────────────┐  ┌──────────────────┐  ┌─────────────────────────┐│
+│  │  Auth Context  │  │ Workspace Context│  │   Document Context      ││
+│  ├────────────────┤  ├──────────────────┤  ├─────────────────────────┤│
+│  │ - User         │  │ - Workspace      │  │ - Document              ││
+│  │ - Session      │  │ - WorkspaceMember│  │ - Chunk                 ││
+│  │ - JWT          │  │ - Role           │  │ - Tag, DocumentTag      ││
+│  └────────────────┘  └──────────────────┘  └─────────────────────────┘│
+│                                                                         │
+│  ┌─────────────────────┐  ┌─────────────────────┐                     │
+│  │  Public API Context │  │ InstructionSet Ctx  │                     │
+│  ├─────────────────────┤  ├─────────────────────┤                     │
+│  │ - PublicLink        │  │ - InstructionSet    │                     │
+│  │ - Token validation  │  │ - InstructionSetDoc │                     │
+│  │ - SECURITY DEFINER  │  │ - Public access     │                     │
+│  └─────────────────────┘  └─────────────────────┘                     │
+│                                                                         │
+│  ┌──────────────────────────────────┐                                  │
+│  │   Tenant Lookup Context          │                                  │
+│  ├──────────────────────────────────┤                                  │
+│  │ - TenantUserEmailLookup          │                                  │
+│  │ - Email hashing, Workspace disc. │                                  │
+│  └──────────────────────────────────┘                                  │
+│                                                                         │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Auth Context
@@ -155,6 +161,46 @@ System składa się z 5 głównych Bounded Contexts:
 - Email przechowywany jako SHA-256 hash (irreversible)
 - Lookup możliwy tylko jeśli znasz exact email
 - RLS enforcement: user widzi tylko entries swoich workspace'ów
+
+### Instruction Set Context
+
+**Odpowiedzialność**: Agregacja dokumentów w instruction sets dla LLM agents
+
+**Entities**:
+- `InstructionSet` - kolekcja dokumentów do przekazania LLM (isPublic, name, description)
+- `InstructionSetDocument` - junction table z kolejnością (order)
+
+**Use Cases**:
+- Create/Update/Delete instruction sets
+- Add/Remove documents z zachowaniem kolejności
+- Toggle public access (isPublic flag)
+- Public access dla LLM agents (bez autentykacji)
+
+**Infrastructure**:
+- `InstructionSetService` - domain logic, orchestration
+- `PrismaInstructionSetRepository` - persistence z RLS
+- SQL SECURITY DEFINER functions:
+  - `lookup_public_instruction_set(id)` - metadata lookup
+  - `get_public_instruction_set_documents(id)` - documents (VERIFIED only)
+
+**Public Access Security** (SECURITY DEFINER pattern):
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 1: Function-level validation (isPublic = true)        │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 2: Data filtering (VERIFIED documents only)           │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 3: Anti-enumeration (returns empty, not error)        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Limits**:
+- Max 20 documents per set
+- Max 100 KB total content size
+- Max 50 sets per workspace
+
+**Related ADRs**:
+- [ADR-2026-01-05: SECURITY DEFINER Pattern](adr/ADR-2026-01-05-security-definer-pattern.md)
 
 ---
 
