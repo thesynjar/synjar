@@ -16,7 +16,6 @@ interface UseDocumentOperationsParams {
   instructionSet: InstructionSetDetail | null;
   lastKnownUpdatedAt: string | null;
   setSelectedDocuments: React.Dispatch<React.SetStateAction<InstructionSetDocument[]>>;
-  setHasUnsavedChanges: (value: boolean) => void;
   setLastKnownUpdatedAt: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
@@ -36,7 +35,6 @@ export function useDocumentOperations({
   instructionSet,
   lastKnownUpdatedAt,
   setSelectedDocuments,
-  setHasUnsavedChanges,
   setLastKnownUpdatedAt,
 }: UseDocumentOperationsParams): UseDocumentOperationsResult {
   // Handle adding document
@@ -78,7 +76,6 @@ export function useDocumentOperations({
         };
 
         setSelectedDocuments((prev) => [...prev, newDoc]);
-        setHasUnsavedChanges(true);
         setLastKnownUpdatedAt(response.updatedAt);
       } catch (error: unknown) {
         if (error instanceof HTTPError) {
@@ -101,7 +98,7 @@ export function useDocumentOperations({
         }
       }
     },
-    [apiClient, workspaceId, setId, availableDocuments, selectedDocuments.length, totalSizeBytes, lastKnownUpdatedAt, setSelectedDocuments, setHasUnsavedChanges, setLastKnownUpdatedAt]
+    [apiClient, workspaceId, setId, availableDocuments, selectedDocuments.length, totalSizeBytes, lastKnownUpdatedAt, setSelectedDocuments, setLastKnownUpdatedAt]
   );
 
   // Handle removing document
@@ -116,7 +113,6 @@ export function useDocumentOperations({
         await apiClient.delete(url);
 
         setSelectedDocuments((prev) => prev.filter((d) => d.documentId !== documentId));
-        setHasUnsavedChanges(true);
       } catch (error: unknown) {
         if (error instanceof HTTPError) {
           try {
@@ -138,7 +134,7 @@ export function useDocumentOperations({
         }
       }
     },
-    [apiClient, workspaceId, setId, lastKnownUpdatedAt, setSelectedDocuments, setHasUnsavedChanges]
+    [apiClient, workspaceId, setId, lastKnownUpdatedAt, setSelectedDocuments]
   );
 
   // Handle reordering documents
@@ -153,7 +149,6 @@ export function useDocumentOperations({
         .filter(Boolean) as InstructionSetDocument[];
 
       setSelectedDocuments(newOrder);
-      setHasUnsavedChanges(true);
 
       try {
         const response = await apiClient.patch(`workspaces/${workspaceId}/instruction-sets/${setId}/documents/reorder`, {
@@ -190,7 +185,7 @@ export function useDocumentOperations({
         }
       }
     },
-    [apiClient, workspaceId, setId, selectedDocuments, instructionSet, lastKnownUpdatedAt, setSelectedDocuments, setHasUnsavedChanges, setLastKnownUpdatedAt]
+    [apiClient, workspaceId, setId, selectedDocuments, instructionSet, lastKnownUpdatedAt, setSelectedDocuments, setLastKnownUpdatedAt]
   );
 
   return {

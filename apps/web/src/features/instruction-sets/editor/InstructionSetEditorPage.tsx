@@ -66,7 +66,6 @@ export function InstructionSetEditorPage() {
     instructionSet: editorData.instructionSet,
     lastKnownUpdatedAt: editorData.lastKnownUpdatedAt,
     setSelectedDocuments: editorData.setSelectedDocuments,
-    setHasUnsavedChanges: formOps.setHasUnsavedChanges,
     setLastKnownUpdatedAt: editorData.setLastKnownUpdatedAt,
   });
 
