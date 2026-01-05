@@ -107,9 +107,21 @@ export class BackupManager {
   private b2Enabled: boolean;
 
   constructor() {
-    const databaseUrl = process.env.DATABASE_URL;
+    // Prefer DATABASE_URL_MIGRATE for backups (superuser needed for pg_dump/pg_restore)
+    // Falls back to DATABASE_URL if migrate URL not available
+    const databaseUrl =
+      process.env.DATABASE_URL_MIGRATE || process.env.DATABASE_URL;
     if (!databaseUrl) {
-      throw new Error('DATABASE_URL environment variable is required');
+      throw new Error(
+        'DATABASE_URL or DATABASE_URL_MIGRATE environment variable is required',
+      );
+    }
+
+    if (!process.env.DATABASE_URL_MIGRATE && process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[BackupManager] Warning: Using DATABASE_URL for backups. ' +
+          'Consider setting DATABASE_URL_MIGRATE with superuser for full backup capabilities.',
+      );
     }
 
     const dbConfig = parseDatabaseUrl(databaseUrl);
