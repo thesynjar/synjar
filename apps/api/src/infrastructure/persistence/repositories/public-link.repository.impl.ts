@@ -61,9 +61,9 @@ export class PrismaPublicLinkRepository implements IPublicLinkRepository {
     await this.prisma.publicLink.delete({ where: { id } });
   }
 
-  // RLS-aware methods
-  async createWithUser(userId: string, data: CreatePublicLinkData): Promise<PublicLink> {
-    return this.prisma.forUser(userId, async (tx) => {
+  // RLS-aware methods (use workspace context for RLS policies)
+  async createInWorkspace(workspaceId: string, data: CreatePublicLinkData): Promise<PublicLink> {
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.publicLink.create({
         data: {
           workspaceId: data.workspaceId,
@@ -76,8 +76,8 @@ export class PrismaPublicLinkRepository implements IPublicLinkRepository {
     });
   }
 
-  async findAllWithUser(userId: string, workspaceId: string): Promise<PublicLink[]> {
-    return this.prisma.forUser(userId, async (tx) => {
+  async findAllInWorkspace(workspaceId: string): Promise<PublicLink[]> {
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.publicLink.findMany({
         where: { workspaceId },
         orderBy: { createdAt: 'desc' },
@@ -85,24 +85,23 @@ export class PrismaPublicLinkRepository implements IPublicLinkRepository {
     });
   }
 
-  async findOneWithUser(
-    userId: string,
-    id: string,
+  async findOneInWorkspace(
     workspaceId: string,
+    id: string,
   ): Promise<PublicLink | null> {
-    return this.prisma.forUser(userId, async (tx) => {
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.publicLink.findFirst({
         where: { id, workspaceId },
       });
     });
   }
 
-  async updateWithUser(
-    userId: string,
+  async updateInWorkspace(
+    workspaceId: string,
     id: string,
     data: Partial<{ historyMode: 'ON' | 'OFF' }>,
   ): Promise<PublicLink> {
-    return this.prisma.forUser(userId, async (tx) => {
+    return this.prisma.forWorkspace(workspaceId, async (tx) => {
       return tx.publicLink.update({
         where: { id },
         data,
@@ -110,8 +109,8 @@ export class PrismaPublicLinkRepository implements IPublicLinkRepository {
     });
   }
 
-  async deleteWithUser(userId: string, id: string): Promise<void> {
-    await this.prisma.forUser(userId, async (tx) => {
+  async deleteInWorkspace(workspaceId: string, id: string): Promise<void> {
+    await this.prisma.forWorkspace(workspaceId, async (tx) => {
       await tx.publicLink.delete({ where: { id } });
     });
   }

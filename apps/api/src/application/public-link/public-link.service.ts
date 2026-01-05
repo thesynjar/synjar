@@ -93,7 +93,7 @@ export class PublicLinkService {
     // Generate cryptographically secure token (32 bytes = 64 hex chars)
     const token = randomBytes(32).toString('hex');
 
-    return this.publicLinkRepository.createWithUser(userId, {
+    return this.publicLinkRepository.createInWorkspace(workspaceId, {
       workspaceId,
       token,
       name: dto.name,
@@ -104,13 +104,13 @@ export class PublicLinkService {
 
   async findAll(workspaceId: string, userId: string): Promise<PublicLink[]> {
     await this.workspaceService.ensureMember(workspaceId, userId);
-    return this.publicLinkRepository.findAllWithUser(userId, workspaceId);
+    return this.publicLinkRepository.findAllInWorkspace(workspaceId);
   }
 
   async findOne(workspaceId: string, linkId: string, userId: string): Promise<PublicLink> {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    const link = await this.publicLinkRepository.findOneWithUser(userId, linkId, workspaceId);
+    const link = await this.publicLinkRepository.findOneInWorkspace(workspaceId, linkId);
 
     if (!link) {
       throw new NotFoundException('Public link not found');
@@ -127,13 +127,13 @@ export class PublicLinkService {
   ): Promise<PublicLink> {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    const link = await this.publicLinkRepository.findOneWithUser(userId, linkId, workspaceId);
+    const link = await this.publicLinkRepository.findOneInWorkspace(workspaceId, linkId);
 
     if (!link) {
       throw new NotFoundException('Public link not found');
     }
 
-    return this.publicLinkRepository.updateWithUser(userId, linkId, {
+    return this.publicLinkRepository.updateInWorkspace(workspaceId, linkId, {
       historyMode: dto.historyMode,
     });
   }
@@ -141,13 +141,13 @@ export class PublicLinkService {
   async delete(workspaceId: string, linkId: string, userId: string): Promise<void> {
     await this.workspaceService.ensureMember(workspaceId, userId);
 
-    const link = await this.publicLinkRepository.findOneWithUser(userId, linkId, workspaceId);
+    const link = await this.publicLinkRepository.findOneInWorkspace(workspaceId, linkId);
 
     if (!link) {
       throw new NotFoundException('Public link not found');
     }
 
-    await this.publicLinkRepository.deleteWithUser(userId, linkId);
+    await this.publicLinkRepository.deleteInWorkspace(workspaceId, linkId);
   }
 
   async validateToken(token: string): Promise<PublicLinkWithWorkspace> {

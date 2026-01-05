@@ -26,12 +26,12 @@ export interface IPublicLinkRepository {
   update(id: string, data: Partial<CreatePublicLinkData & { isActive: boolean }>): Promise<PublicLink>;
   delete(id: string): Promise<void>;
 
-  // RLS-aware methods
-  createWithUser(userId: string, data: CreatePublicLinkData): Promise<PublicLink>;
-  findAllWithUser(userId: string, workspaceId: string): Promise<PublicLink[]>;
-  findOneWithUser(userId: string, id: string, workspaceId: string): Promise<PublicLink | null>;
-  updateWithUser(userId: string, id: string, data: Partial<{ historyMode: 'ON' | 'OFF' }>): Promise<PublicLink>;
-  deleteWithUser(userId: string, id: string): Promise<void>;
+  // RLS-aware methods (use workspace context for RLS policies)
+  createInWorkspace(workspaceId: string, data: CreatePublicLinkData): Promise<PublicLink>;
+  findAllInWorkspace(workspaceId: string): Promise<PublicLink[]>;
+  findOneInWorkspace(workspaceId: string, id: string): Promise<PublicLink | null>;
+  updateInWorkspace(workspaceId: string, id: string, data: Partial<{ historyMode: 'ON' | 'OFF' }>): Promise<PublicLink>;
+  deleteInWorkspace(workspaceId: string, id: string): Promise<void>;
 
   // System operations (bypass RLS)
   findByTokenWithWorkspace(token: string): Promise<PublicLinkWithWorkspace | null>;

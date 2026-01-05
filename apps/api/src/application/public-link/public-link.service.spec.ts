@@ -40,10 +40,11 @@ describe('PublicLinkService', () => {
     };
 
     publicLinkRepositoryStub = {
-      createWithUser: jest.fn(),
-      findAllWithUser: jest.fn(),
-      findOneWithUser: jest.fn(),
-      deleteWithUser: jest.fn(),
+      createInWorkspace: jest.fn(),
+      findAllInWorkspace: jest.fn(),
+      findOneInWorkspace: jest.fn(),
+      updateInWorkspace: jest.fn(),
+      deleteInWorkspace: jest.fn(),
       findByTokenWithWorkspace: jest.fn(),
     };
 
@@ -170,13 +171,13 @@ describe('PublicLinkService', () => {
         createdAt: new Date(),
       };
 
-      publicLinkRepositoryStub.createWithUser = jest.fn().mockResolvedValue(expectedLink);
+      publicLinkRepositoryStub.createInWorkspace = jest.fn().mockResolvedValue(expectedLink);
 
       const result = await service.create(workspaceId, userId, dto);
 
       expect(workspaceServiceStub.ensureMember).toHaveBeenCalledWith(workspaceId, userId);
-      expect(publicLinkRepositoryStub.createWithUser).toHaveBeenCalledWith(
-        userId,
+      expect(publicLinkRepositoryStub.createInWorkspace).toHaveBeenCalledWith(
+        workspaceId,
         expect.objectContaining({
           workspaceId,
           name: dto.name,
@@ -214,12 +215,12 @@ describe('PublicLinkService', () => {
         { id: 'link-2', name: 'Link 2' },
       ];
 
-      publicLinkRepositoryStub.findAllWithUser = jest.fn().mockResolvedValue(expectedLinks);
+      publicLinkRepositoryStub.findAllInWorkspace = jest.fn().mockResolvedValue(expectedLinks);
 
       const result = await service.findAll(workspaceId, userId);
 
       expect(workspaceServiceStub.ensureMember).toHaveBeenCalledWith(workspaceId, userId);
-      expect(publicLinkRepositoryStub.findAllWithUser).toHaveBeenCalledWith(userId, workspaceId);
+      expect(publicLinkRepositoryStub.findAllInWorkspace).toHaveBeenCalledWith(workspaceId);
       expect(result).toEqual(expectedLinks);
     });
   });
@@ -231,7 +232,7 @@ describe('PublicLinkService', () => {
       const userId = 'user-id-123';
       const expectedLink = { id: linkId, name: 'Test Link' };
 
-      publicLinkRepositoryStub.findOneWithUser = jest.fn().mockResolvedValue(expectedLink);
+      publicLinkRepositoryStub.findOneInWorkspace = jest.fn().mockResolvedValue(expectedLink);
 
       const result = await service.findOne(workspaceId, linkId, userId);
 
@@ -243,7 +244,7 @@ describe('PublicLinkService', () => {
       const linkId = 'non-existent';
       const userId = 'user-id-123';
 
-      publicLinkRepositoryStub.findOneWithUser = jest.fn().mockResolvedValue(null);
+      publicLinkRepositoryStub.findOneInWorkspace = jest.fn().mockResolvedValue(null);
 
       await expect(service.findOne(workspaceId, linkId, userId)).rejects.toThrow(NotFoundException);
     });
@@ -256,12 +257,12 @@ describe('PublicLinkService', () => {
       const userId = 'user-id-123';
       const existingLink = { id: linkId, name: 'Test Link' };
 
-      publicLinkRepositoryStub.findOneWithUser = jest.fn().mockResolvedValue(existingLink);
-      publicLinkRepositoryStub.deleteWithUser = jest.fn().mockResolvedValue(undefined);
+      publicLinkRepositoryStub.findOneInWorkspace = jest.fn().mockResolvedValue(existingLink);
+      publicLinkRepositoryStub.deleteInWorkspace = jest.fn().mockResolvedValue(undefined);
 
       await service.delete(workspaceId, linkId, userId);
 
-      expect(publicLinkRepositoryStub.deleteWithUser).toHaveBeenCalledWith(userId, linkId);
+      expect(publicLinkRepositoryStub.deleteInWorkspace).toHaveBeenCalledWith(workspaceId, linkId);
     });
 
     it('should throw NotFoundException if link not found', async () => {
@@ -269,7 +270,7 @@ describe('PublicLinkService', () => {
       const linkId = 'non-existent';
       const userId = 'user-id-123';
 
-      publicLinkRepositoryStub.findOneWithUser = jest.fn().mockResolvedValue(null);
+      publicLinkRepositoryStub.findOneInWorkspace = jest.fn().mockResolvedValue(null);
 
       await expect(service.delete(workspaceId, linkId, userId)).rejects.toThrow(NotFoundException);
     });
