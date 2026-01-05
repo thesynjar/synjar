@@ -34,6 +34,9 @@ const TEST_EMAIL_DOMAIN = `@registration-e2e-${uuidv4()}.test.com`;
 // Mailpit API configuration (loaded from setup-env.ts or environment)
 const MAILPIT_API_URL = process.env.MAILPIT_API_URL || 'http://localhost:6313/api/v1';
 
+// Track Mailpit availability to skip tests when not available
+let mailpitAvailable: boolean | null = null;
+
 interface MailpitMessage {
   ID: string;
   MessageID: string;
@@ -51,6 +54,42 @@ interface MailpitMessagesResponse {
 }
 
 /**
+ * Check if Mailpit is available and responding with JSON
+ */
+async function checkMailpitAvailable(): Promise<boolean> {
+  if (mailpitAvailable !== null) {
+    return mailpitAvailable;
+  }
+
+  try {
+    const response = await fetch(`${MAILPIT_API_URL}/messages`, {
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      mailpitAvailable = false;
+      return false;
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      console.warn(`Mailpit returned non-JSON content-type: ${contentType}`);
+      mailpitAvailable = false;
+      return false;
+    }
+
+    // Verify we can parse the response
+    await response.json();
+    mailpitAvailable = true;
+    return true;
+  } catch (error) {
+    console.warn(`Mailpit not available: ${(error as Error).message}`);
+    mailpitAvailable = false;
+    return false;
+  }
+}
+
+/**
  * Helper to fetch messages from Mailpit API
  */
 async function getMailpitMessages(email?: string): Promise<MailpitMessage[]> {
@@ -58,9 +97,20 @@ async function getMailpitMessages(email?: string): Promise<MailpitMessage[]> {
     ? `${MAILPIT_API_URL}/search?query=to:${email}`
     : `${MAILPIT_API_URL}/messages`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+  });
+
   if (!response.ok) {
     throw new Error(`Failed to fetch Mailpit messages: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    const text = await response.text();
+    throw new Error(
+      `Mailpit returned non-JSON response (${contentType}): ${text.substring(0, 200)}...`,
+    );
   }
 
   const data = (await response.json()) as MailpitMessagesResponse;
@@ -71,10 +121,22 @@ async function getMailpitMessages(email?: string): Promise<MailpitMessage[]> {
  * Helper to get a specific message by ID
  */
 async function getMailpitMessage(id: string): Promise<MailpitMessage> {
-  const response = await fetch(`${MAILPIT_API_URL}/message/${id}`);
+  const response = await fetch(`${MAILPIT_API_URL}/message/${id}`, {
+    headers: { Accept: 'application/json' },
+  });
+
   if (!response.ok) {
     throw new Error(`Failed to fetch Mailpit message: ${response.statusText}`);
   }
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    const text = await response.text();
+    throw new Error(
+      `Mailpit returned non-JSON response (${contentType}): ${text.substring(0, 200)}...`,
+    );
+  }
+
   return response.json() as Promise<MailpitMessage>;
 }
 
@@ -88,6 +150,20 @@ async function clearMailpit(): Promise<void> {
     // Ignore errors - Mailpit might not be available in some test environments
   }
 }
+
+/**
+ * Conditionally run test only if Mailpit is available
+ */
+const itWithMailpit = (name: string, fn: () => Promise<void>) => {
+  it(name, async () => {
+    const available = await checkMailpitAvailable();
+    if (!available) {
+      console.warn(`Skipping "${name}" - Mailpit not available at ${MAILPIT_API_URL}`);
+      return;
+    }
+    await fn();
+  });
+};
 
 /**
  * Helper to extract verification token from email HTML/Text
@@ -364,7 +440,7 @@ describe('Registration E2E Integration Tests', () => {
       process.env.DEPLOYMENT_MODE = 'cloud';
     });
 
-    it('should send verification email without ENOENT error when user registers in cloud mode', async () => {
+    itWithMailpit('should send verification email without ENOENT error when user registers in cloud mode', async () => {
       const email = `template-path-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // ARRANGE: Clear Mailpit
@@ -418,7 +494,7 @@ describe('Registration E2E Integration Tests', () => {
   // ============================================================================
 
   describe('Registration Flow', () => {
-    it('should register user with workspace and send verification email', async () => {
+    itWithMailpit('should register user with workspace and send verification email', async () => {
       const email = `user-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user
@@ -487,7 +563,7 @@ describe('Registration E2E Integration Tests', () => {
       expect(loginRes.body.user.email).toBe(email);
     });
 
-    it('should verify email with valid token', async () => {
+    itWithMailpit('should verify email with valid token', async () => {
       const email = `verify-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user
@@ -588,7 +664,7 @@ describe('Registration E2E Integration Tests', () => {
   });
 
   describe('Resend Verification', () => {
-    it('should resend verification email', async () => {
+    itWithMailpit('should resend verification email', async () => {
       const email = `resend-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user
@@ -628,7 +704,7 @@ describe('Registration E2E Integration Tests', () => {
       expect(message.Subject).toBe('Verify your email - Synjar');
     });
 
-    it('should enforce cooldown on resend', async () => {
+    itWithMailpit('should enforce cooldown on resend', async () => {
       const email = `cooldown-${uuidv4()}${TEST_EMAIL_DOMAIN}`;
 
       // 1. Register user

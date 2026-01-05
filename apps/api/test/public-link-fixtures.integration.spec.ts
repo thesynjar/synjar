@@ -230,11 +230,13 @@ describe('Test Fixtures - PublicLink (Meta-test)', () => {
       // Service-created link has proper token format
       expect(goodLink.token).toMatch(/^[a-f0-9]{64}$/);
 
-      // Verify link exists in database
-      const dbLink = await prisma.publicLink.findUnique({
-        where: { id: goodLink.id },
-      });
-      expect(dbLink).toBeDefined();
+      // Verify link exists in database (must use RLS context)
+      const dbLink = await prisma.forWorkspace(testWorkspaceId, (tx) =>
+        tx.publicLink.findUnique({
+          where: { id: goodLink.id },
+        }),
+      );
+      expect(dbLink).not.toBeNull();
       expect(dbLink?.token).toBe(goodLink.token);
     });
   });

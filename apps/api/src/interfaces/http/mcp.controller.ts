@@ -76,7 +76,7 @@ export class McpController {
 
     // 1. Validate token format (64 hex chars) - defense in depth
     if (!isValidToken(token)) {
-      throw new McpRequestException('Invalid token format', McpErrorCode.INVALID_REQUEST);
+      throw new McpRequestException('Invalid token format', McpErrorCode.INVALID_PARAMS);
     }
 
     // 2. Validate JSON-RPC structure (deep validation)
