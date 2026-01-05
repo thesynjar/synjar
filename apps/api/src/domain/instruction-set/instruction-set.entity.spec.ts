@@ -20,7 +20,7 @@ describe('InstructionSetEntity', () => {
       expect(set.name).toBe('Brand Voice');
       expect(set.workspaceId).toBe(workspaceId);
       expect(set.documentCount).toBe(0);
-      expect(set.isPublic).toBe(false);
+      expect(set.isPublic).toBe(true);
       expect(set.description).toBeNull();
     });
 
@@ -291,16 +291,16 @@ describe('InstructionSetEntity', () => {
   });
 
   describe('public access', () => {
-    it('should toggle public status', () => {
+    it('should be public by default and allow toggling', () => {
       const set = InstructionSetEntity.create({ workspaceId, name: 'Test Set' });
 
-      expect(set.isPublic).toBe(false);
-
-      set.makePublic();
       expect(set.isPublic).toBe(true);
 
       set.makePrivate();
       expect(set.isPublic).toBe(false);
+
+      set.makePublic();
+      expect(set.isPublic).toBe(true);
     });
   });
 

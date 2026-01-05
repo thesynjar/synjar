@@ -61,7 +61,7 @@ export class InstructionSetEntity {
       workspaceId: props.workspaceId,
       name: trimmedName,
       description: props.description ?? null,
-      isPublic: false,
+      isPublic: true,
       documents: [],
       createdAt: new Date(),
       updatedAt: new Date(),

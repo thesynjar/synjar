@@ -216,9 +216,9 @@ export function CreateInstructionSetModal({ documents, onClose, onCreate }: Crea
                 </div>
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                <p className="text-blue-400 text-sm">
-                  The instruction set will be created as <strong>private</strong>. You can make it public later to share with your team.
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                <p className="text-green-400 text-sm">
+                  The instruction set will be created as <strong>public</strong>. Anyone with the link can access it. You can make it private later if needed.
                 </p>
               </div>
             </div>
