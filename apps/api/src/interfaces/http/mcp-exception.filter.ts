@@ -85,6 +85,12 @@ export class McpExceptionFilter implements ExceptionFilter {
       },
     };
 
-    response.status(httpStatus).json(errorResponse);
+    // Return SSE format for ChatGPT compatibility
+    response.setHeader('Content-Type', 'text/event-stream');
+    response.setHeader('Cache-Control', 'no-cache');
+    response.setHeader('Connection', 'keep-alive');
+    response.status(httpStatus);
+    response.write(`data: ${JSON.stringify(errorResponse)}\n\n`);
+    response.end();
   }
 }
