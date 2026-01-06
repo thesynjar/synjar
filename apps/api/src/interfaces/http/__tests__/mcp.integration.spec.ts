@@ -10,6 +10,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { EMBEDDINGS_SERVICE } from '../../../domain/document/embeddings.port';
 
 /**
+ * Parse SSE response body to extract JSON data
+ * SSE format: "data: {...}\n\n"
+ */
+function parseSseResponse(text: string): unknown {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      return JSON.parse(line.slice(6));
+    }
+  }
+  throw new Error(`Invalid SSE response: ${text}`);
+}
+
+/**
  * Mock embeddings service for tests
  * Returns a fixed embedding vector (1536 dimensions for text-embedding-3-small)
  */
@@ -187,7 +201,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
   // ==========================================================================
 
   describe('POST /mcp/:token method: initialize', () => {
-    it('should return server capabilities and protocol version', async () => {
+    it('should return server capabilities and protocol version as SSE', async () => {
       const response = await request(app.getHttpServer())
         .post(`/mcp/${testPublicLink.token}`)
         .send({
@@ -203,23 +217,26 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
             },
           },
         })
-        .expect(200);
+        .expect(200)
+        .expect('Content-Type', /text\/event-stream/);
 
-      expect(response.body.jsonrpc).toBe('2.0');
-      expect(response.body.id).toBeDefined();
-      expect(response.body.result).toBeDefined();
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.jsonrpc).toBe('2.0');
+      expect(body.id).toBeDefined();
+      expect(body.result).toBeDefined();
 
+      const result = body.result as Record<string, unknown>;
       // Verify protocol version
-      expect(response.body.result.protocolVersion).toBe('2025-06-18');
+      expect(result.protocolVersion).toBe('2025-06-18');
 
       // Verify capabilities (tools capability enabled)
-      expect(response.body.result.capabilities).toBeDefined();
-      expect(response.body.result.capabilities.tools).toBeDefined();
+      expect(result.capabilities).toBeDefined();
+      expect((result.capabilities as Record<string, unknown>).tools).toBeDefined();
 
       // Verify server info
-      expect(response.body.result.serverInfo).toBeDefined();
-      expect(response.body.result.serverInfo.name).toBe('Synjar MCP Server');
-      expect(response.body.result.serverInfo.version).toBe('1.0.0');
+      expect(result.serverInfo).toBeDefined();
+      expect((result.serverInfo as Record<string, unknown>).name).toBe('Synjar MCP Server');
+      expect((result.serverInfo as Record<string, unknown>).version).toBe('1.0.0');
     });
 
     it('should accept initialize without params', async () => {
@@ -232,8 +249,10 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      expect(response.body.result.protocolVersion).toBe('2025-06-18');
-      expect(response.body.result.serverInfo.name).toBe('Synjar MCP Server');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const result = body.result as Record<string, unknown>;
+      expect(result.protocolVersion).toBe('2025-06-18');
+      expect((result.serverInfo as Record<string, unknown>).name).toBe('Synjar MCP Server');
     });
 
     it('should return 404 for initialize with non-existent token', async () => {
@@ -248,7 +267,8 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(404);
 
-      expect(response.body.error).toBeDefined();
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.error).toBeDefined();
     });
 
     it('should return 400 for initialize with invalid token format', async () => {
@@ -261,7 +281,8 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.message).toBe('Invalid token format');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).message).toBe('Invalid token format');
     });
   });
 
@@ -280,30 +301,29 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      expect(response.body.jsonrpc).toBe('2.0');
-      expect(response.body.id).toBeDefined();
-      expect(response.body.result).toBeDefined();
-      expect(response.body.result.tools).toBeInstanceOf(Array);
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.jsonrpc).toBe('2.0');
+      expect(body.id).toBeDefined();
+      expect(body.result).toBeDefined();
+
+      const result = body.result as { tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> };
+      expect(result.tools).toBeInstanceOf(Array);
 
       // Should have 2 tools: search, fetch
-      expect(response.body.result.tools).toHaveLength(2);
+      expect(result.tools).toHaveLength(2);
 
       // Verify 'search' tool (ChatGPT standard)
-      const searchTool = response.body.result.tools.find(
-        (t: { name: string }) => t.name === 'search',
-      );
+      const searchTool = result.tools.find((t) => t.name === 'search');
       expect(searchTool).toBeDefined();
-      expect(searchTool.description).toContain('Search the knowledge base');
-      expect(searchTool.inputSchema.properties.query).toBeDefined();
-      expect(searchTool.inputSchema.required).toContain('query');
+      expect(searchTool!.description).toContain('Search the knowledge base');
+      expect((searchTool!.inputSchema.properties as Record<string, unknown>).query).toBeDefined();
+      expect(searchTool!.inputSchema.required).toContain('query');
 
       // Verify 'fetch' tool (ChatGPT standard)
-      const fetchTool = response.body.result.tools.find(
-        (t: { name: string }) => t.name === 'fetch',
-      );
+      const fetchTool = result.tools.find((t) => t.name === 'fetch');
       expect(fetchTool).toBeDefined();
-      expect(fetchTool.description).toContain('Fetch a specific document');
-      expect(fetchTool.inputSchema.properties.id).toBeDefined();
+      expect(fetchTool!.description).toContain('Fetch a specific document');
+      expect((fetchTool!.inputSchema.properties as Record<string, unknown>).id).toBeDefined();
     });
 
     it('should include allowed tags in tool description when link has tags', async () => {
@@ -322,12 +342,13 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const result = body.result as { tools: Array<{ name: string; description: string }> };
+
       // Check 'search' tool has tags
-      const searchTool = response.body.result.tools.find(
-        (t: { name: string }) => t.name === 'search',
-      );
-      expect(searchTool.description).toContain('docs');
-      expect(searchTool.description).toContain('api');
+      const searchTool = result.tools.find((t) => t.name === 'search');
+      expect(searchTool!.description).toContain('docs');
+      expect(searchTool!.description).toContain('api');
     });
 
     it('should return 404 for tools/list with non-existent token', async () => {
@@ -342,7 +363,8 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(404);
 
-      expect(response.body.error).toBeDefined();
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.error).toBeDefined();
     });
   });
 
@@ -361,8 +383,9 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32601);
-      expect(response.body.error.message).toContain('Method not found');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe(-32601);
+      expect((body.error as Record<string, unknown>).message).toContain('Method not found');
     });
 
     it('should handle tools/call with search', async () => {
@@ -381,9 +404,10 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      expect(response.body.jsonrpc).toBe('2.0');
-      expect(response.body.result).toBeDefined();
-      expect(response.body.result.content).toBeInstanceOf(Array);
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.jsonrpc).toBe('2.0');
+      expect(body.result).toBeDefined();
+      expect((body.result as Record<string, unknown>).content).toBeInstanceOf(Array);
     });
 
     it('should handle tools/call with fetch', async () => {
@@ -403,8 +427,9 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32602);
-      expect(response.body.error.message).toContain('Document not found');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe(-32602);
+      expect((body.error as Record<string, unknown>).message).toContain('Document not found');
     });
 
     it('should return error for unknown tool name', async () => {
@@ -421,8 +446,9 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32602);
-      expect(response.body.error.message).toContain('Unknown tool');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe(-32602);
+      expect((body.error as Record<string, unknown>).message).toContain('Unknown tool');
     });
   });
 
@@ -460,8 +486,9 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
           },
         });
 
-      expect(response.body.error.code).toBe(-32602);
-      expect(response.body.error.message).toContain('256');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe(-32602);
+      expect((body.error as Record<string, unknown>).message).toContain('256');
     });
 
     it('should not be vulnerable to prototype pollution', async () => {
@@ -482,7 +509,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
 
       // Should not crash and should process normally
       expect(response.status).toBe(200);
-      expect(({} as any).polluted).toBeUndefined();
+      expect(({} as unknown as { polluted?: boolean }).polluted).toBeUndefined();
     });
 
     it('should reject requests larger than 10KB', async () => {
@@ -514,8 +541,9 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32600);
-      expect(response.body.error.message).toContain('JSON-RPC version');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe(-32600);
+      expect((body.error as Record<string, unknown>).message).toContain('JSON-RPC version');
     });
 
     it('should reject requests without id', async () => {
@@ -527,8 +555,9 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32600);
-      expect(response.body.error.message).toContain('Invalid request ID');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe(-32600);
+      expect((body.error as Record<string, unknown>).message).toContain('Invalid request ID');
     });
 
     it('should reject requests without method', async () => {
@@ -540,8 +569,9 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32600);
-      expect(response.body.error.message).toContain('Invalid method');
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).code).toBe(-32600);
+      expect((body.error as Record<string, unknown>).message).toContain('Invalid method');
     });
 
     it('should accept numeric id', async () => {
@@ -554,7 +584,8 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      expect(response.body.id).toBe(42);
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.id).toBe(42);
     });
 
     it('should accept string id', async () => {
@@ -569,7 +600,8 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      expect(response.body.id).toBe(requestId);
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.id).toBe(requestId);
     });
   });
 });

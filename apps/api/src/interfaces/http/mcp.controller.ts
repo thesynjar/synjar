@@ -10,7 +10,7 @@ import {
   Headers,
   Logger,
   Res,
-  HttpCode,
+  NotFoundException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
@@ -111,75 +111,139 @@ export class McpController {
   // ==========================================================================
 
   /**
-   * POST /mcp/:token - Main JSON-RPC endpoint
+   * POST /mcp/:token - Main JSON-RPC endpoint with SSE response
    *
    * Handles methods: initialize, tools/list, tools/call
+   * Returns SSE stream (text/event-stream) for ChatGPT compatibility.
    *
    * Security:
    * - Rate limiting: 100 req/min per token
    * - Token validation: format + DB lookup for ALL methods
    */
   @Post(':token')
-  @HttpCode(200)
   @UseGuards(McpThrottlerGuard)
   @Throttle({ default: { limit: 100, ttl: 60000 } })
   async handleMcpRequest(
     @Param('token') token: string,
     @Body() body: unknown,
     @Ip() ip: string,
+    @Res() res: Response,
     @Headers('user-agent') userAgent?: string,
     @Headers('content-type') contentType?: string,
-  ): Promise<McpJsonRpcResponse | McpInitializeResponse | McpToolsListResponse> {
-    // 0. Content-Type validation
-    if (contentType && !contentType.includes('application/json')) {
-      throw new McpRequestException(
-        'Content-Type must be application/json',
-        McpErrorCode.INVALID_REQUEST,
-      );
-    }
+  ): Promise<void> {
+    try {
+      // 0. Content-Type validation
+      if (contentType && !contentType.includes('application/json')) {
+        this.sendSseError(res, null, McpErrorCode.INVALID_REQUEST, 'Content-Type must be application/json');
+        return;
+      }
 
-    // 1. Token format validation (defense in depth)
-    if (!isValidToken(token)) {
-      this.logger.warn({
-        event: 'MCP_INVALID_TOKEN_FORMAT',
-        token: token.substring(0, 8) + '...',
+      // 1. Token format validation (defense in depth)
+      if (!isValidToken(token)) {
+        this.logger.warn({
+          event: 'MCP_INVALID_TOKEN_FORMAT',
+          token: token.substring(0, 8) + '...',
+          ip,
+        });
+        this.sendSseError(res, null, McpErrorCode.INVALID_PARAMS, 'Invalid token format', 400);
+        return;
+      }
+
+      // 2. Parse basic JSON-RPC structure
+      let baseRequest: McpBaseRequest;
+      try {
+        baseRequest = this.parseBaseRequest(body);
+      } catch (error) {
+        if (error instanceof McpRequestException) {
+          this.sendSseError(res, null, error.errorCode, error.message, 400);
+          return;
+        }
+        throw error;
+      }
+
+      // 3. Log successful request (structured logging for audit/monitoring)
+      this.logger.log({
+        event: 'MCP_REQUEST',
+        method: baseRequest.method,
+        requestId: baseRequest.id,
+        tokenPrefix: token.substring(0, 8),
         ip,
       });
-      throw new McpRequestException(
-        'Invalid token format',
-        McpErrorCode.INVALID_PARAMS,
-      );
+
+      // 4. Route by method and get response
+      let response: McpJsonRpcResponse | McpInitializeResponse | McpToolsListResponse;
+      try {
+        switch (baseRequest.method) {
+          case 'initialize':
+            response = await this.handleInitialize(baseRequest, token);
+            break;
+
+          case 'tools/list':
+            response = await this.handleToolsList(baseRequest, token);
+            break;
+
+          case 'tools/call':
+            response = await this.handleToolsCallRouter(baseRequest, token, ip, userAgent);
+            break;
+
+          default:
+            this.sendSseError(res, baseRequest.id, McpErrorCode.METHOD_NOT_FOUND, `Method not found: ${baseRequest.method}`, 400);
+            return;
+        }
+      } catch (error) {
+        if (error instanceof McpRequestException) {
+          const status = error.errorCode === McpErrorCode.INVALID_PARAMS ? 400 :
+                        error.message.includes('not found') ? 404 : 400;
+          this.sendSseError(res, baseRequest.id, error.errorCode, error.message, status);
+          return;
+        }
+        if (error instanceof NotFoundException) {
+          this.sendSseError(res, baseRequest.id, McpErrorCode.INVALID_PARAMS, error.message, 404);
+          return;
+        }
+        throw error;
+      }
+
+      // 5. Send SSE response
+      this.sendSseResponse(res, response);
+    } catch (error) {
+      this.logger.error('Unexpected error in MCP handler', error);
+      this.sendSseError(res, null, McpErrorCode.INTERNAL_ERROR, 'Internal server error', 500);
     }
+  }
 
-    // 2. Parse basic JSON-RPC structure
-    const baseRequest = this.parseBaseRequest(body);
+  /**
+   * Send SSE response with proper headers
+   */
+  private sendSseResponse(res: Response, data: unknown): void {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.status(200);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    res.end();
+  }
 
-    // 3. Log successful request (structured logging for audit/monitoring)
-    this.logger.log({
-      event: 'MCP_REQUEST',
-      method: baseRequest.method,
-      requestId: baseRequest.id,
-      tokenPrefix: token.substring(0, 8),
-      ip,
-    });
-
-    // 4. Route by method
-    switch (baseRequest.method) {
-      case 'initialize':
-        return this.handleInitialize(baseRequest, token);
-
-      case 'tools/list':
-        return this.handleToolsList(baseRequest, token);
-
-      case 'tools/call':
-        return this.handleToolsCallRouter(baseRequest, token, ip, userAgent);
-
-      default:
-        throw new McpRequestException(
-          `Method not found: ${baseRequest.method}`,
-          McpErrorCode.METHOD_NOT_FOUND,
-        );
-    }
+  /**
+   * Send SSE error response
+   */
+  private sendSseError(
+    res: Response,
+    id: string | number | null,
+    code: McpErrorCode,
+    message: string,
+    httpStatus: number = 400,
+  ): void {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.status(httpStatus);
+    res.write(`data: ${JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      error: { code, message },
+    })}\n\n`);
+    res.end();
   }
 
   // ==========================================================================
