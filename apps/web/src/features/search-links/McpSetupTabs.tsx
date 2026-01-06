@@ -115,8 +115,19 @@ Response:
               </div>
             </li>
             <li>Save → ChatGPT will verify connection</li>
-            <li>Done! Use: "Search my knowledge base for X"</li>
+            <li>Done! Use: <strong>"Use Synjar to search for X"</strong></li>
           </ol>
+
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded p-3 mb-4">
+            <p className="text-blue-400 text-sm mb-2">
+              <strong>Example prompts that work:</strong>
+            </p>
+            <ul className="text-blue-300 text-xs space-y-1 ml-2">
+              <li>• "Use the Synjar tool to search for refund policy"</li>
+              <li>• "Search my Synjar knowledge base for API docs"</li>
+              <li>• "Użyj Synjar do wyszukania informacji o gwarancji" (PL)</li>
+            </ul>
+          </div>
 
           <div className="bg-yellow-500/10 border border-yellow-500/20 rounded p-3">
             <p className="text-yellow-400 text-sm">
@@ -148,8 +159,19 @@ Response:
               </div>
             </li>
             <li>Save → Claude will verify connection</li>
-            <li>Done! Use: "Search my knowledge base for X"</li>
+            <li>Done! Use: <strong>"Use Synjar to search for X"</strong></li>
           </ol>
+
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded p-3 mb-4">
+            <p className="text-blue-400 text-sm mb-2">
+              <strong>Example prompts that work:</strong>
+            </p>
+            <ul className="text-blue-300 text-xs space-y-1 ml-2">
+              <li>• "Use the Synjar tool to search for pricing"</li>
+              <li>• "Search my Synjar knowledge base for setup guide"</li>
+              <li>• "Przeszukaj moją bazę Synjar" (PL)</li>
+            </ul>
+          </div>
 
           <div className="bg-yellow-500/10 border border-yellow-500/20 rounded p-3">
             <p className="text-yellow-400 text-sm">
