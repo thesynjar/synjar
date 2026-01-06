@@ -89,7 +89,7 @@ describe('MCP Error Response Schema (TS-017)', () => {
       id: `test-${uuidv4()}`,
       method: 'tools/call',
       params: {
-        name: 'synjar_search',
+        name: 'search',
         arguments: {
           query: overrides.query ?? 'test query',
           ...(overrides.limit !== undefined && { limit: overrides.limit }),
@@ -174,7 +174,7 @@ describe('MCP Error Response Schema (TS-017)', () => {
           id: 'test-params',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               query: 'a', // Too short (< 2 chars)
             },
@@ -308,7 +308,7 @@ describe('MCP Error Response Schema (TS-017)', () => {
           id: 'test-data',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               query: 'test',
               tags: ['invalid-tag-not-allowed'],

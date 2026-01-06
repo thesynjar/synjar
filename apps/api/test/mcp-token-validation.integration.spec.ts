@@ -77,7 +77,7 @@ describe('MCP Token Validation (TS-016)', () => {
       id: `test-${uuidv4()}`,
       method: 'tools/call',
       params: {
-        name: 'synjar_search',
+        name: 'search',
         arguments: {
           query: overrides.query ?? 'test query',
         },

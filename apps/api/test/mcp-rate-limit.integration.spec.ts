@@ -88,7 +88,7 @@ describe('MCP Rate Limit Order Enforcement (TS-015)', () => {
       id: `test-rate-limit-${Date.now()}`,
       method: 'tools/call',
       params: {
-        name: 'synjar_search',
+        name: 'search',
         arguments: {
           query: overrides.query ?? 'test query',
         },
@@ -329,7 +329,7 @@ describe('MCP Rate Limit Order Enforcement (TS-015)', () => {
       //   curl -s -o /dev/null -w "%{http_code}\n" \
       //     -X POST https://api.synjar.com/mcp/$(openssl rand -hex 32) \
       //     -H "Content-Type: application/json" \
-      //     -d '{"jsonrpc":"2.0","id":"test","method":"tools/call","params":{"name":"synjar_search","arguments":{"query":"test"}}}'
+      //     -d '{"jsonrpc":"2.0","id":"test","method":"tools/call","params":{"name":"search","arguments":{"query":"test"}}}'
       // done
       // ```
       // Should see 404s initially, then 429s after limit is reached

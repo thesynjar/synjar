@@ -190,7 +190,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
             id: 'test',
             method: 'tools/call',
             params: {
-              name: 'synjar_search',
+              name: 'search',
               arguments: payload,
             },
           })
@@ -223,7 +223,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'test-constructor',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               constructor: { prototype: { polluted: true } },
             },
@@ -253,7 +253,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'test-prototype',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               prototype: { admin: true },
             },
@@ -284,7 +284,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'test-proto',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               __proto__: { admin: true, isAdmin: true, role: 'superuser' },
             },
@@ -321,7 +321,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'pollution-attempt',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: { constructor: { prototype: { admin: true } } },
           },
         })
@@ -335,7 +335,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'valid-request',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: { query: 'test search query' },
           },
         });
@@ -361,7 +361,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'test-combined-constructor',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               query: 'valid search query',
               constructor: { prototype: { admin: true } },
@@ -389,7 +389,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'test-combined-prototype',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               query: 'valid search query',
               prototype: { admin: true },
@@ -421,7 +421,7 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           id: 'test-combined-proto',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               query: 'valid search query',
               __proto__: { admin: true },

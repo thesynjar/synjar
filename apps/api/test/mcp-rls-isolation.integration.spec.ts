@@ -211,7 +211,7 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
       id: `test-${uuidv4()}`,
       method: 'tools/call',
       params: {
-        name: 'synjar_search',
+        name: 'search',
         arguments: {
           query: overrides.query ?? 'test query',
           ...(overrides.limit !== undefined && { limit: overrides.limit }),
@@ -303,7 +303,7 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
           id: 'test-rls',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: { query: 'secret' },
           },
         });
@@ -393,7 +393,7 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
           id: 'test-tags',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: { query: 'document' },
           },
         });

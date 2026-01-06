@@ -82,7 +82,7 @@ describe('MCP Unicode NFC Normalization (TS-019)', () => {
       id: `test-${uuidv4()}`,
       method: 'tools/call',
       params: {
-        name: 'synjar_search',
+        name: 'search',
         arguments: { query },
       },
     };
