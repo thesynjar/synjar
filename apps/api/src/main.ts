@@ -4,7 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { json, urlencoded } from 'express';
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -13,6 +13,26 @@ async function bootstrap() {
 
   // Security: HTTP security headers (X-Content-Type-Options, X-Frame-Options, etc.)
   app.use(helmet());
+
+  // CORS for MCP endpoints - allow all origins (ChatGPT, Claude, any client)
+  // MCP uses token-based auth, not origin-based, so wildcard is safe
+  app.use('/mcp', (req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, MCP-Protocol-Version',
+    );
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+
+    next();
+  });
 
   // Security: Limit MCP request body size to prevent DoS attacks (10KB)
   // Must exclude MCP from the general 10MB limit below

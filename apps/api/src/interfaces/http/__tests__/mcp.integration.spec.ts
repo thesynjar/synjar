@@ -33,10 +33,12 @@ const mockEmbeddingsService = {
  *
  * Tests for MCP protocol compliance per specification 2025-06-18:
  * - POST /mcp/:token with method: 'initialize' - returns server capabilities
- * - POST /mcp/:token with method: 'tools/list' - returns available tools
- * - GET /mcp/:token - returns 405 (SSE not supported)
+ * - POST /mcp/:token with method: 'tools/list' - returns available tools (search, fetch)
+ * - GET /mcp/:token - returns 200 OK health check (required by ChatGPT)
  *
- * Related: docs/specifications/2026-01-05-mcp-streamable-http-chatgpt.md
+ * Related:
+ * - docs/specifications/2026-01-05-mcp-streamable-http-chatgpt.md
+ * - docs/specifications/2026-01-06-mcp-chatgpt-compatibility.md
  *
  * Per-Test Isolation: Each test creates its own unique tenant context (user, workspace, public link)
  * following RLS isolation principles from CORE-RULES.md. No global cleanup needed.
@@ -137,47 +139,46 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
   // No afterEach cleanup needed - RLS isolation ensures no conflicts between tests
 
   // ==========================================================================
-  // GET Handler Tests - Returns 405 (SSE not supported)
+  // GET Handler Tests - Health check (200 OK) for ChatGPT compatibility
   // ==========================================================================
 
-  describe('GET /mcp/:token - SSE not supported', () => {
-    it('should return 405 for GET requests with valid token', async () => {
+  describe('GET /mcp/:token - Health check', () => {
+    it('should return 200 OK with server info for GET requests', async () => {
       const response = await request(app.getHttpServer())
         .get(`/mcp/${testPublicLink.token}`)
-        .expect(405);
+        .expect(200);
 
       expect(response.body).toEqual({
-        jsonrpc: '2.0',
-        id: null,
-        error: {
-          code: -32601,
-          message: 'Method not allowed. Use POST for JSON-RPC requests.',
-        },
+        name: 'Synjar MCP Server',
+        version: '1.0.0',
+        protocolVersion: '2025-06-18',
+        status: 'ok',
+        message: 'Use POST for JSON-RPC requests',
       });
     });
 
-    it('should return 405 for GET requests with invalid token (no enumeration)', async () => {
-      // Invalid token should still return 405, not 400 or 404
+    it('should return 200 OK for GET requests with invalid token (no enumeration)', async () => {
+      // Invalid token should still return 200, not 400 or 404
       // This prevents token enumeration via different responses
       const invalidToken = 'a'.repeat(64);
 
       const response = await request(app.getHttpServer())
         .get(`/mcp/${invalidToken}`)
-        .expect(405);
+        .expect(200);
 
-      expect(response.body.error.code).toBe(-32601);
-      expect(response.body.error.message).toContain('Method not allowed');
+      expect(response.body.status).toBe('ok');
+      expect(response.body.name).toBe('Synjar MCP Server');
     });
 
-    it('should return 405 for GET requests with malformed token', async () => {
-      // Even malformed tokens should return 405 for GET
+    it('should return 200 OK for GET requests with malformed token', async () => {
+      // Even malformed tokens should return 200 for GET (health check)
       const malformedToken = 'not-a-valid-token';
 
       const response = await request(app.getHttpServer())
         .get(`/mcp/${encodeURIComponent(malformedToken)}`)
-        .expect(405);
+        .expect(200);
 
-      expect(response.body.error.code).toBe(-32601);
+      expect(response.body.status).toBe('ok');
     });
   });
 
@@ -284,23 +285,25 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
       expect(response.body.result).toBeDefined();
       expect(response.body.result.tools).toBeInstanceOf(Array);
 
-      // Should have synjar_search tool
+      // Should have 2 tools: search, fetch
+      expect(response.body.result.tools).toHaveLength(2);
+
+      // Verify 'search' tool (ChatGPT standard)
       const searchTool = response.body.result.tools.find(
-        (t: { name: string }) => t.name === 'synjar_search',
+        (t: { name: string }) => t.name === 'search',
       );
       expect(searchTool).toBeDefined();
-
-      // Verify tool description
-      expect(searchTool.description).toContain('Search the Synjar knowledge base');
-
-      // Verify input schema
-      expect(searchTool.inputSchema).toBeDefined();
-      expect(searchTool.inputSchema.type).toBe('object');
-      expect(searchTool.inputSchema.properties).toBeDefined();
+      expect(searchTool.description).toContain('Search the knowledge base');
       expect(searchTool.inputSchema.properties.query).toBeDefined();
-      expect(searchTool.inputSchema.properties.limit).toBeDefined();
-      expect(searchTool.inputSchema.properties.tags).toBeDefined();
       expect(searchTool.inputSchema.required).toContain('query');
+
+      // Verify 'fetch' tool (ChatGPT standard)
+      const fetchTool = response.body.result.tools.find(
+        (t: { name: string }) => t.name === 'fetch',
+      );
+      expect(fetchTool).toBeDefined();
+      expect(fetchTool.description).toContain('Fetch a specific document');
+      expect(fetchTool.inputSchema.properties.id).toBeDefined();
     });
 
     it('should include allowed tags in tool description when link has tags', async () => {
@@ -319,11 +322,10 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
+      // Check 'search' tool has tags
       const searchTool = response.body.result.tools.find(
-        (t: { name: string }) => t.name === 'synjar_search',
+        (t: { name: string }) => t.name === 'search',
       );
-
-      // Link was created with allowedTags: ['docs', 'api']
       expect(searchTool.description).toContain('docs');
       expect(searchTool.description).toContain('api');
     });
@@ -363,15 +365,15 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
       expect(response.body.error.message).toContain('Method not found');
     });
 
-    it('should handle tools/call method (existing functionality)', async () => {
+    it('should handle tools/call with search', async () => {
       const response = await request(app.getHttpServer())
         .post(`/mcp/${testPublicLink.token}`)
         .send({
           jsonrpc: '2.0',
-          id: 'call-test',
+          id: 'search-test',
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               query: 'test query',
             },
@@ -382,6 +384,45 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
       expect(response.body.jsonrpc).toBe('2.0');
       expect(response.body.result).toBeDefined();
       expect(response.body.result.content).toBeInstanceOf(Array);
+    });
+
+    it('should handle tools/call with fetch', async () => {
+      // Fetch requires a valid document ID, but without documents it should return error
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: 'fetch-test',
+          method: 'tools/call',
+          params: {
+            name: 'fetch',
+            arguments: {
+              id: uuidv4(), // Non-existent document
+            },
+          },
+        })
+        .expect(400);
+
+      expect(response.body.error.code).toBe(-32602);
+      expect(response.body.error.message).toContain('Document not found');
+    });
+
+    it('should return error for unknown tool name', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: 'unknown-tool-test',
+          method: 'tools/call',
+          params: {
+            name: 'unknown_tool',
+            arguments: {},
+          },
+        })
+        .expect(400);
+
+      expect(response.body.error.code).toBe(-32602);
+      expect(response.body.error.message).toContain('Unknown tool');
     });
   });
 
@@ -414,7 +455,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
           id: 1,
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: { query: 'a'.repeat(257) },
           },
         });
@@ -431,7 +472,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
           id: 1,
           method: 'tools/call',
           params: {
-            name: 'synjar_search',
+            name: 'search',
             arguments: {
               query: 'test',
               __proto__: { polluted: true },

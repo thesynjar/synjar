@@ -389,4 +389,66 @@ export class PublicLinkService {
       };
     });
   }
+
+  /**
+   * Fetch a single document by ID through a public link
+   *
+   * Used by MCP 'fetch' tool (required by ChatGPT)
+   */
+  async fetchDocument(
+    token: string,
+    documentId: string,
+  ): Promise<{
+    id: string;
+    title: string;
+    content: string;
+    tags: string[];
+    fileUrl: string | null;
+    updatedAt: Date;
+  } | null> {
+    const link = await this.validateToken(token);
+
+    // Use workspace context for RLS
+    return this.prisma.forWorkspace(link.workspaceId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: {
+          id: documentId,
+          workspaceId: link.workspaceId,
+          processingStatus: ProcessingStatus.COMPLETED,
+          verificationStatus: VerificationStatus.VERIFIED,
+          // If allowedTags is set, document must have at least one of the allowed tags
+          ...(link.allowedTags.length > 0 && {
+            tags: {
+              some: {
+                tag: { name: { in: link.allowedTags } },
+              },
+            },
+          }),
+        },
+        include: {
+          tags: { include: { tag: true } },
+        },
+      });
+
+      if (!document) {
+        return null;
+      }
+
+      // Filter tags by allowedTags (security-critical)
+      const docTags = document.tags.map((t) => t.tag.name);
+      const filteredTags =
+        link.allowedTags.length > 0
+          ? docTags.filter((tag) => link.allowedTags.includes(tag))
+          : docTags;
+
+      return {
+        id: document.id,
+        title: document.title,
+        content: document.content,
+        tags: filteredTags,
+        fileUrl: await this.getSignedFileUrl(document.fileUrl),
+        updatedAt: document.updatedAt,
+      };
+    });
+  }
 }

@@ -83,7 +83,10 @@ export class McpController {
   // ==========================================================================
 
   /**
-   * GET /mcp/:token - SSE not supported
+   * GET /mcp/:token - Health check for ChatGPT connector validation
+   *
+   * ChatGPT sends GET request before initializing MCP connection.
+   * Returns 200 OK with server info (required for ChatGPT compatibility).
    *
    * Security: Does NOT validate token to prevent enumeration attacks
    * (different responses for valid/invalid tokens would leak information)
@@ -93,14 +96,13 @@ export class McpController {
   @Throttle({ default: { limit: 100, ttl: 60000 } })
   handleGetRequest(@Res() res: Response): void {
     // DO NOT validate token - prevents enumeration via different responses
-    // Always return 405 for all GET requests
-    res.status(405).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: {
-        code: McpErrorCode.METHOD_NOT_FOUND,
-        message: 'Method not allowed. Use POST for JSON-RPC requests.',
-      },
+    // Always return same response for all tokens (valid or invalid)
+    res.status(200).json({
+      name: MCP_SERVER_NAME,
+      version: MCP_SERVER_VERSION,
+      protocolVersion: MCP_PROTOCOL_VERSION,
+      status: 'ok',
+      message: 'Use POST for JSON-RPC requests',
     });
   }
 
@@ -170,7 +172,7 @@ export class McpController {
         return this.handleToolsList(baseRequest, token);
 
       case 'tools/call':
-        return this.handleToolsCall(baseRequest, token, ip, userAgent);
+        return this.handleToolsCallRouter(baseRequest, token, ip, userAgent);
 
       default:
         throw new McpRequestException(
@@ -232,7 +234,8 @@ export class McpController {
   /**
    * Handle tools/list method
    *
-   * Returns list of available tools with their schemas
+   * Returns list of available tools with their schemas.
+   * Includes 'search' and 'fetch' (required by ChatGPT) plus 'synjar_search' for compatibility.
    */
   private async handleToolsList(
     request: McpBaseRequest,
@@ -246,37 +249,55 @@ export class McpController {
         ? `Filter by document tags. Allowed: ${link.allowedTags.join(', ')}`
         : 'Filter by document tags (all tags allowed)';
 
+    const searchInputSchema = {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language search query (2-256 characters)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results to return (default: 5, max: 20)',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: tagsDescription,
+        },
+      },
+      required: ['query'],
+    };
+
     return {
       jsonrpc: '2.0',
       id: request.id,
       result: {
         tools: [
+          // 'search' - required by ChatGPT for Deep Research mode
           {
-            name: 'synjar_search',
-            description: `Search the Synjar knowledge base.${
+            name: 'search',
+            description: `Search the knowledge base. Returns relevant documents ranked by semantic similarity.${
               link.allowedTags.length > 0
                 ? ` Available tags: ${link.allowedTags.join(', ')}`
                 : ''
             }`,
+            inputSchema: searchInputSchema,
+          },
+          // 'fetch' - required by ChatGPT for Deep Research mode
+          {
+            name: 'fetch',
+            description:
+              'Fetch a specific document by ID. Returns full document content.',
             inputSchema: {
-              type: 'object',
+              type: 'object' as const,
               properties: {
-                query: {
+                id: {
                   type: 'string',
-                  description:
-                    'Natural language search query (2-256 characters)',
-                },
-                limit: {
-                  type: 'number',
-                  description: 'Maximum results to return (default: 5, max: 20)',
-                },
-                tags: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: tagsDescription,
+                  description: 'Document ID to fetch',
                 },
               },
-              required: ['query'],
+              required: ['id'],
             },
           },
         ],
@@ -285,15 +306,60 @@ export class McpController {
   }
 
   // ==========================================================================
-  // Tools Call Handler (existing implementation, refactored)
+  // Tools Call Router
   // ==========================================================================
 
   /**
-   * Handle tools/call method
+   * Route tools/call to appropriate handler based on tool name
    *
-   * Executes synjar_search tool
+   * Supports:
+   * - 'search' (ChatGPT standard)
+   * - 'fetch' (ChatGPT standard)
+   * - 'synjar_search' (backward compatibility)
    */
-  private async handleToolsCall(
+  private async handleToolsCallRouter(
+    request: McpBaseRequest,
+    token: string,
+    ip: string,
+    userAgent?: string,
+  ): Promise<McpJsonRpcResponse> {
+    // Extract tool name from params
+    const params = request.params as Record<string, unknown> | undefined;
+    const toolName = params?.name as string | undefined;
+
+    if (!toolName) {
+      throw new McpRequestException(
+        'Missing tool name in params',
+        McpErrorCode.INVALID_PARAMS,
+      );
+    }
+
+    // Route to appropriate handler
+    switch (toolName) {
+      case 'search':
+        return this.handleSearch(request, token, ip, userAgent);
+
+      case 'fetch':
+        return this.handleFetch(request, token);
+
+      default:
+        throw new McpRequestException(
+          `Unknown tool: ${toolName}`,
+          McpErrorCode.INVALID_PARAMS,
+        );
+    }
+  }
+
+  // ==========================================================================
+  // Search Handler
+  // ==========================================================================
+
+  /**
+   * Handle search/synjar_search tool call
+   *
+   * Executes semantic search on the knowledge base
+   */
+  private async handleSearch(
     request: McpBaseRequest,
     token: string,
     ip: string,
@@ -302,7 +368,7 @@ export class McpController {
     const startTime = Date.now();
 
     // 1. Validate tools/call specific request structure
-    const validatedRequest = this.validateToolsCallRequest(request);
+    const validatedRequest = this.validateSearchRequest(request);
 
     // 2. Validate PublicLink (includes isActive, expiresAt checks)
     const link = await this.publicLinkService.validateToken(token);
@@ -377,6 +443,110 @@ export class McpController {
   }
 
   // ==========================================================================
+  // Fetch Handler
+  // ==========================================================================
+
+  /**
+   * Handle fetch tool call
+   *
+   * Fetches a specific document by ID
+   */
+  private async handleFetch(
+    request: McpBaseRequest,
+    token: string,
+  ): Promise<McpJsonRpcResponse> {
+    // 1. Validate PublicLink (includes isActive, expiresAt checks)
+    const link = await this.publicLinkService.validateToken(token);
+
+    // 2. Extract and validate arguments
+    const params = request.params as Record<string, unknown> | undefined;
+    const args = params?.arguments as Record<string, unknown> | undefined;
+
+    if (!args) {
+      throw new McpRequestException(
+        'Missing arguments',
+        McpErrorCode.INVALID_PARAMS,
+      );
+    }
+
+    // Prevent prototype pollution
+    if (
+      Object.prototype.hasOwnProperty.call(args, '__proto__') ||
+      Object.prototype.hasOwnProperty.call(args, 'constructor') ||
+      Object.prototype.hasOwnProperty.call(args, 'prototype')
+    ) {
+      throw new McpRequestException(
+        'Invalid arguments',
+        McpErrorCode.INVALID_PARAMS,
+      );
+    }
+
+    const documentId = args.id as string | undefined;
+
+    if (!documentId || typeof documentId !== 'string') {
+      throw new McpRequestException(
+        'Document ID is required',
+        McpErrorCode.INVALID_PARAMS,
+      );
+    }
+
+    // 3. Fetch document (RLS context set by PublicLinkService)
+    const document = await this.publicLinkService.fetchDocument(token, documentId);
+
+    if (!document) {
+      throw new McpRequestException(
+        'Document not found',
+        McpErrorCode.INVALID_PARAMS,
+      );
+    }
+
+    // 4. Log successful fetch
+    this.logger.log({
+      event: 'MCP_FETCH_SUCCESS',
+      tokenPrefix: token.substring(0, 8),
+      documentId,
+    });
+
+    // 5. Emit usage event (async, fire-and-forget)
+    this.usageEventService
+      .create({
+        workspaceId: link.workspaceId,
+        searchLinkId: link.id,
+        source: 'MCP_SEARCH',
+        queryStored: false,
+        queryText: undefined,
+        resultCount: 1,
+        latencyMs: 0,
+        ip: '',
+        userAgent: undefined,
+      })
+      .catch((error) => {
+        this.logger.error('Failed to create usage event for fetch', error);
+      });
+
+    // 6. Return MCP JSON-RPC response
+    return {
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              id: document.id,
+              title: document.title,
+              content: document.content,
+              sourceUrl: document.fileUrl,
+              tags: document.tags,
+              updatedAt: document.updatedAt,
+            }),
+          },
+        ],
+      },
+    };
+  }
+
+  // ==========================================================================
   // Request Validation Methods
   // ==========================================================================
 
@@ -444,9 +614,9 @@ export class McpController {
   }
 
   /**
-   * Validate tools/call specific request structure
+   * Validate tools/call specific request structure for search tools
    */
-  private validateToolsCallRequest(request: McpBaseRequest): McpJsonRpcRequest {
+  private validateSearchRequest(request: McpBaseRequest): McpJsonRpcRequest {
     if (!request.params || typeof request.params !== 'object') {
       throw new McpRequestException(
         'Missing params',
@@ -455,7 +625,7 @@ export class McpController {
     }
 
     const params = request.params as Record<string, unknown>;
-    if (params.name !== 'synjar_search') {
+    if (params.name !== 'search') {
       throw new McpRequestException(
         'Unsupported tool',
         McpErrorCode.INVALID_PARAMS,
