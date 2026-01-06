@@ -35,12 +35,13 @@ import {
 // ============================================================================
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18'];
 const MCP_SERVER_NAME = 'Synjar MCP Server';
 const MCP_SERVER_VERSION = '1.0.0';
 
-// Token format: 64 hex characters (32 bytes)
+// Token format: 64 hex characters (32 bytes), lowercase only
 const isValidToken = (token: string): boolean => {
-  return /^[a-f0-9]{64}$/i.test(token);
+  return /^[a-f0-9]{64}$/.test(token);
 };
 
 /**
@@ -125,7 +126,16 @@ export class McpController {
     @Body() body: unknown,
     @Ip() ip: string,
     @Headers('user-agent') userAgent?: string,
+    @Headers('content-type') contentType?: string,
   ): Promise<McpJsonRpcResponse | McpInitializeResponse | McpToolsListResponse> {
+    // 0. Content-Type validation
+    if (contentType && !contentType.includes('application/json')) {
+      throw new McpRequestException(
+        'Content-Type must be application/json',
+        McpErrorCode.INVALID_REQUEST,
+      );
+    }
+
     // 1. Token format validation (defense in depth)
     if (!isValidToken(token)) {
       this.logger.warn({
@@ -142,7 +152,16 @@ export class McpController {
     // 2. Parse basic JSON-RPC structure
     const baseRequest = this.parseBaseRequest(body);
 
-    // 3. Route by method
+    // 3. Log successful request (structured logging for audit/monitoring)
+    this.logger.log({
+      event: 'MCP_REQUEST',
+      method: baseRequest.method,
+      requestId: baseRequest.id,
+      tokenPrefix: token.substring(0, 8),
+      ip,
+    });
+
+    // 4. Route by method
     switch (baseRequest.method) {
       case 'initialize':
         return this.handleInitialize(baseRequest, token);
@@ -175,6 +194,17 @@ export class McpController {
     request: McpBaseRequest,
     token: string,
   ): Promise<McpInitializeResponse> {
+    // Validate initialize params structure and extract protocolVersion
+    const params = this.validateInitializeParams(request.params);
+
+    // Validate protocol version if provided
+    if (params?.protocolVersion && !SUPPORTED_PROTOCOL_VERSIONS.includes(params.protocolVersion)) {
+      throw new McpRequestException(
+        `Unsupported protocol version: ${params.protocolVersion}. Supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`,
+        McpErrorCode.INVALID_PARAMS,
+      );
+    }
+
     // CRITICAL: Full token validation (DB lookup) - prevents enumeration attacks
     await this.publicLinkService.validateToken(token);
     // RLS context now set to link.workspaceId
@@ -291,8 +321,20 @@ export class McpController {
     });
 
     const latencyMs = Date.now() - startTime;
+    const resultsCount =
+      'results' in searchResult
+        ? searchResult.results.length
+        : searchResult.documents.length;
 
-    // 5. Emit usage event (async, fire-and-forget)
+    // 5. Log successful search (structured logging for audit/monitoring)
+    this.logger.log({
+      event: 'MCP_SEARCH_SUCCESS',
+      tokenPrefix: token.substring(0, 8),
+      query,
+      resultsCount,
+    });
+
+    // 6. Emit usage event (async, fire-and-forget)
     this.usageEventService
       .create({
         workspaceId: link.workspaceId,
@@ -300,10 +342,7 @@ export class McpController {
         source: 'MCP_SEARCH',
         queryStored: link.historyMode === 'ON',
         queryText: query,
-        resultCount:
-          'results' in searchResult
-            ? searchResult.results.length
-            : searchResult.documents.length,
+        resultCount: resultsCount,
         latencyMs,
         ip,
         userAgent,
@@ -340,6 +379,28 @@ export class McpController {
   // ==========================================================================
   // Request Validation Methods
   // ==========================================================================
+
+  /**
+   * Validate initialize method params
+   */
+  private validateInitializeParams(params: unknown): { protocolVersion?: string; capabilities?: Record<string, unknown>; clientInfo?: { name: string; version: string } } | undefined {
+    if (params === undefined || params === null) {
+      return undefined;
+    }
+
+    if (typeof params !== 'object' || Array.isArray(params)) {
+      throw new McpRequestException('Invalid initialize params: expected object', McpErrorCode.INVALID_PARAMS);
+    }
+
+    const p = params as Record<string, unknown>;
+
+    // protocolVersion is optional but if provided must be a string
+    if (p.protocolVersion !== undefined && typeof p.protocolVersion !== 'string') {
+      throw new McpRequestException('Invalid protocolVersion: expected string', McpErrorCode.INVALID_PARAMS);
+    }
+
+    return p as { protocolVersion?: string; capabilities?: Record<string, unknown>; clientInfo?: { name: string; version: string } };
+  }
 
   /**
    * Parse basic JSON-RPC structure (method-agnostic)

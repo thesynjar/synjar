@@ -2,11 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
-import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/infrastructure/persistence/prisma/prisma.service';
-import { PublicLinkService } from '../src/application/public-link/public-link.service';
+import { AppModule } from '../../../app.module';
+import { PublicLinkService } from '../../../application/public-link/public-link.service';
 import { v4 as uuidv4 } from 'uuid';
-import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
+import { EMBEDDINGS_SERVICE } from '../../../domain/document/embeddings.port';
 
 /**
  * Mock embeddings service for tests
@@ -36,55 +35,19 @@ const mockEmbeddingsService = {
  * - GET /mcp/:token - returns 405 (SSE not supported)
  *
  * Related: docs/specifications/2026-01-05-mcp-streamable-http-chatgpt.md
+ *
+ * Per-Test Isolation: Each test creates its own unique tenant context (user, workspace, public link)
+ * following RLS isolation principles from CORE-RULES.md. No global cleanup needed.
  */
 describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
   let app: INestApplication;
-  let prisma: PrismaService;
   let publicLinkService: PublicLinkService;
+
+  // Per-test context - recreated for each test
   let testAccessToken: string;
   let testWorkspaceId: string;
   let testUserId: string;
   let testPublicLink: { id: string; token: string };
-
-  const TEST_EMAIL_DOMAIN = '@mcp-streamable-http-test.com';
-
-  async function cleanupTestData() {
-    try {
-      await prisma.$executeRawUnsafe(`
-        DO $$
-        BEGIN
-          -- Delete PublicLink entries for test workspaces
-          DELETE FROM "PublicLink"
-          WHERE "workspaceId" IN (
-            SELECT id FROM "Workspace"
-            WHERE "createdById" IN (
-              SELECT id FROM "User" WHERE email LIKE '%${TEST_EMAIL_DOMAIN}'
-            )
-          );
-
-          -- Delete WorkspaceMember entries
-          DELETE FROM "WorkspaceMember"
-          WHERE "workspaceId" IN (
-            SELECT id FROM "Workspace"
-            WHERE "createdById" IN (
-              SELECT id FROM "User" WHERE email LIKE '%${TEST_EMAIL_DOMAIN}'
-            )
-          );
-
-          -- Delete Workspace entries
-          DELETE FROM "Workspace"
-          WHERE "createdById" IN (
-            SELECT id FROM "User" WHERE email LIKE '%${TEST_EMAIL_DOMAIN}'
-          );
-
-          -- Delete User entries
-          DELETE FROM "User" WHERE email LIKE '%${TEST_EMAIL_DOMAIN}';
-        END $$;
-      `);
-    } catch (error) {
-      console.warn('Cleanup failed:', (error as Error).message);
-    }
-  }
 
   beforeAll(async () => {
     // Set self-hosted mode - no email verification required
@@ -113,21 +76,29 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
     await app.init();
 
     // Get services from DI container
-    prisma = moduleFixture.get<PrismaService>(PrismaService);
     publicLinkService = moduleFixture.get<PublicLinkService>(PublicLinkService);
+  });
 
-    // Clean up any existing test data
-    await cleanupTestData();
+  afterAll(async () => {
+    await app.close();
+  });
+
+  /**
+   * Per-test tenant context setup
+   * Creates unique user, workspace, and public link for each test
+   * following RLS isolation principles (no global cleanup needed)
+   */
+  beforeEach(async () => {
+    // Create unique email per test to ensure complete isolation
+    const uniqueEmail = `mcp-test-${Date.now()}-${uuidv4().substring(0, 8)}@test.local`;
 
     // Create test user and workspace via HTTP API
-    const email = `user-${Date.now()}${TEST_EMAIL_DOMAIN}`;
-
     const registerRes = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
-        email,
+        email: uniqueEmail,
         password: 'TestPass123!@#',
-        workspaceName: 'Test Workspace',
+        workspaceName: `Test Workspace ${uuidv4().substring(0, 8)}`,
         name: 'Test User',
       })
       .expect(201);
@@ -145,15 +116,12 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
 
     // Create a PublicLink for testing (no tag restrictions for simpler testing)
     testPublicLink = await publicLinkService.create(testWorkspaceId, testUserId, {
-      name: 'MCP Streamable HTTP Test Link',
+      name: `MCP Test Link ${uuidv4().substring(0, 8)}`,
       allowedTags: [],
     });
   });
 
-  afterAll(async () => {
-    await cleanupTestData();
-    await app.close();
-  });
+  // No afterEach cleanup needed - RLS isolation ensures no conflicts between tests
 
   // ==========================================================================
   // GET Handler Tests - Returns 405 (SSE not supported)
@@ -401,6 +369,80 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
       expect(response.body.jsonrpc).toBe('2.0');
       expect(response.body.result).toBeDefined();
       expect(response.body.result.content).toBeInstanceOf(Array);
+    });
+  });
+
+  // ==========================================================================
+  // Edge Case Tests (M3)
+  // ==========================================================================
+
+  describe('Edge cases and security', () => {
+    // Note: Rate limiting test is skipped because test environment has rate limit = 10000
+    // See mcp-rate-limit.integration.spec.ts for rate limiting architecture tests
+    it.skip('should enforce rate limit per token', async () => {
+      // Send 101 requests rapidly - rate limit is 100 req/min per token
+      const requests = Array(101)
+        .fill(null)
+        .map(() =>
+          request(app.getHttpServer())
+            .post(`/mcp/${testPublicLink.token}`)
+            .send({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
+        );
+      const responses = await Promise.all(requests);
+      const rateLimited = responses.filter((r) => r.status === 429);
+      expect(rateLimited.length).toBeGreaterThan(0);
+    });
+
+    it('should reject query longer than 256 characters', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'synjar_search',
+            arguments: { query: 'a'.repeat(257) },
+          },
+        });
+
+      expect(response.body.error.code).toBe(-32602);
+      expect(response.body.error.message).toContain('256');
+    });
+
+    it('should not be vulnerable to prototype pollution', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'synjar_search',
+            arguments: {
+              query: 'test',
+              __proto__: { polluted: true },
+            },
+          },
+        });
+
+      // Should not crash and should process normally
+      expect(response.status).toBe(200);
+      expect(({} as any).polluted).toBeUndefined();
+    });
+
+    it('should reject requests larger than 10KB', async () => {
+      const largeBody = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { data: 'x'.repeat(15000) },
+      };
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send(largeBody);
+
+      expect(response.status).toBe(413);
     });
   });
 

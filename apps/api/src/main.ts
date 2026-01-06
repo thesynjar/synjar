@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { json, urlencoded } from 'express';
 import { Request, Response } from 'express';
 import { AppModule } from './app.module';
@@ -9,6 +10,12 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const appModule = await AppModule.forRoot();
   const app = await NestFactory.create(appModule);
+
+  // Security: HTTP security headers (X-Content-Type-Options, X-Frame-Options, etc.)
+  app.use(helmet());
+
+  // Security: Limit MCP request body size to prevent DoS attacks
+  app.use('/mcp', json({ limit: '10kb' }));
 
   // Increase body size limits for document uploads
   app.use(json({ limit: '10mb' }));
