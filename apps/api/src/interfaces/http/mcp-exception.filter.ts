@@ -1,4 +1,3 @@
-import * as crypto from 'crypto';
 import {
   ExceptionFilter,
   Catch,
@@ -12,6 +11,22 @@ import { Response, Request } from 'express';
 import { ThrottlerException } from '@nestjs/throttler';
 import { McpErrorCode, McpJsonRpcErrorResponse } from '../../types/mcp.types';
 import { McpRequestException } from './mcp-request.exception';
+import { McpSseFormatter } from './mcp-sse.util';
+
+interface HttpExceptionResponse {
+  data?: Record<string, unknown>;
+  message?: string;
+}
+
+interface ThrottlerExceptionWithRetry extends ThrottlerException {
+  retryAfter?: number;
+}
+
+interface McpRequestBody {
+  jsonrpc?: string;
+  id?: string | number | null;
+  method?: string;
+}
 
 /**
  * MCP Exception Filter
@@ -51,9 +66,9 @@ export class McpExceptionFilter implements ExceptionFilter {
       httpStatus = 400;
       errorCode = McpErrorCode.INVALID_PARAMS;
       message = exception.message;
-      const exceptionResponse = exception.getResponse();
-      if (typeof exceptionResponse === 'object' && 'data' in exceptionResponse) {
-        data = (exceptionResponse as any).data;
+      const exceptionResponse = exception.getResponse() as HttpExceptionResponse;
+      if (typeof exceptionResponse === 'object' && exceptionResponse.data) {
+        data = exceptionResponse.data;
       }
     } else if (exception instanceof ForbiddenException) {
       httpStatus = 403;
@@ -64,7 +79,8 @@ export class McpExceptionFilter implements ExceptionFilter {
       errorCode = McpErrorCode.RATE_LIMIT;
       message = 'Rate limit exceeded (30 requests/minute)';
       // Extract retry-after if available
-      const retryAfter = (exception as any).retryAfter;
+      const throttlerException = exception as ThrottlerExceptionWithRetry;
+      const retryAfter = throttlerException.retryAfter;
       if (retryAfter) {
         data = { retryAfter };
       }
@@ -76,9 +92,10 @@ export class McpExceptionFilter implements ExceptionFilter {
       this.logger.error('Unexpected MCP error', exception);
     }
 
+    const body = request.body as McpRequestBody;
     const errorResponse: McpJsonRpcErrorResponse = {
       jsonrpc: '2.0',
-      id: (request.body as any)?.id ?? null,
+      id: body?.id ?? null,
       error: {
         code: errorCode,
         message,
@@ -87,16 +104,6 @@ export class McpExceptionFilter implements ExceptionFilter {
     };
 
     // Return SSE format for ChatGPT compatibility
-    // Format: event: message\nid: <uuid>\ndata: <json>\n\n
-    response.setHeader('Content-Type', 'text/event-stream');
-    response.setHeader('Cache-Control', 'no-cache');
-    response.setHeader('Connection', 'keep-alive');
-    response.setHeader('X-Accel-Buffering', 'no');
-    response.status(httpStatus);
-    const eventId = crypto.randomUUID();
-    response.write(`event: message\n`);
-    response.write(`id: ${eventId}\n`);
-    response.write(`data: ${JSON.stringify(errorResponse)}\n\n`);
-    response.end();
+    McpSseFormatter.sendEvent(response, errorResponse, httpStatus);
   }
 }

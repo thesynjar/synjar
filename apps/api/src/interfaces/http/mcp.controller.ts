@@ -1,4 +1,3 @@
-import * as crypto from 'crypto';
 import {
   Controller,
   Post,
@@ -20,6 +19,7 @@ import { PublicLinkService } from '@/application/public-link/public-link.service
 import { UsageEventService } from '@/application/usage-event/usage-event.service';
 import { McpExceptionFilter } from './mcp-exception.filter';
 import { McpRequestException } from './mcp-request.exception';
+import { McpSseFormatter } from './mcp-sse.util';
 import {
   McpJsonRpcRequest,
   McpJsonRpcResponse,
@@ -249,16 +249,7 @@ export class McpController {
    * Format: event: message\nid: <uuid>\ndata: <json>\n\n
    */
   private sendSseResponse(res: Response, data: unknown): void {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.status(200);
-    const eventId = crypto.randomUUID();
-    res.write(`event: message\n`);
-    res.write(`id: ${eventId}\n`);
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-    res.end();
+    McpSseFormatter.sendEvent(res, data);
   }
 
   /**
@@ -272,20 +263,11 @@ export class McpController {
     message: string,
     httpStatus: number = 400,
   ): void {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.status(httpStatus);
-    const eventId = crypto.randomUUID();
-    res.write(`event: message\n`);
-    res.write(`id: ${eventId}\n`);
-    res.write(`data: ${JSON.stringify({
+    McpSseFormatter.sendEvent(res, {
       jsonrpc: '2.0',
       id,
       error: { code, message },
-    })}\n\n`);
-    res.end();
+    }, httpStatus);
   }
 
   // ==========================================================================
