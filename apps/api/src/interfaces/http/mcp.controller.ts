@@ -283,11 +283,16 @@ export class McpController {
     await this.publicLinkService.validateToken(token);
     // RLS context now set to link.workspaceId
 
+    // Respond with client's requested version if supported, otherwise use server default
+    const negotiatedVersion = params?.protocolVersion && SUPPORTED_PROTOCOL_VERSIONS.includes(params.protocolVersion)
+      ? params.protocolVersion
+      : MCP_PROTOCOL_VERSION;
+
     return {
       jsonrpc: '2.0',
       id: request.id,
       result: {
-        protocolVersion: MCP_PROTOCOL_VERSION,
+        protocolVersion: negotiatedVersion,
         capabilities: {
           tools: {},
         },
