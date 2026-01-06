@@ -39,9 +39,9 @@ const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18'];
 const MCP_SERVER_NAME = 'Synjar MCP Server';
 const MCP_SERVER_VERSION = '1.0.0';
 
-// Token format: 64 hex characters (32 bytes), lowercase only
+// Token format: 64 hex characters (32 bytes), case-insensitive
 const isValidToken = (token: string): boolean => {
-  return /^[a-f0-9]{64}$/.test(token);
+  return /^[a-f0-9]{64}$/i.test(token);
 };
 
 /**
