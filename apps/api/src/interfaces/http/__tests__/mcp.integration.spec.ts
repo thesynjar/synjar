@@ -10,17 +10,33 @@ import { v4 as uuidv4 } from 'uuid';
 import { EMBEDDINGS_SERVICE } from '../../../domain/document/embeddings.port';
 
 /**
- * Parse SSE response body to extract JSON data
- * SSE format: "data: {...}\n\n"
+ * SSE response structure with event and id fields
  */
-function parseSseResponse(text: string): unknown {
+interface SseResponse {
+  event?: string;
+  id?: string;
+  data: unknown;
+}
+
+/**
+ * Parse SSE response body to extract full SSE structure
+ * SSE format: "event: message\nid: <uuid>\ndata: {...}\n\n"
+ */
+function parseSseResponse(text: string): SseResponse {
   const lines = text.split('\n');
+  const result: SseResponse = { data: null };
+
   for (const line of lines) {
-    if (line.startsWith('data: ')) {
-      return JSON.parse(line.slice(6));
+    if (line.startsWith('event: ')) {
+      result.event = line.substring(7);
+    } else if (line.startsWith('id: ')) {
+      result.id = line.substring(4);
+    } else if (line.startsWith('data: ')) {
+      result.data = JSON.parse(line.substring(6));
     }
   }
-  throw new Error(`Invalid SSE response: ${text}`);
+
+  return result;
 }
 
 /**
@@ -220,7 +236,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         .expect(200)
         .expect('Content-Type', /text\/event-stream/);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect(body.jsonrpc).toBe('2.0');
       expect(body.id).toBeDefined();
       expect(body.result).toBeDefined();
@@ -249,7 +265,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       const result = body.result as Record<string, unknown>;
       expect(result.protocolVersion).toBe('2025-06-18');
       expect((result.serverInfo as Record<string, unknown>).name).toBe('Synjar MCP Server');
@@ -267,7 +283,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(404);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect(body.error).toBeDefined();
     });
 
@@ -281,8 +297,230 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).message).toBe('Invalid token format');
+    });
+  });
+
+  // ==========================================================================
+  // Protocol Version Negotiation Tests (C1)
+  // ==========================================================================
+
+  describe('Protocol Version Negotiation', () => {
+    it('should accept supported version 2024-11-05 and respond with that version', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(200);
+
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
+      const result = body.result as Record<string, unknown>;
+      expect(result.protocolVersion).toBe('2024-11-05');
+    });
+
+    it('should accept supported version 2025-03-26 and respond with that version', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-03-26',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(200);
+
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
+      const result = body.result as Record<string, unknown>;
+      expect(result.protocolVersion).toBe('2025-03-26');
+    });
+
+    it('should accept supported version 2025-11-25 and respond with that version', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(200);
+
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
+      const result = body.result as Record<string, unknown>;
+      expect(result.protocolVersion).toBe('2025-11-25');
+    });
+
+    it('should reject unsupported future version 2026-01-01 with 400 error', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2026-01-01',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(400);
+
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
+      expect(body.error).toBeDefined();
+      const error = body.error as Record<string, unknown>;
+      expect(error.code).toBe(-32602);
+      expect(error.message).toContain('Unsupported protocol version');
+    });
+
+    it('should reject unsupported old version 2024-01-01 with 400 error', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-01-01',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(400);
+
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
+      expect(body.error).toBeDefined();
+      const error = body.error as Record<string, unknown>;
+      expect(error.code).toBe(-32602);
+      expect(error.message).toContain('Unsupported protocol version');
+    });
+
+    it('should default to 2025-06-18 when protocolVersion param is not provided', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(200);
+
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
+      const result = body.result as Record<string, unknown>;
+      expect(result.protocolVersion).toBe('2025-06-18');
+    });
+
+    it('should include list of supported versions in error message for unsupported version', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2023-01-01',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(400);
+
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
+      const error = body.error as Record<string, unknown>;
+      expect(error.message).toContain('2024-11-05');
+      expect(error.message).toContain('2025-03-26');
+      expect(error.message).toContain('2025-06-18');
+      expect(error.message).toContain('2025-11-25');
+    });
+  });
+
+  // ==========================================================================
+  // Notifications Tests (MCP Streamable HTTP)
+  // ==========================================================================
+
+  describe('POST /mcp/:token method: notifications/*', () => {
+    it('should return 202 Accepted for notifications/initialized', async () => {
+      // Per MCP Streamable HTTP spec, notifications should return 202 Accepted with no body
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          // No 'id' field - this is a notification
+          method: 'notifications/initialized',
+          params: {},
+        })
+        .expect(202);
+
+      // 202 Accepted should have empty body
+      expect(response.text).toBe('');
+    });
+
+    it('should return 202 Accepted for any notifications/* method', async () => {
+      // Even unknown notifications should be accepted silently
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          method: 'notifications/progress',
+          params: { progress: 50 },
+        })
+        .expect(202);
+
+      expect(response.text).toBe('');
+    });
+
+    it('should return 202 Accepted for notifications/cancelled', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          method: 'notifications/cancelled',
+          params: { requestId: 'some-request-id', reason: 'user cancelled' },
+        })
+        .expect(202);
+
+      expect(response.text).toBe('');
     });
   });
 
@@ -301,7 +539,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect(body.jsonrpc).toBe('2.0');
       expect(body.id).toBeDefined();
       expect(body.result).toBeDefined();
@@ -342,7 +580,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       const result = body.result as { tools: Array<{ name: string; description: string }> };
 
       // Check 'search' tool has tags
@@ -363,7 +601,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(404);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect(body.error).toBeDefined();
     });
   });
@@ -383,7 +621,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe(-32601);
       expect((body.error as Record<string, unknown>).message).toContain('Method not found');
     });
@@ -404,7 +642,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect(body.jsonrpc).toBe('2.0');
       expect(body.result).toBeDefined();
       expect((body.result as Record<string, unknown>).content).toBeInstanceOf(Array);
@@ -427,7 +665,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe(-32602);
       expect((body.error as Record<string, unknown>).message).toContain('Document not found');
     });
@@ -446,7 +684,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe(-32602);
       expect((body.error as Record<string, unknown>).message).toContain('Unknown tool');
     });
@@ -486,7 +724,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
           },
         });
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe(-32602);
       expect((body.error as Record<string, unknown>).message).toContain('256');
     });
@@ -541,7 +779,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe(-32600);
       expect((body.error as Record<string, unknown>).message).toContain('JSON-RPC version');
     });
@@ -555,7 +793,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe(-32600);
       expect((body.error as Record<string, unknown>).message).toContain('Invalid request ID');
     });
@@ -569,7 +807,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(400);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect((body.error as Record<string, unknown>).code).toBe(-32600);
       expect((body.error as Record<string, unknown>).message).toContain('Invalid method');
     });
@@ -584,7 +822,7 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect(body.id).toBe(42);
     });
 
@@ -600,8 +838,118 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
         })
         .expect(200);
 
-      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      const body = parseSseResponse(response.text).data as Record<string, unknown>;
       expect(body.id).toBe(requestId);
+    });
+  });
+
+  // ==========================================================================
+  // Response Headers Tests (C3)
+  // ==========================================================================
+
+  describe('Response Headers', () => {
+    it('should include X-Accel-Buffering: no header in successful response', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: 'test-header',
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(200);
+
+      // Verify X-Accel-Buffering header is set to 'no' (required for nginx reverse proxy)
+      expect(response.headers['x-accel-buffering']).toBe('no');
+    });
+
+    it('should include X-Accel-Buffering: no header in error response', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${encodeURIComponent('invalid-token')}`)
+        .send({
+          jsonrpc: '2.0',
+          id: 'test-header-error',
+          method: 'initialize',
+        })
+        .expect(400);
+
+      // Verify X-Accel-Buffering header is set even for error responses
+      expect(response.headers['x-accel-buffering']).toBe('no');
+    });
+  });
+
+  // ==========================================================================
+  // SSE Format Verification Tests (C2)
+  // ==========================================================================
+
+  describe('SSE Format Verification', () => {
+    it('should include event: message field in success response', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(200)
+        .expect('Content-Type', /text\/event-stream/);
+
+      const sse = parseSseResponse(response.text);
+      expect(sse.event).toBe('message');
+    });
+
+    it('should include UUID id field in success response', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${testPublicLink.token}`)
+        .send({
+          jsonrpc: '2.0',
+          id: `init-${uuidv4()}`,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: {
+              name: 'test-client',
+              version: '1.0.0',
+            },
+          },
+        })
+        .expect(200)
+        .expect('Content-Type', /text\/event-stream/);
+
+      const sse = parseSseResponse(response.text);
+      expect(sse.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    });
+
+    it('should include event: message field in error response', async () => {
+      const nonExistentToken = 'b'.repeat(64);
+
+      const response = await request(app.getHttpServer())
+        .post(`/mcp/${nonExistentToken}`)
+        .send({
+          jsonrpc: '2.0',
+          id: 'test-id',
+          method: 'initialize',
+        })
+        .expect(404);
+
+      const sse = parseSseResponse(response.text);
+      expect(sse.event).toBe('message');
     });
   });
 });

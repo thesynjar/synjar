@@ -171,7 +171,20 @@ export class McpController {
         ip,
       });
 
-      // 4. Route by method and get response
+      // 4. Handle notifications (requests without id that don't expect a response)
+      // Per MCP spec: notifications should return HTTP 202 Accepted with no body
+      if (baseRequest.method.startsWith('notifications/')) {
+        this.logger.log({
+          event: 'MCP_NOTIFICATION',
+          method: baseRequest.method,
+          tokenPrefix: token.substring(0, 8),
+        });
+        // Return 202 Accepted with no body per MCP Streamable HTTP spec
+        res.status(202).end();
+        return;
+      }
+
+      // 5. Route by method and get response
       let response: McpJsonRpcResponse | McpInitializeResponse | McpToolsListResponse;
       try {
         switch (baseRequest.method) {
@@ -299,9 +312,10 @@ export class McpController {
       ? params.protocolVersion
       : MCP_PROTOCOL_VERSION;
 
+    // Non-null assertion: notifications are filtered before reaching this point
     return {
       jsonrpc: '2.0',
-      id: request.id,
+      id: request.id!,
       result: {
         protocolVersion: negotiatedVersion,
         capabilities: {
@@ -359,7 +373,7 @@ export class McpController {
 
     return {
       jsonrpc: '2.0',
-      id: request.id,
+      id: request.id!,  // Non-null assertion: notifications filtered earlier
       result: {
         tools: [
           // 'search' - required by ChatGPT for Deep Research mode
@@ -615,7 +629,7 @@ export class McpController {
     // 6. Return MCP JSON-RPC response
     return {
       jsonrpc: '2.0',
-      id: request.id,
+      id: request.id!,  // Non-null assertion: notifications filtered earlier
       result: {
         content: [
           {
@@ -680,12 +694,6 @@ export class McpController {
         McpErrorCode.INVALID_REQUEST,
       );
     }
-    if (typeof req.id !== 'string' && typeof req.id !== 'number') {
-      throw new McpRequestException(
-        'Invalid request ID',
-        McpErrorCode.INVALID_REQUEST,
-      );
-    }
     if (typeof req.method !== 'string') {
       throw new McpRequestException(
         'Invalid method',
@@ -693,9 +701,19 @@ export class McpController {
       );
     }
 
+    // JSON-RPC notifications don't have an id field - they're fire-and-forget
+    // Regular requests MUST have an id field
+    const isNotification = req.method.startsWith('notifications/');
+    if (!isNotification && typeof req.id !== 'string' && typeof req.id !== 'number') {
+      throw new McpRequestException(
+        'Invalid request ID',
+        McpErrorCode.INVALID_REQUEST,
+      );
+    }
+
     return {
       jsonrpc: '2.0',
-      id: req.id as string | number,
+      id: (req.id as string | number) ?? null,
       method: req.method,
       params: req.params,
     };
@@ -741,7 +759,7 @@ export class McpController {
 
     return {
       jsonrpc: '2.0',
-      id: request.id,
+      id: request.id!,  // Non-null assertion: notifications filtered earlier
       method: 'tools/call',
       params: {
         name: 'synjar_search',

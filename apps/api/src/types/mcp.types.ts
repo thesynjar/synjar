@@ -114,7 +114,7 @@ export type McpMethod = 'initialize' | 'tools/list' | 'tools/call';
 
 export interface McpBaseRequest {
   jsonrpc: '2.0';
-  id: string | number;
+  id: string | number | null;  // null for JSON-RPC notifications (fire-and-forget)
   method: string;
   params?: unknown;
 }
