@@ -9,6 +9,20 @@ import { randomBytes } from 'crypto';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
 
 /**
+ * Helper to parse SSE response text into JSON
+ * SSE format: data: {...}\n\n
+ */
+function parseSseResponse(text: string): unknown {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      return JSON.parse(line.slice(6));
+    }
+  }
+  throw new Error(`Invalid SSE response: ${text}`);
+}
+
+/**
  * Mock embeddings service for tests
  * Returns a fixed embedding vector (1536 dimensions for text-embedding-3-small)
  */
@@ -197,8 +211,9 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
           .expect(400);
 
         // Verify JSON-RPC error response structure
-        expect(response.body.error).toBeDefined();
-        expect(response.body.error.code).toBe(-32602);
+        const body = parseSseResponse(response.text) as { error: { code: number; message: string } };
+        expect(body.error).toBeDefined();
+        expect(body.error.code).toBe(-32602);
         // Note: __proto__ is stripped by JSON parser, so fails at "Query must be a string"
         // constructor/prototype are explicitly blocked with "Invalid arguments"
       }
@@ -231,8 +246,9 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32602);
-      expect(response.body.error.message).toBe('Invalid arguments');
+      const body = parseSseResponse(response.text) as { error: { code: number; message: string } };
+      expect(body.error.code).toBe(-32602);
+      expect(body.error.message).toBe('Invalid arguments');
 
       // Verify no pollution occurred
       const testObj = {};
@@ -261,8 +277,9 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32602);
-      expect(response.body.error.message).toBe('Invalid arguments');
+      const body = parseSseResponse(response.text) as { error: { code: number; message: string } };
+      expect(body.error.code).toBe(-32602);
+      expect(body.error.message).toBe('Invalid arguments');
 
       // Verify no pollution occurred
       const testObj = {};
@@ -292,9 +309,10 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32602);
+      const body = parseSseResponse(response.text) as { error: { code: number; message: string } };
+      expect(body.error.code).toBe(-32602);
       // __proto__ is stripped by JSON parser, so fails at query validation
-      expect(response.body.error.message).toBe('Query must be a string');
+      expect(body.error.message).toBe('Query must be a string');
 
       // CRITICAL: Verify no pollution occurred
       const testObj = {};
@@ -342,9 +360,10 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
 
       // Valid requests should succeed (200 or 201)
       expect([200, 201]).toContain(validResponse.status);
-      expect(validResponse.body.jsonrpc).toBe('2.0');
-      expect(validResponse.body.id).toBe('valid-request');
-      expect(validResponse.body.result).toBeDefined();
+      const validBody = parseSseResponse(validResponse.text) as { jsonrpc: string; id: string; result: unknown };
+      expect(validBody.jsonrpc).toBe('2.0');
+      expect(validBody.id).toBe('valid-request');
+      expect(validBody.result).toBeDefined();
     });
 
     /**
@@ -370,8 +389,9 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32602);
-      expect(response.body.error.message).toBe('Invalid arguments');
+      const body = parseSseResponse(response.text) as { error: { code: number; message: string } };
+      expect(body.error.code).toBe(-32602);
+      expect(body.error.message).toBe('Invalid arguments');
 
       // Verify no pollution occurred
       const testObj = {};
@@ -398,8 +418,9 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
         })
         .expect(400);
 
-      expect(response.body.error.code).toBe(-32602);
-      expect(response.body.error.message).toBe('Invalid arguments');
+      const body = parseSseResponse(response.text) as { error: { code: number; message: string } };
+      expect(body.error.code).toBe(-32602);
+      expect(body.error.message).toBe('Invalid arguments');
 
       // Verify no pollution occurred
       const testObj = {};
@@ -431,7 +452,8 @@ describe('MCP Prototype Pollution Prevention (TS-011 Enhanced)', () => {
 
       // Request succeeds because __proto__ is stripped by JSON parser
       expect([200, 201]).toContain(response.status);
-      expect(response.body.result).toBeDefined();
+      const body = parseSseResponse(response.text) as { result: unknown };
+      expect(body.result).toBeDefined();
 
       // CRITICAL: Verify no pollution occurred even though request succeeded
       const testObj = {};

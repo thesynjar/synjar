@@ -7,6 +7,20 @@ import { randomBytes } from 'crypto';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
 
 /**
+ * Helper to parse SSE response text into JSON
+ * SSE format: data: {...}\n\n
+ */
+function parseSseResponse(text: string): unknown {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      return JSON.parse(line.slice(6));
+    }
+  }
+  throw new Error(`Invalid SSE response: ${text}`);
+}
+
+/**
  * Mock embeddings service for tests
  */
 const mockEmbeddingsService = {
@@ -148,8 +162,9 @@ describe('MCP Rate Limit Order Enforcement (TS-015)', () => {
 
       // Invalid token should return 404 (PublicLink not found)
       expect(response.status).toBe(404);
-      expect(response.body.jsonrpc).toBe('2.0');
-      expect(response.body.error).toBeDefined();
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body.jsonrpc).toBe('2.0');
+      expect(body.error).toBeDefined();
     });
 
     /**
@@ -182,8 +197,9 @@ describe('MCP Rate Limit Order Enforcement (TS-015)', () => {
         // But tokens with non-hex chars or wrong length should fail
         if (!/^[a-f0-9]{64}$/i.test(token)) {
           expect(response.status).toBe(400);
-          expect(response.body.error.message).toBe('Invalid token format');
-          expect(response.body.error.code).toBe(-32602); // INVALID_PARAMS
+          const body = parseSseResponse(response.text) as { error: { message: string; code: number } };
+          expect(body.error.message).toBe('Invalid token format');
+          expect(body.error.code).toBe(-32602); // INVALID_PARAMS
         }
       }
     });
@@ -345,7 +361,7 @@ describe('MCP Rate Limit Order Enforcement (TS-015)', () => {
 
         responses.push({
           status: response.status,
-          body: response.body,
+          body: parseSseResponse(response.text),
         });
 
         if (response.status === 429) {

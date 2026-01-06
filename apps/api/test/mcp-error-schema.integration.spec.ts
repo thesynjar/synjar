@@ -7,6 +7,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
 
 /**
+ * Helper to parse SSE response text into JSON
+ * SSE format: data: {...}\n\n
+ */
+function parseSseResponse(text: string): unknown {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      return JSON.parse(line.slice(6));
+    }
+  }
+  throw new Error(`Invalid SSE response: ${text}`);
+}
+
+/**
  * Mock embeddings service for tests
  * Returns a fixed embedding vector (1536 dimensions for text-embedding-3-small)
  */
@@ -118,7 +132,8 @@ describe('MCP Error Response Schema (TS-017)', () => {
         .expect(404);
 
       // Verify complete error response structure
-      expect(response.body).toMatchObject({
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body).toMatchObject({
         jsonrpc: '2.0',
         id: expect.any(String),
         error: {
@@ -128,7 +143,7 @@ describe('MCP Error Response Schema (TS-017)', () => {
       });
 
       // Verify no 'result' field in error response
-      expect(response.body.result).toBeUndefined();
+      expect(body.result).toBeUndefined();
     });
 
     /**
@@ -142,7 +157,8 @@ describe('MCP Error Response Schema (TS-017)', () => {
         .send({ notJsonRpc: true }) // Missing jsonrpc, id, method, params
         .expect(400);
 
-      expect(response.body).toMatchObject({
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body).toMatchObject({
         jsonrpc: '2.0',
         error: {
           code: -32600,
@@ -151,10 +167,10 @@ describe('MCP Error Response Schema (TS-017)', () => {
       });
 
       // id can be null for parse/request errors
-      expect(response.body.id === null || typeof response.body.id === 'string').toBe(true);
+      expect(body.id === null || typeof body.id === 'string').toBe(true);
 
       // Verify no 'result' field
-      expect(response.body.result).toBeUndefined();
+      expect(body.result).toBeUndefined();
     });
 
     /**
@@ -185,7 +201,8 @@ describe('MCP Error Response Schema (TS-017)', () => {
       // With non-existent token, we get 404 (not found) before query validation
       expect([400, 404]).toContain(response.status);
 
-      expect(response.body).toMatchObject({
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body).toMatchObject({
         jsonrpc: '2.0',
         id: 'test-params',
         error: {
@@ -194,7 +211,7 @@ describe('MCP Error Response Schema (TS-017)', () => {
         },
       });
 
-      expect(response.body.result).toBeUndefined();
+      expect(body.result).toBeUndefined();
     });
 
     /**
@@ -213,7 +230,8 @@ describe('MCP Error Response Schema (TS-017)', () => {
         })
         .expect(400);
 
-      expect(response.body).toMatchObject({
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body).toMatchObject({
         jsonrpc: '2.0',
         id: 'test-method',
         error: {
@@ -222,7 +240,7 @@ describe('MCP Error Response Schema (TS-017)', () => {
         },
       });
 
-      expect(response.body.result).toBeUndefined();
+      expect(body.result).toBeUndefined();
     });
 
     /**
@@ -234,7 +252,8 @@ describe('MCP Error Response Schema (TS-017)', () => {
         .send(validMcpRequest())
         .expect(400);
 
-      expect(response.body).toMatchObject({
+      const body = parseSseResponse(response.text) as Record<string, unknown>;
+      expect(body).toMatchObject({
         jsonrpc: '2.0',
         error: {
           code: expect.any(Number),
@@ -242,7 +261,7 @@ describe('MCP Error Response Schema (TS-017)', () => {
         },
       });
 
-      expect(response.body.result).toBeUndefined();
+      expect(body.result).toBeUndefined();
     });
   });
 
@@ -278,20 +297,21 @@ describe('MCP Error Response Schema (TS-017)', () => {
           .send(testCase.body)
           .expect(testCase.expectedStatus);
 
+        const body = parseSseResponse(response.text) as Record<string, { code: number; message: string }>;
         // All errors should have consistent JSON-RPC 2.0 structure
-        expect(response.body).toHaveProperty('jsonrpc', '2.0');
-        expect(response.body).toHaveProperty('error');
-        expect(response.body.error).toHaveProperty('code');
-        expect(response.body.error).toHaveProperty('message');
-        expect(response.body).not.toHaveProperty('result');
+        expect(body).toHaveProperty('jsonrpc', '2.0');
+        expect(body).toHaveProperty('error');
+        expect(body.error).toHaveProperty('code');
+        expect(body.error).toHaveProperty('message');
+        expect(body).not.toHaveProperty('result');
 
         // Error code should be a negative number (JSON-RPC standard)
-        expect(typeof response.body.error.code).toBe('number');
-        expect(response.body.error.code).toBeLessThan(0);
+        expect(typeof body.error.code).toBe('number');
+        expect(body.error.code).toBeLessThan(0);
 
         // Message should be a non-empty string
-        expect(typeof response.body.error.message).toBe('string');
-        expect(response.body.error.message.length).toBeGreaterThan(0);
+        expect(typeof body.error.message).toBe('string');
+        expect(body.error.message.length).toBeGreaterThan(0);
       }
     });
 
@@ -317,8 +337,9 @@ describe('MCP Error Response Schema (TS-017)', () => {
         });
 
       // If error data is present, verify it doesn't contain sensitive fields
-      if (response.body.error?.data) {
-        const data = response.body.error.data;
+      const body = parseSseResponse(response.text) as { error?: { data?: Record<string, unknown> } };
+      if (body.error?.data) {
+        const data = body.error.data;
 
         // Should NOT contain sensitive information
         expect(data).not.toHaveProperty('stack');
@@ -353,13 +374,15 @@ describe('MCP Error Response Schema (TS-017)', () => {
         .send({ invalid: 'structure' });
 
       // Error code should be in standard range
-      const code = invalidRequestResponse.body.error?.code;
+      const body = parseSseResponse(invalidRequestResponse.text) as { error?: { code: number } };
+      const code = body.error?.code;
       expect(typeof code).toBe('number');
+      expect(code).toBeDefined();
 
       // Standard range: -32700 to -32600, or server error range -32000 to -32099
-      const isStandardRange = code >= -32700 && code <= -32600;
-      const isServerRange = code >= -32099 && code <= -32000;
-      const isCustomAppCode = code === -32002; // Forbidden (custom)
+      const isStandardRange = code! >= -32700 && code! <= -32600;
+      const isServerRange = code! >= -32099 && code! <= -32000;
+      const isCustomAppCode = code! === -32002; // Forbidden (custom)
 
       expect(isStandardRange || isServerRange || isCustomAppCode).toBe(true);
     });

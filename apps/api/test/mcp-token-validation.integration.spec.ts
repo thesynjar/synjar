@@ -7,6 +7,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
 
 /**
+ * Helper to parse SSE response text into JSON
+ * SSE format: data: {...}\n\n
+ */
+function parseSseResponse(text: string): unknown {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      return JSON.parse(line.slice(6));
+    }
+  }
+  throw new Error(`Invalid SSE response: ${text}`);
+}
+
+/**
  * Mock embeddings service for tests
  * Returns a fixed embedding vector (1536 dimensions for text-embedding-3-small)
  */
@@ -124,7 +138,8 @@ describe('MCP Token Validation (TS-016)', () => {
         // Should return 400 Bad Request for invalid token format
         // The validation happens BEFORE database lookup
         expect(response.status).toBe(400);
-        expect(response.body.error?.message || response.body.message).toBe('Invalid token format');
+        const body = parseSseResponse(response.text) as { error?: { message: string }; message?: string };
+        expect(body.error?.message || body.message).toBe('Invalid token format');
       }
     });
 
@@ -160,7 +175,8 @@ describe('MCP Token Validation (TS-016)', () => {
 
         // Should return 400 Bad Request for invalid token format
         expect(response.status).toBe(400);
-        expect(response.body.error?.message || response.body.message).toBe('Invalid token format');
+        const body = parseSseResponse(response.text) as { error?: { message: string }; message?: string };
+        expect(body.error?.message || body.message).toBe('Invalid token format');
       }
     });
 
@@ -184,7 +200,8 @@ describe('MCP Token Validation (TS-016)', () => {
           .send(validMcpRequest());
 
         expect(response.status).toBe(400);
-        expect(response.body.error?.message || response.body.message).toBe('Invalid token format');
+        const body = parseSseResponse(response.text) as { error?: { message: string }; message?: string };
+        expect(body.error?.message || body.message).toBe('Invalid token format');
       }
     });
 
@@ -206,7 +223,8 @@ describe('MCP Token Validation (TS-016)', () => {
           .send(validMcpRequest());
 
         expect(response.status).toBe(400);
-        expect(response.body.error?.message || response.body.message).toBe('Invalid token format');
+        const body = parseSseResponse(response.text) as { error?: { message: string }; message?: string };
+        expect(body.error?.message || body.message).toBe('Invalid token format');
       }
     });
 
@@ -233,7 +251,8 @@ describe('MCP Token Validation (TS-016)', () => {
         // They will fail at database lookup (404 - not found)
         // NOT at format validation (400 - bad request)
         expect(response.status).toBe(404);
-        expect(response.body.error?.message || response.body.message).not.toBe('Invalid token format');
+        const body = parseSseResponse(response.text) as { error?: { message: string }; message?: string };
+        expect(body.error?.message || body.message).not.toBe('Invalid token format');
       }
     });
 
@@ -254,7 +273,8 @@ describe('MCP Token Validation (TS-016)', () => {
           .send(validMcpRequest());
 
         expect(response.status).toBe(400);
-        expect(response.body.error?.message || response.body.message).toBe('Invalid token format');
+        const body = parseSseResponse(response.text) as { error?: { message: string }; message?: string };
+        expect(body.error?.message || body.message).toBe('Invalid token format');
       }
     });
 

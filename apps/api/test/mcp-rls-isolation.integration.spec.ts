@@ -9,6 +9,20 @@ import { randomBytes } from 'crypto';
 import { EMBEDDINGS_SERVICE } from '../src/domain/document/embeddings.port';
 
 /**
+ * Helper to parse SSE response text into JSON
+ * SSE format: data: {...}\n\n
+ */
+function parseSseResponse(text: string): unknown {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      return JSON.parse(line.slice(6));
+    }
+  }
+  throw new Error(`Invalid SSE response: ${text}`);
+}
+
+/**
  * Mock embeddings service for tests
  * Returns a fixed embedding vector (1536 dimensions for text-embedding-3-small)
  */
@@ -312,7 +326,11 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
       expect([200, 201]).toContain(response.status);
 
       // Parse the MCP response
-      const mcpResponse = response.body;
+      const mcpResponse = parseSseResponse(response.text) as {
+        jsonrpc: string;
+        id: string;
+        result: { content: { text: string }[] };
+      };
       expect(mcpResponse.jsonrpc).toBe('2.0');
       expect(mcpResponse.id).toBe('test-rls');
       expect(mcpResponse.result).toBeDefined();
@@ -401,7 +419,9 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
       expect([200, 201]).toContain(response.status);
 
       // Parse results
-      const mcpResponse = response.body;
+      const mcpResponse = parseSseResponse(response.text) as {
+        result: { content: { text: string }[] };
+      };
       const searchResults = JSON.parse(mcpResponse.result.content[0].text);
 
       const allTitles = searchResults.results?.map((r: { title: string }) => r.title) ||
@@ -434,7 +454,8 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
         .expect(404); // Not Found (inactive links filtered out by lookup function)
 
       // Assert: Should get JSON-RPC error
-      expect(response.body.error).toBeDefined();
+      const body = parseSseResponse(response.text) as { error: unknown };
+      expect(body.error).toBeDefined();
     });
 
     /**
@@ -461,7 +482,8 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
         .expect(404); // Not Found (expired links filtered out by lookup function)
 
       // Assert: Should get JSON-RPC error
-      expect(response.body.error).toBeDefined();
+      const body = parseSseResponse(response.text) as { error: unknown };
+      expect(body.error).toBeDefined();
     });
 
     /**
@@ -478,7 +500,8 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
         .expect(404); // Not Found
 
       // Assert: Should get JSON-RPC error
-      expect(response.body.error).toBeDefined();
+      const body = parseSseResponse(response.text) as { error: unknown };
+      expect(body.error).toBeDefined();
     });
   });
 
@@ -576,7 +599,8 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
 
       expect([200, 201]).toContain(responseA.status);
 
-      const resultsA = JSON.parse(responseA.body.result.content[0].text);
+      const bodyA = parseSseResponse(responseA.text) as { result: { content: { text: string }[] } };
+      const resultsA = JSON.parse(bodyA.result.content[0].text);
       const titlesA = resultsA.results?.map((r: { title: string }) => r.title) ||
                       resultsA.documents?.map((d: { title: string }) => d.title) || [];
 
@@ -590,7 +614,8 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
 
       expect([200, 201]).toContain(responseB.status);
 
-      const resultsB = JSON.parse(responseB.body.result.content[0].text);
+      const bodyB = parseSseResponse(responseB.text) as { result: { content: { text: string }[] } };
+      const resultsB = JSON.parse(bodyB.result.content[0].text);
       const titlesB = resultsB.results?.map((r: { title: string }) => r.title) ||
                       resultsB.documents?.map((d: { title: string }) => d.title) || [];
 
@@ -605,7 +630,8 @@ describe('MCP RLS Context Isolation (TS-013)', () => {
 
       expect([200, 201]).toContain(responseC.status);
 
-      const resultsC = JSON.parse(responseC.body.result.content[0].text);
+      const bodyC = parseSseResponse(responseC.text) as { result: { content: { text: string }[] } };
+      const resultsC = JSON.parse(bodyC.result.content[0].text);
       const titlesC = resultsC.results?.map((r: { title: string }) => r.title) ||
                       resultsC.documents?.map((d: { title: string }) => d.title) || [];
 
