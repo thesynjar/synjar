@@ -1,18 +1,20 @@
 import {
   Controller,
   Post,
+  Get,
   Param,
   Body,
   UseFilters,
+  UseGuards,
   Ip,
   Headers,
   Logger,
+  Res,
+  HttpCode,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-// Token format: 64 hex characters (32 bytes)
-const isValidToken = (token: string): boolean => {
-  return /^[a-f0-9]{64}$/i.test(token);
-};
+import { Response } from 'express';
+import { McpThrottlerGuard } from './mcp-throttler.guard';
 import { PublicLinkService } from '@/application/public-link/public-link.service';
 import { UsageEventService } from '@/application/usage-event/usage-event.service';
 import { McpExceptionFilter } from './mcp-exception.filter';
@@ -23,19 +25,37 @@ import {
   McpSearchResult,
   McpSearchArguments,
   McpErrorCode,
+  McpInitializeResponse,
+  McpToolsListResponse,
+  McpBaseRequest,
 } from '@/types/mcp.types';
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const MCP_PROTOCOL_VERSION = '2025-06-18';
+const MCP_SERVER_NAME = 'Synjar MCP Server';
+const MCP_SERVER_VERSION = '1.0.0';
+
+// Token format: 64 hex characters (32 bytes)
+const isValidToken = (token: string): boolean => {
+  return /^[a-f0-9]{64}$/i.test(token);
+};
 
 /**
  * MCP (Model Context Protocol) Controller
  *
- * Provides JSON-RPC endpoint for LLM tools (ChatGPT, Claude)
+ * Provides JSON-RPC endpoint for LLM tools (ChatGPT, Claude, CLI clients)
  * to search Synjar knowledge bases.
  *
- * Endpoint: POST /mcp/:token
+ * Endpoints:
+ * - POST /mcp/:token - JSON-RPC requests (initialize, tools/list, tools/call)
+ * - GET /mcp/:token - Returns 405 (SSE not supported)
  *
  * Security:
- * - Rate limiting: 100 req/min per IP (prevents enumeration)
- * - Token validation: UUID format check (defense in depth)
+ * - Rate limiting: 100 req/min per token (prevents abuse)
+ * - Token validation: 64 hex format + DB lookup (defense in depth)
  * - Deep JSON-RPC validation (prevents injection attacks)
  * - RLS context from PublicLink workspace
  *
@@ -43,6 +63,9 @@ import {
  * - Query text stored only when historyMode=ON
  * - IP/User-Agent hashed (one-way)
  * - Query text scrubbed after 90 days
+ *
+ * Note: CORS is disabled - MCP servers are accessed from CLI/backend,
+ * not browsers. This allows any client to connect without origin restrictions.
  */
 @Controller('mcp')
 @UseFilters(McpExceptionFilter)
@@ -54,44 +77,213 @@ export class McpController {
     private readonly usageEventService: UsageEventService,
   ) {}
 
+  // ==========================================================================
+  // GET Handler - Returns 405 (SSE not supported)
+  // ==========================================================================
+
   /**
-   * MCP Search Endpoint
+   * GET /mcp/:token - SSE not supported
    *
-   * Handles JSON-RPC 2.0 requests from LLM tools
+   * Security: Does NOT validate token to prevent enumeration attacks
+   * (different responses for valid/invalid tokens would leak information)
+   */
+  @Get(':token')
+  @UseGuards(McpThrottlerGuard)
+  @Throttle({ default: { limit: 100, ttl: 60000 } })
+  handleGetRequest(@Res() res: Response): void {
+    // DO NOT validate token - prevents enumeration via different responses
+    // Always return 405 for all GET requests
+    res.status(405).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: {
+        code: McpErrorCode.METHOD_NOT_FOUND,
+        message: 'Method not allowed. Use POST for JSON-RPC requests.',
+      },
+    });
+  }
+
+  // ==========================================================================
+  // POST Handler - JSON-RPC endpoint with method routing
+  // ==========================================================================
+
+  /**
+   * POST /mcp/:token - Main JSON-RPC endpoint
    *
-   * Rate limiting order (CRITICAL for security):
-   * 1. IP rate limit (100 req/min) - BEFORE token lookup
-   * 2. Token validation
-   * 3. Per-link rate limit (30 req/min) - AFTER token validation
+   * Handles methods: initialize, tools/list, tools/call
+   *
+   * Security:
+   * - Rate limiting: 100 req/min per token
+   * - Token validation: format + DB lookup for ALL methods
    */
   @Post(':token')
-  @Throttle({ default: { limit: 100, ttl: 60000 } }) // Per IP: 100 req/min
+  @HttpCode(200)
+  @UseGuards(McpThrottlerGuard)
+  @Throttle({ default: { limit: 100, ttl: 60000 } })
   async handleMcpRequest(
     @Param('token') token: string,
     @Body() body: unknown,
     @Ip() ip: string,
     @Headers('user-agent') userAgent?: string,
+  ): Promise<McpJsonRpcResponse | McpInitializeResponse | McpToolsListResponse> {
+    // 1. Token format validation (defense in depth)
+    if (!isValidToken(token)) {
+      this.logger.warn({
+        event: 'MCP_INVALID_TOKEN_FORMAT',
+        token: token.substring(0, 8) + '...',
+        ip,
+      });
+      throw new McpRequestException(
+        'Invalid token format',
+        McpErrorCode.INVALID_PARAMS,
+      );
+    }
+
+    // 2. Parse basic JSON-RPC structure
+    const baseRequest = this.parseBaseRequest(body);
+
+    // 3. Route by method
+    switch (baseRequest.method) {
+      case 'initialize':
+        return this.handleInitialize(baseRequest, token);
+
+      case 'tools/list':
+        return this.handleToolsList(baseRequest, token);
+
+      case 'tools/call':
+        return this.handleToolsCall(baseRequest, token, ip, userAgent);
+
+      default:
+        throw new McpRequestException(
+          `Method not found: ${baseRequest.method}`,
+          McpErrorCode.METHOD_NOT_FOUND,
+        );
+    }
+  }
+
+  // ==========================================================================
+  // Initialize Handler
+  // ==========================================================================
+
+  /**
+   * Handle initialize method
+   *
+   * Returns server capabilities and protocol version
+   * CRITICAL: Validates token with DB lookup (prevents enumeration)
+   */
+  private async handleInitialize(
+    request: McpBaseRequest,
+    token: string,
+  ): Promise<McpInitializeResponse> {
+    // CRITICAL: Full token validation (DB lookup) - prevents enumeration attacks
+    await this.publicLinkService.validateToken(token);
+    // RLS context now set to link.workspaceId
+
+    return {
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {
+          tools: {},
+        },
+        serverInfo: {
+          name: MCP_SERVER_NAME,
+          version: MCP_SERVER_VERSION,
+        },
+      },
+    };
+  }
+
+  // ==========================================================================
+  // Tools List Handler
+  // ==========================================================================
+
+  /**
+   * Handle tools/list method
+   *
+   * Returns list of available tools with their schemas
+   */
+  private async handleToolsList(
+    request: McpBaseRequest,
+    token: string,
+  ): Promise<McpToolsListResponse> {
+    // Validate token and get allowed tags for dynamic description
+    const link = await this.publicLinkService.validateToken(token);
+
+    const tagsDescription =
+      link.allowedTags.length > 0
+        ? `Filter by document tags. Allowed: ${link.allowedTags.join(', ')}`
+        : 'Filter by document tags (all tags allowed)';
+
+    return {
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        tools: [
+          {
+            name: 'synjar_search',
+            description: `Search the Synjar knowledge base.${
+              link.allowedTags.length > 0
+                ? ` Available tags: ${link.allowedTags.join(', ')}`
+                : ''
+            }`,
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description:
+                    'Natural language search query (2-256 characters)',
+                },
+                limit: {
+                  type: 'number',
+                  description: 'Maximum results to return (default: 5, max: 20)',
+                },
+                tags: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: tagsDescription,
+                },
+              },
+              required: ['query'],
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  // ==========================================================================
+  // Tools Call Handler (existing implementation, refactored)
+  // ==========================================================================
+
+  /**
+   * Handle tools/call method
+   *
+   * Executes synjar_search tool
+   */
+  private async handleToolsCall(
+    request: McpBaseRequest,
+    token: string,
+    ip: string,
+    userAgent?: string,
   ): Promise<McpJsonRpcResponse> {
     const startTime = Date.now();
 
-    // 1. Validate token format (64 hex chars) - defense in depth
-    if (!isValidToken(token)) {
-      throw new McpRequestException('Invalid token format', McpErrorCode.INVALID_PARAMS);
-    }
+    // 1. Validate tools/call specific request structure
+    const validatedRequest = this.validateToolsCallRequest(request);
 
-    // 2. Validate JSON-RPC structure (deep validation)
-    const validatedRequest = this.validateMcpRequest(body);
-
-    // 3. Validate PublicLink (includes isActive, expiresAt checks)
+    // 2. Validate PublicLink (includes isActive, expiresAt checks)
     const link = await this.publicLinkService.validateToken(token);
 
-    // 4. Validate arguments (query, limit, tags)
+    // 3. Validate arguments (query, limit, tags)
     const { query, limit, tags } = this.validateArguments(
       validatedRequest.params.arguments,
       link.allowedTags,
     );
 
-    // 5. Execute search (RLS context set by PublicLinkService)
+    // 4. Execute search (RLS context set by PublicLinkService)
     const searchResult = await this.publicLinkService.searchPublic(token, {
       query,
       limit,
@@ -100,8 +292,7 @@ export class McpController {
 
     const latencyMs = Date.now() - startTime;
 
-    // 6. Emit usage event (async, fire-and-forget)
-    // Query text stored only when historyMode=ON
+    // 5. Emit usage event (async, fire-and-forget)
     this.usageEventService
       .create({
         workspaceId: link.workspaceId,
@@ -109,7 +300,10 @@ export class McpController {
         source: 'MCP_SEARCH',
         queryStored: link.historyMode === 'ON',
         queryText: query,
-        resultCount: 'results' in searchResult ? searchResult.results.length : searchResult.documents.length,
+        resultCount:
+          'results' in searchResult
+            ? searchResult.results.length
+            : searchResult.documents.length,
         latencyMs,
         ip,
         userAgent,
@@ -118,17 +312,17 @@ export class McpController {
         this.logger.error('Failed to create usage event', error);
       });
 
-    // 7. Update daily aggregates (async, fire-and-forget)
+    // 6. Update daily aggregates (async, fire-and-forget)
     this.usageEventService
       .updateDailyAggregates(link.workspaceId, 'MCP_SEARCH', link.id)
       .catch((error) => {
         this.logger.error('Failed to update daily aggregates', error);
       });
 
-    // 8. Format response for MCP
+    // 7. Format response for MCP
     const mcpResult = this.formatMcpSearchResult(searchResult);
 
-    // 9. Return MCP JSON-RPC response
+    // 8. Return MCP JSON-RPC response
     return {
       jsonrpc: '2.0',
       id: validatedRequest.id,
@@ -143,57 +337,92 @@ export class McpController {
     };
   }
 
+  // ==========================================================================
+  // Request Validation Methods
+  // ==========================================================================
+
   /**
-   * Deep validation of MCP JSON-RPC request
-   *
-   * Prevents:
-   * - Prototype pollution
-   * - XSS attacks
-   * - SQL injection
-   * - Invalid JSON-RPC structure
+   * Parse basic JSON-RPC structure (method-agnostic)
    */
-  private validateMcpRequest(body: unknown): McpJsonRpcRequest {
+  private parseBaseRequest(body: unknown): McpBaseRequest {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      throw new McpRequestException('Invalid JSON-RPC request', McpErrorCode.INVALID_REQUEST);
+      throw new McpRequestException(
+        'Invalid JSON-RPC request',
+        McpErrorCode.INVALID_REQUEST,
+      );
     }
 
     const req = body as Record<string, unknown>;
 
-    // Validate required fields - these are INVALID_REQUEST (-32600) errors
+    // Validate required fields
     if (req.jsonrpc !== '2.0') {
-      throw new McpRequestException('Invalid JSON-RPC version', McpErrorCode.INVALID_REQUEST);
+      throw new McpRequestException(
+        'Invalid JSON-RPC version',
+        McpErrorCode.INVALID_REQUEST,
+      );
     }
     if (typeof req.id !== 'string' && typeof req.id !== 'number') {
-      throw new McpRequestException('Invalid request ID', McpErrorCode.INVALID_REQUEST);
+      throw new McpRequestException(
+        'Invalid request ID',
+        McpErrorCode.INVALID_REQUEST,
+      );
     }
-    if (req.method !== 'tools/call') {
-      throw new McpRequestException('Unsupported method', McpErrorCode.METHOD_NOT_FOUND);
-    }
-    if (!req.params || typeof req.params !== 'object') {
-      throw new McpRequestException('Missing params', McpErrorCode.INVALID_REQUEST);
+    if (typeof req.method !== 'string') {
+      throw new McpRequestException(
+        'Invalid method',
+        McpErrorCode.INVALID_REQUEST,
+      );
     }
 
-    const params = req.params as Record<string, unknown>;
+    return {
+      jsonrpc: '2.0',
+      id: req.id as string | number,
+      method: req.method,
+      params: req.params,
+    };
+  }
+
+  /**
+   * Validate tools/call specific request structure
+   */
+  private validateToolsCallRequest(request: McpBaseRequest): McpJsonRpcRequest {
+    if (!request.params || typeof request.params !== 'object') {
+      throw new McpRequestException(
+        'Missing params',
+        McpErrorCode.INVALID_REQUEST,
+      );
+    }
+
+    const params = request.params as Record<string, unknown>;
     if (params.name !== 'synjar_search') {
-      throw new McpRequestException('Unsupported tool', McpErrorCode.INVALID_PARAMS);
+      throw new McpRequestException(
+        'Unsupported tool',
+        McpErrorCode.INVALID_PARAMS,
+      );
     }
     if (!params.arguments || typeof params.arguments !== 'object') {
-      throw new McpRequestException('Missing arguments', McpErrorCode.INVALID_REQUEST);
+      throw new McpRequestException(
+        'Missing arguments',
+        McpErrorCode.INVALID_REQUEST,
+      );
     }
 
-    // Prevent prototype pollution - check own properties only
+    // Prevent prototype pollution
     const args = params.arguments as Record<string, unknown>;
     if (
       Object.prototype.hasOwnProperty.call(args, '__proto__') ||
       Object.prototype.hasOwnProperty.call(args, 'constructor') ||
       Object.prototype.hasOwnProperty.call(args, 'prototype')
     ) {
-      throw new McpRequestException('Invalid arguments', McpErrorCode.INVALID_PARAMS);
+      throw new McpRequestException(
+        'Invalid arguments',
+        McpErrorCode.INVALID_PARAMS,
+      );
     }
 
     return {
       jsonrpc: '2.0',
-      id: req.id as string | number,
+      id: request.id,
       method: 'tools/call',
       params: {
         name: 'synjar_search',
@@ -204,39 +433,49 @@ export class McpController {
 
   /**
    * Validate and extract search arguments
-   *
-   * Validates:
-   * - Query: 2-256 characters, NFC normalized
-   * - Limit: 1-20
-   * - Tags: Must be subset of allowed tags
    */
   private validateArguments(
     args: Record<string, unknown>,
     allowedTags: string[],
   ): McpSearchArguments {
-    // Query validation - these are INVALID_PARAMS (-32602) errors
+    // Query validation
     const query = args.query;
     if (typeof query !== 'string') {
-      throw new McpRequestException('Query must be a string', McpErrorCode.INVALID_PARAMS);
+      throw new McpRequestException(
+        'Query must be a string',
+        McpErrorCode.INVALID_PARAMS,
+      );
     }
     if (query.length < 2 || query.length > 256) {
-      throw new McpRequestException('Query must be 2-256 characters', McpErrorCode.INVALID_PARAMS);
+      throw new McpRequestException(
+        'Query must be 2-256 characters',
+        McpErrorCode.INVALID_PARAMS,
+      );
     }
 
     // Limit validation
     const limit = typeof args.limit === 'number' ? args.limit : 5;
     if (limit < 1 || limit > 20) {
-      throw new McpRequestException('Limit must be 1-20', McpErrorCode.INVALID_PARAMS);
+      throw new McpRequestException(
+        'Limit must be 1-20',
+        McpErrorCode.INVALID_PARAMS,
+      );
     }
 
     // Tags validation
     let tags: string[] = [];
     if (args.tags !== undefined) {
       if (!Array.isArray(args.tags)) {
-        throw new McpRequestException('Tags must be an array', McpErrorCode.INVALID_PARAMS);
+        throw new McpRequestException(
+          'Tags must be an array',
+          McpErrorCode.INVALID_PARAMS,
+        );
       }
       if (!args.tags.every((t) => typeof t === 'string')) {
-        throw new McpRequestException('Tags must be strings', McpErrorCode.INVALID_PARAMS);
+        throw new McpRequestException(
+          'Tags must be strings',
+          McpErrorCode.INVALID_PARAMS,
+        );
       }
       tags = args.tags as string[];
 
@@ -260,8 +499,6 @@ export class McpController {
 
   /**
    * Format search results for MCP response
-   *
-   * Converts PublicLinkService result to MCP-compatible format
    */
   private formatMcpSearchResult(
     searchResult: Awaited<ReturnType<typeof this.publicLinkService.searchPublic>>,

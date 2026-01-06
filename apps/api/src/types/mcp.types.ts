@@ -1,9 +1,96 @@
 /**
  * MCP (Model Context Protocol) JSON-RPC Types
  *
- * Specification: https://spec.modelcontextprotocol.io/specification/draft/architecture/
+ * Specification: https://spec.modelcontextprotocol.io/specification/2025-06-18/basic/transports
  */
 
+// ============================================================================
+// Initialize Method Types
+// ============================================================================
+
+export interface McpInitializeRequest {
+  jsonrpc: '2.0';
+  id: string | number;
+  method: 'initialize';
+  params: {
+    protocolVersion: string;
+    capabilities?: Record<string, unknown>;
+    clientInfo?: {
+      name: string;
+      version: string;
+    };
+  };
+}
+
+export interface McpInitializeResponse {
+  jsonrpc: '2.0';
+  id: string | number;
+  result: {
+    protocolVersion: string;
+    capabilities: {
+      tools: Record<string, never>;
+    };
+    serverInfo: {
+      name: string;
+      version: string;
+    };
+  };
+}
+
+// ============================================================================
+// Tools List Method Types
+// ============================================================================
+
+export interface McpToolsListRequest {
+  jsonrpc: '2.0';
+  id: string | number;
+  method: 'tools/list';
+  params?: Record<string, never>;
+}
+
+export interface McpToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: Record<
+      string,
+      {
+        type: string;
+        description: string;
+        items?: { type: string };
+        enum?: string[];
+      }
+    >;
+    required: string[];
+  };
+}
+
+export interface McpToolsListResponse {
+  jsonrpc: '2.0';
+  id: string | number;
+  result: {
+    tools: McpToolDefinition[];
+  };
+}
+
+// ============================================================================
+// Tools Call Method Types (existing)
+// ============================================================================
+
+export interface McpToolsCallRequest {
+  jsonrpc: '2.0';
+  id: string | number;
+  method: 'tools/call';
+  params: {
+    name: 'synjar_search';
+    arguments: Record<string, unknown>;
+  };
+}
+
+/**
+ * @deprecated Use McpToolsCallRequest instead
+ */
 export interface McpJsonRpcRequest {
   jsonrpc: '2.0';
   id: string | number;
@@ -12,6 +99,24 @@ export interface McpJsonRpcRequest {
     name: 'synjar_search';
     arguments: Record<string, unknown>;
   };
+}
+
+// ============================================================================
+// Union Types for Request/Response Routing
+// ============================================================================
+
+export type McpRequest =
+  | McpInitializeRequest
+  | McpToolsListRequest
+  | McpToolsCallRequest;
+
+export type McpMethod = 'initialize' | 'tools/list' | 'tools/call';
+
+export interface McpBaseRequest {
+  jsonrpc: '2.0';
+  id: string | number;
+  method: string;
+  params?: unknown;
 }
 
 export interface McpJsonRpcResponse {
