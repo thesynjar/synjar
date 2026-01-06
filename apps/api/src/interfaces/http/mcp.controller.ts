@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import {
   Controller,
   Post,
@@ -214,18 +215,24 @@ export class McpController {
 
   /**
    * Send SSE response with proper headers
+   * Format: event: message\nid: <uuid>\ndata: <json>\n\n
    */
   private sendSseResponse(res: Response, data: unknown): void {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.status(200);
+    const eventId = crypto.randomUUID();
+    res.write(`event: message\n`);
+    res.write(`id: ${eventId}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
     res.end();
   }
 
   /**
    * Send SSE error response
+   * Format: event: message\nid: <uuid>\ndata: <json>\n\n
    */
   private sendSseError(
     res: Response,
@@ -237,7 +244,11 @@ export class McpController {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.status(httpStatus);
+    const eventId = crypto.randomUUID();
+    res.write(`event: message\n`);
+    res.write(`id: ${eventId}\n`);
     res.write(`data: ${JSON.stringify({
       jsonrpc: '2.0',
       id,
