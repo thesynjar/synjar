@@ -35,7 +35,7 @@ import {
 // ============================================================================
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
-const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18'];
+const SUPPORTED_PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25'];
 const MCP_SERVER_NAME = 'Synjar MCP Server';
 const MCP_SERVER_VERSION = '1.0.0';
 
@@ -262,6 +262,14 @@ export class McpController {
   ): Promise<McpInitializeResponse> {
     // Validate initialize params structure and extract protocolVersion
     const params = this.validateInitializeParams(request.params);
+
+    // Log protocol version for debugging
+    this.logger.log({
+      event: 'MCP_INITIALIZE',
+      tokenPrefix: token.substring(0, 8),
+      clientProtocolVersion: params?.protocolVersion ?? 'not provided',
+      serverProtocolVersion: MCP_PROTOCOL_VERSION,
+    });
 
     // Validate protocol version if provided
     if (params?.protocolVersion && !SUPPORTED_PROTOCOL_VERSIONS.includes(params.protocolVersion)) {
