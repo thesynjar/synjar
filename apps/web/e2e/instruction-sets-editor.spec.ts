@@ -268,9 +268,9 @@ async function navigateToInstructionSets(page: Page) {
 async function createInstructionSet(page: Page, name: string, description = '') {
   await navigateToInstructionSets(page);
 
-  // Button is "Create Your First Set" in empty state, or "New Instruction Set" otherwise
+  // Button is "Create Your First Set" in empty state, or "New Set" otherwise
   const emptyStateButton = page.getByRole('button', { name: /create your first set/i });
-  const newSetButton = page.getByRole('button', { name: /new instruction set/i });
+  const newSetButton = page.getByRole('button', { name: /new set/i });
 
   // Try empty state button first, then the regular one
   let createButton;
@@ -568,18 +568,23 @@ test.describe('Instruction Sets Editor', () => {
       timeout: 10000,
     });
 
+    // Wait for the Available Documents section to load
+    await expect(page.getByText(/Available Documents/i)).toBeVisible({ timeout: 10000 });
+
+    // Wait for documents to be loaded (at least one document should be visible)
+    await expect(page.getByText('Banana Document')).toBeVisible({ timeout: 10000 });
+
     // Type in search input
     const searchInput = page.getByPlaceholder(/search/i);
     await searchInput.fill('banana');
 
-    // Verify only Banana Document is visible in available list
-    const availableSection = page.getByText(/Available Documents/i).locator('..');
-    await expect(availableSection.getByText('Banana Document')).toBeVisible();
+    // Wait for search debounce (300ms) + API response
+    // The search should filter to show only Banana Document
+    await expect(page.getByText('Apple Document')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Cherry Document')).not.toBeVisible({ timeout: 5000 });
 
-    const appleCount = await availableSection.getByText('Apple Document').count();
-    const cherryCount = await availableSection.getByText('Cherry Document').count();
-    expect(appleCount).toBe(0);
-    expect(cherryCount).toBe(0);
+    // Verify Banana Document is still visible after search
+    await expect(page.getByText('Banana Document')).toBeVisible();
   });
 
   test('should filter documents by purpose', async ({ page }) => {

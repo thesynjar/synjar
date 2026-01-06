@@ -391,9 +391,18 @@ test.describe('Document pagination [REGRESSION]', () => {
     await expect(setsTab).toBeVisible({ timeout: 5000 });
     await setsTab.click();
 
+    // Wait for Sets tab URL and content to load
+    await page.waitForURL(/tab=instruction-sets/, { timeout: 5000 });
+    // Wait for either empty state or sets list heading to be visible
+    await expect(
+      page.getByRole('heading', { name: /No Instruction Sets Yet/i }).or(
+        page.getByRole('heading', { name: /Instruction Sets \(/i })
+      )
+    ).toBeVisible({ timeout: 5000 });
+
     // Create instruction set (use empty state button or regular button)
     const emptyStateButton = page.getByRole('button', { name: /create your first set/i });
-    const newSetButton = page.getByRole('button', { name: /new instruction set/i });
+    const newSetButton = page.getByRole('button', { name: /new set/i });
 
     let createButton;
     if (await emptyStateButton.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -433,39 +442,23 @@ test.describe('Document pagination [REGRESSION]', () => {
 
     // Click on the instruction set to open editor
     await page.getByText('Pagination Test Set').click();
-    await expect(page.getByRole('heading', { name: 'Pagination Test Set' })).toBeVisible({ timeout: 5000 });
+    // Wait for editor page to load (URL changes to /edit)
+    await page.waitForURL(/\/instruction-sets\/[a-f0-9-]+\/edit/, { timeout: 10000 });
 
-    // ACT: Click "Add documents" to open modal
-    const addDocsButton = page.getByRole('button', { name: /add documents/i });
-    await expect(addDocsButton).toBeVisible({ timeout: 5000 });
-    await addDocsButton.click();
+    // ACT & ASSERT: Available Documents panel should be visible with all documents
+    await expect(page.getByText(/Available Documents/i)).toBeVisible({ timeout: 5000 });
 
-    // Wait for modal to open
-    await expect(page.getByText(/available documents/i)).toBeVisible({ timeout: 5000 });
+    // Verify document count shows 27 total
+    await expect(page.getByText('27 total')).toBeVisible({ timeout: 5000 });
 
-    // ASSERT: Modal should show document count (27 documents)
-    // Option 1: All documents loaded (for small workspaces)
-    // Check if document 27 is visible (would mean all documents loaded)
-    const allDocsLoaded = await page
-      .getByRole('button', { name: /^Document 27 / })
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
+    // Check if Document 27 is visible (should be first in list as newest)
+    await expect(page.getByText('Document 27')).toBeVisible({ timeout: 5000 });
 
-    if (allDocsLoaded) {
-      // All documents loaded - verify all are accessible
-      await expect(page.getByRole('button', { name: /^Document 1 / })).toBeVisible();
-      await expect(page.getByRole('button', { name: /^Document 27 / })).toBeVisible();
-    } else {
-      // Option 2: Pagination controls in modal
-      // This assertion will FAIL if modal doesn't implement pagination
-      await expect(
-        page.getByRole('navigation', { name: /pagination/i })
-      ).toBeVisible();
-
-      // Should be able to navigate to see remaining documents
-      await page.getByRole('button', { name: /next/i }).click();
-      await expect(page.getByRole('button', { name: /^Document 21 / })).toBeVisible();
-    }
+    // Also verify Document 1 is accessible (oldest, might need scrolling)
+    // Scroll to find Document 1 if needed
+    const doc1 = page.getByText('Document 1').first();
+    await doc1.scrollIntoViewIfNeeded();
+    await expect(doc1).toBeVisible({ timeout: 5000 });
   });
 
   test('should search across all documents in Add to Set modal', async ({
@@ -479,8 +472,17 @@ test.describe('Document pagination [REGRESSION]', () => {
     const setsTab = page.getByRole('link', { name: 'Sets' });
     await setsTab.click();
 
+    // Wait for Sets tab URL and content to load
+    await page.waitForURL(/tab=instruction-sets/, { timeout: 5000 });
+    // Wait for either empty state or sets list heading to be visible
+    await expect(
+      page.getByRole('heading', { name: /No Instruction Sets Yet/i }).or(
+        page.getByRole('heading', { name: /Instruction Sets \(/i })
+      )
+    ).toBeVisible({ timeout: 5000 });
+
     const emptyStateButton = page.getByRole('button', { name: /create your first set/i });
-    const newSetButton = page.getByRole('button', { name: /new instruction set/i });
+    const newSetButton = page.getByRole('button', { name: /new set/i });
 
     let createButton;
     if (await emptyStateButton.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -513,21 +515,24 @@ test.describe('Document pagination [REGRESSION]', () => {
 
     await expect(page.getByText('Search Test Set')).toBeVisible({ timeout: 5000 });
     await page.getByText('Search Test Set').click();
-    await expect(page.getByRole('heading', { name: 'Search Test Set' })).toBeVisible({ timeout: 5000 });
+    // Wait for editor page to load (URL changes to /edit)
+    await page.waitForURL(/\/instruction-sets\/[a-f0-9-]+\/edit/, { timeout: 10000 });
 
-    await page.getByRole('button', { name: /add documents/i }).click();
-    await expect(page.getByText(/available documents/i)).toBeVisible({ timeout: 5000 });
+    // Wait for Available Documents panel to be visible
+    await expect(page.getByText(/Available Documents/i)).toBeVisible({ timeout: 5000 });
 
-    // ACT: Search for document #25 (which is on page 2, not in first 20)
+    // ACT: Search for document #25 (which would be on page 2 if paginated)
     const searchInput = page.getByPlaceholder(/search/i);
     await searchInput.fill('Document 25');
 
-    // ASSERT: Document 25 should be found
-    // This will FAIL if search only works on loaded documents (first 20)
+    // Wait for search debounce (300ms) + API response
+    await page.waitForTimeout(500);
+
+    // ASSERT: Document 25 should be found via server-side search
     await expect(page.getByText('Document 25')).toBeVisible({ timeout: 5000 });
 
-    // Other documents should be filtered out (use exact match)
-    await expect(page.getByRole('button', { name: /^Document 1 / })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /^Document 10 / })).toHaveCount(0);
+    // Other documents should be filtered out
+    await expect(page.getByText('Document 1').first()).not.toBeVisible({ timeout: 2000 });
+    await expect(page.getByText('Document 10').first()).not.toBeVisible({ timeout: 2000 });
   });
 });
