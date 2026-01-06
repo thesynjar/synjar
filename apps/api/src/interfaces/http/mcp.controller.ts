@@ -36,7 +36,25 @@ import {
 // ============================================================================
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
-const SUPPORTED_PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25'];
+/**
+ * MCP protocol versions supported by this server.
+ *
+ * Version history:
+ * - 2024-11-05: Initial MCP specification (DEPRECATED)
+ * - 2025-03-26: Added tool schemas (DEPRECATED)
+ * - 2025-06-18: Streamable HTTP transport (CURRENT DEFAULT)
+ * - 2025-11-25: Latest spec update
+ *
+ * Server negotiates version with client during initialize:
+ * 1. Client sends protocolVersion in initialize params
+ * 2. If version is supported, server responds with that version
+ * 3. If version is unsupported, server returns error with supported list
+ * 4. If client doesn't specify version, server uses 2025-06-18 (default)
+ *
+ * @see https://spec.modelcontextprotocol.io/specification/
+ */
+const SUPPORTED_PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25'] as const;
+const DEPRECATED_VERSIONS = ['2024-11-05', '2025-03-26'];
 const MCP_SERVER_NAME = 'Synjar MCP Server';
 const MCP_SERVER_VERSION = '1.0.0';
 
@@ -296,11 +314,22 @@ export class McpController {
     });
 
     // Validate protocol version if provided
-    if (params?.protocolVersion && !SUPPORTED_PROTOCOL_VERSIONS.includes(params.protocolVersion)) {
-      throw new McpRequestException(
-        `Unsupported protocol version: ${params.protocolVersion}. Supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`,
-        McpErrorCode.INVALID_PARAMS,
-      );
+    if (params?.protocolVersion) {
+      // Validate format: YYYY-MM-DD
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(params.protocolVersion)) {
+        throw new McpRequestException(
+          'Invalid protocol version format. Expected: YYYY-MM-DD (e.g., 2025-06-18)',
+          McpErrorCode.INVALID_PARAMS,
+        );
+      }
+
+      // Then check if version is supported
+      if (!(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(params.protocolVersion)) {
+        throw new McpRequestException(
+          `Unsupported protocol version: ${params.protocolVersion}. Supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`,
+          McpErrorCode.INVALID_PARAMS,
+        );
+      }
     }
 
     // CRITICAL: Full token validation (DB lookup) - prevents enumeration attacks
@@ -308,9 +337,19 @@ export class McpController {
     // RLS context now set to link.workspaceId
 
     // Respond with client's requested version if supported, otherwise use server default
-    const negotiatedVersion = params?.protocolVersion && SUPPORTED_PROTOCOL_VERSIONS.includes(params.protocolVersion)
+    const negotiatedVersion = params?.protocolVersion && (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(params.protocolVersion)
       ? params.protocolVersion
       : MCP_PROTOCOL_VERSION;
+
+    // Log deprecation warning for old protocol versions
+    if (params?.protocolVersion && DEPRECATED_VERSIONS.includes(params.protocolVersion)) {
+      this.logger.warn({
+        event: 'MCP_DEPRECATED_PROTOCOL',
+        tokenPrefix: token.substring(0, 8),
+        requestedVersion: params.protocolVersion,
+        recommendedVersion: MCP_PROTOCOL_VERSION,
+      });
+    }
 
     // Non-null assertion: notifications are filtered before reaching this point
     return {
