@@ -58,6 +58,7 @@ interface SaveDraftDto {
 }
 
 interface ListDocumentsQuery {
+  search?: string;
   tags?: string[];
   verificationStatus?: VerificationStatus;
   processingStatus?: ProcessingStatus;
@@ -179,6 +180,13 @@ export class DocumentService {
             name: { in: query.tags },
           },
         },
+      };
+    }
+
+    if (query.search) {
+      where.title = {
+        contains: query.search,
+        mode: 'insensitive',
       };
     }
 
@@ -514,7 +522,7 @@ export class DocumentService {
         });
       });
     } catch (error) {
-      console.error('Document processing failed:', error);
+      this.logger.error('Document processing failed:', error);
       // Error handling - use workspace context
       try {
         await this.prisma.forWorkspace(workspaceId, async (tx) => {
@@ -527,7 +535,7 @@ export class DocumentService {
           });
         });
       } catch (updateError) {
-        console.error('Failed to update document status:', updateError);
+        this.logger.error('Failed to update document status:', updateError);
       }
     }
   }

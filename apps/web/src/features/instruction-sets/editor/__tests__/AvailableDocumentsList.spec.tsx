@@ -1,22 +1,31 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AvailableDocumentsList } from '../AvailableDocumentsList';
 
 describe('AvailableDocumentsList', () => {
   const mockDocuments = [
-    { id: '1', title: 'API Documentation', sizeBytes: 1000, purpose: 'KNOWLEDGE' as const },
-    { id: '2', title: 'Setup Instructions', sizeBytes: 2000, purpose: 'INSTRUCTION' as const },
-    { id: '3', title: 'FAQ Guide', sizeBytes: 3000, purpose: 'KNOWLEDGE' as const },
+    { id: '1', title: 'API Documentation', sizeBytes: 1000, purpose: 'KNOWLEDGE' as const, tags: [] },
+    { id: '2', title: 'Setup Instructions', sizeBytes: 2000, purpose: 'INSTRUCTION' as const, tags: [] },
+    { id: '3', title: 'FAQ Guide', sizeBytes: 3000, purpose: 'KNOWLEDGE' as const, tags: [] },
   ];
+
+  const defaultPagination = {
+    page: 1,
+    limit: 20,
+    total: 3,
+    totalPages: 1,
+  };
 
   const defaultProps = {
     documents: mockDocuments,
     selectedIds: [],
     searchQuery: '',
     filterPurpose: 'ALL' as const,
+    pagination: defaultPagination,
     onSearchChange: vi.fn(),
     onFilterChange: vi.fn(),
+    onPageChange: vi.fn(),
     onAddDocument: vi.fn(),
     maxDocuments: 20,
     currentDocumentCount: 0,
@@ -24,33 +33,46 @@ describe('AvailableDocumentsList', () => {
     maxSize: 102400,
   };
 
-  describe('search filtering', () => {
-    it('should filter documents by search query', () => {
-      render(<AvailableDocumentsList {...defaultProps} searchQuery="API" />);
-      expect(screen.getByText('API Documentation')).toBeInTheDocument();
-      expect(screen.queryByText('Setup Instructions')).not.toBeInTheDocument();
-    });
-
-    it('should be case insensitive', () => {
-      render(<AvailableDocumentsList {...defaultProps} searchQuery="api" />);
-      expect(screen.getByText('API Documentation')).toBeInTheDocument();
-    });
-
-    it('should filter by partial match', () => {
-      render(<AvailableDocumentsList {...defaultProps} searchQuery="Instr" />);
-      expect(screen.getByText('Setup Instructions')).toBeInTheDocument();
-      expect(screen.queryByText('API Documentation')).not.toBeInTheDocument();
-    });
-
-    it('should show all documents when search is empty', () => {
-      render(<AvailableDocumentsList {...defaultProps} searchQuery="" />);
+  // Note: Search filtering is now server-side, so these tests verify
+  // that the component displays what the server returns
+  describe('search (server-side)', () => {
+    it('should show all documents when server returns all', () => {
+      render(<AvailableDocumentsList {...defaultProps} />);
       expect(screen.getByText('API Documentation')).toBeInTheDocument();
       expect(screen.getByText('Setup Instructions')).toBeInTheDocument();
       expect(screen.getByText('FAQ Guide')).toBeInTheDocument();
     });
+
+    it('should show filtered documents when server returns filtered results', () => {
+      // Simulate server returning only one document matching search
+      const filteredDocs = [mockDocuments[0]];
+      render(
+        <AvailableDocumentsList
+          {...defaultProps}
+          documents={filteredDocs}
+          searchQuery="API"
+        />
+      );
+      expect(screen.getByText('API Documentation')).toBeInTheDocument();
+      expect(screen.queryByText('Setup Instructions')).not.toBeInTheDocument();
+    });
+
+    it('should call onSearchChange when user types in search', async () => {
+      const user = userEvent.setup();
+      const onSearchChange = vi.fn();
+      render(<AvailableDocumentsList {...defaultProps} onSearchChange={onSearchChange} />);
+
+      const searchInput = screen.getByPlaceholderText('Search all documents...');
+      await user.type(searchInput, 'API');
+
+      // Debounced callback - wait for it
+      await waitFor(() => {
+        expect(onSearchChange).toHaveBeenCalled();
+      }, { timeout: 500 });
+    });
   });
 
-  describe('purpose filtering', () => {
+  describe('purpose filtering (client-side)', () => {
     it('should filter by KNOWLEDGE purpose', () => {
       render(<AvailableDocumentsList {...defaultProps} filterPurpose="KNOWLEDGE" />);
       expect(screen.getByText('API Documentation')).toBeInTheDocument();
@@ -70,21 +92,6 @@ describe('AvailableDocumentsList', () => {
       expect(screen.getByText('API Documentation')).toBeInTheDocument();
       expect(screen.getByText('Setup Instructions')).toBeInTheDocument();
       expect(screen.getByText('FAQ Guide')).toBeInTheDocument();
-    });
-  });
-
-  describe('combined filtering', () => {
-    it('should apply both search and purpose filters', () => {
-      render(
-        <AvailableDocumentsList
-          {...defaultProps}
-          searchQuery="Guide"
-          filterPurpose="KNOWLEDGE"
-        />
-      );
-      expect(screen.getByText('FAQ Guide')).toBeInTheDocument();
-      expect(screen.queryByText('API Documentation')).not.toBeInTheDocument();
-      expect(screen.queryByText('Setup Instructions')).not.toBeInTheDocument();
     });
   });
 
@@ -139,13 +146,13 @@ describe('AvailableDocumentsList', () => {
   });
 
   describe('empty states', () => {
-    it('should show "no results" when search has no matches', () => {
-      render(<AvailableDocumentsList {...defaultProps} searchQuery="xyz" />);
+    it('should show "no results" when documents array is empty with active search/filter', () => {
+      render(<AvailableDocumentsList {...defaultProps} documents={[]} searchQuery="xyz" />);
       expect(screen.getByText(/No documents found/)).toBeInTheDocument();
       expect(screen.getByText(/Try different keywords/)).toBeInTheDocument();
     });
 
-    it('should show "no documents" when workspace is empty', () => {
+    it('should show "no documents" when workspace has no documents', () => {
       render(<AvailableDocumentsList {...defaultProps} documents={[]} />);
       expect(screen.getByText(/No documents available/)).toBeInTheDocument();
       expect(screen.getByText(/Upload documents to your workspace/)).toBeInTheDocument();
@@ -157,7 +164,7 @@ describe('AvailableDocumentsList', () => {
     });
 
     it('should show clear search button in no results state', () => {
-      render(<AvailableDocumentsList {...defaultProps} searchQuery="xyz" />);
+      render(<AvailableDocumentsList {...defaultProps} documents={[]} searchQuery="xyz" />);
       const clearButton = screen.getByText('Clear search');
       expect(clearButton).toBeInTheDocument();
     });
@@ -169,6 +176,7 @@ describe('AvailableDocumentsList', () => {
       render(
         <AvailableDocumentsList
           {...defaultProps}
+          documents={[]}
           searchQuery="xyz"
           filterPurpose="KNOWLEDGE"
           onSearchChange={onSearchChange}
@@ -200,29 +208,9 @@ describe('AvailableDocumentsList', () => {
   });
 
   describe('search input', () => {
-    it('should filter documents immediately as user types (debounced callback)', async () => {
-      const user = userEvent.setup();
-      const onSearchChange = vi.fn();
-      render(<AvailableDocumentsList {...defaultProps} onSearchChange={onSearchChange} />);
-
-      // All documents visible initially
-      expect(screen.getByText('API Documentation')).toBeInTheDocument();
-      expect(screen.getByText('Setup Instructions')).toBeInTheDocument();
-
-      const searchInput = screen.getByPlaceholderText('Search documents...');
-      await user.type(searchInput, 'API');
-
-      // Filtering happens immediately (using local state)
-      expect(screen.getByText('API Documentation')).toBeInTheDocument();
-      expect(screen.queryByText('Setup Instructions')).not.toBeInTheDocument();
-
-      // Callback is debounced - may or may not have been called yet
-      // The important behavior is that filtering works immediately
-    });
-
     it('should have search type and proper aria-label', () => {
       render(<AvailableDocumentsList {...defaultProps} />);
-      const searchInput = screen.getByPlaceholderText('Search documents...');
+      const searchInput = screen.getByPlaceholderText('Search all documents...');
       expect(searchInput).toHaveAttribute('type', 'search');
       expect(searchInput).toHaveAttribute('aria-label', 'Search documents by title');
     });
@@ -270,6 +258,90 @@ describe('AvailableDocumentsList', () => {
       const instructionBadges = screen.getAllByText('INSTRUCTION');
       expect(knowledgeBadges).toHaveLength(2);
       expect(instructionBadges).toHaveLength(1);
+    });
+
+    it('should display tags on documents', () => {
+      const docsWithTags = [
+        {
+          id: '1',
+          title: 'Tagged Doc',
+          sizeBytes: 1000,
+          purpose: 'KNOWLEDGE' as const,
+          tags: [
+            { tag: { id: 't1', name: 'api' } },
+            { tag: { id: 't2', name: 'v2' } },
+          ],
+        },
+      ];
+      render(<AvailableDocumentsList {...defaultProps} documents={docsWithTags} />);
+      expect(screen.getByText('api')).toBeInTheDocument();
+      expect(screen.getByText('v2')).toBeInTheDocument();
+    });
+  });
+
+  describe('pagination', () => {
+    it('should show pagination when totalPages > 1', () => {
+      const paginationMultiPage = { page: 1, limit: 20, total: 50, totalPages: 3 };
+      render(<AvailableDocumentsList {...defaultProps} pagination={paginationMultiPage} />);
+      expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
+      expect(screen.getByText('Previous')).toBeInTheDocument();
+      expect(screen.getByText('Next')).toBeInTheDocument();
+    });
+
+    it('should not show pagination when totalPages is 1', () => {
+      render(<AvailableDocumentsList {...defaultProps} />);
+      expect(screen.queryByText(/Page \d+ of \d+/)).not.toBeInTheDocument();
+    });
+
+    it('should disable Previous on first page', () => {
+      const paginationMultiPage = { page: 1, limit: 20, total: 50, totalPages: 3 };
+      render(<AvailableDocumentsList {...defaultProps} pagination={paginationMultiPage} />);
+      expect(screen.getByText('Previous')).toBeDisabled();
+      expect(screen.getByText('Next')).not.toBeDisabled();
+    });
+
+    it('should disable Next on last page', () => {
+      const paginationLastPage = { page: 3, limit: 20, total: 50, totalPages: 3 };
+      render(<AvailableDocumentsList {...defaultProps} pagination={paginationLastPage} />);
+      expect(screen.getByText('Previous')).not.toBeDisabled();
+      expect(screen.getByText('Next')).toBeDisabled();
+    });
+
+    it('should call onPageChange when clicking Next', async () => {
+      const user = userEvent.setup();
+      const onPageChange = vi.fn();
+      const paginationMultiPage = { page: 1, limit: 20, total: 50, totalPages: 3 };
+      render(
+        <AvailableDocumentsList
+          {...defaultProps}
+          pagination={paginationMultiPage}
+          onPageChange={onPageChange}
+        />
+      );
+
+      await user.click(screen.getByText('Next'));
+      expect(onPageChange).toHaveBeenCalledWith(2);
+    });
+
+    it('should call onPageChange when clicking Previous', async () => {
+      const user = userEvent.setup();
+      const onPageChange = vi.fn();
+      const paginationPage2 = { page: 2, limit: 20, total: 50, totalPages: 3 };
+      render(
+        <AvailableDocumentsList
+          {...defaultProps}
+          pagination={paginationPage2}
+          onPageChange={onPageChange}
+        />
+      );
+
+      await user.click(screen.getByText('Previous'));
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('should display total count', () => {
+      render(<AvailableDocumentsList {...defaultProps} />);
+      expect(screen.getByText('3 total')).toBeInTheDocument();
     });
   });
 });

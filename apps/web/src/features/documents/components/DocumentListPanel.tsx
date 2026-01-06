@@ -9,6 +9,7 @@ import { DocumentFilters } from './DocumentFilters';
 import { DocumentRow } from './DocumentRow';
 import { DocumentUploadModal } from './DocumentUploadModal';
 import { NewDocumentModal } from './NewDocumentModal';
+import { Pagination } from './Pagination';
 import { useDocumentList } from '../hooks/useDocumentList';
 import { PROCESSING_STATUSES, VERIFICATION_STATUSES } from '../types';
 
@@ -186,16 +187,23 @@ export function DocumentListPanel({ workspaceId }: DocumentListPanelProps) {
             )}
           </div>
         ) : (
-          <div className="divide-y divide-slate-700">
-            {documents.map((doc) => (
-              <DocumentRow
-                key={doc.id}
-                document={doc}
-                workspaceId={workspaceId}
-                onDelete={() => handleDeleteDocument(doc.id)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="divide-y divide-slate-700">
+              {documents.map((doc) => (
+                <DocumentRow
+                  key={doc.id}
+                  document={doc}
+                  workspaceId={workspaceId}
+                  onDelete={() => handleDeleteDocument(doc.id)}
+                />
+              ))}
+            </div>
+            <Pagination
+              currentPage={pagination.page}
+              totalPages={pagination.totalPages}
+              total={pagination.total}
+            />
+          </>
         )}
       </div>
 

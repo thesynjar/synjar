@@ -3,29 +3,12 @@ import { INSTRUCTION_SET_LIMITS } from '@synjar/shared';
 import { createApiClient } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/model/authStore';
 import { InstructionSetDetail, InstructionSetDocument } from '../../types';
-import { DocumentPurpose, DEFAULT_DOCUMENT_PURPOSE } from '@/shared/types/document.types';
 
 // Re-export limits from shared package for backward compatibility
 export const { MAX_SIZE_BYTES, MAX_DOCUMENTS } = INSTRUCTION_SET_LIMITS;
 
-export interface AvailableDocument {
-  id: string;
-  title: string;
-  sizeBytes: number;
-  purpose: DocumentPurpose;
-  verificationStatus: 'VERIFIED' | 'UNVERIFIED';
-  content: string;
-}
-
-interface DocumentsResponse {
-  documents: Array<{
-    id: string;
-    title: string;
-    content: string;
-    purpose: DocumentPurpose;
-    verificationStatus: 'VERIFIED' | 'UNVERIFIED';
-  }>;
-}
+// Re-export AvailableDocument from new hook for backward compatibility
+export type { AvailableDocument } from './useAvailableDocuments';
 
 interface UseInstructionSetEditorParams {
   workspaceId: string | undefined;
@@ -39,7 +22,6 @@ interface UseInstructionSetEditorResult {
 
   // Data
   instructionSet: InstructionSetDetail | null;
-  availableDocuments: AvailableDocument[];
   selectedDocuments: InstructionSetDocument[];
   lastKnownUpdatedAt: string | null;
 
@@ -68,7 +50,6 @@ export function useInstructionSetEditor({
 
   // Data state
   const [instructionSet, setInstructionSet] = useState<InstructionSetDetail | null>(null);
-  const [availableDocuments, setAvailableDocuments] = useState<AvailableDocument[]>([]);
   const [selectedDocuments, setSelectedDocuments] = useState<InstructionSetDocument[]>([]);
   const [lastKnownUpdatedAt, setLastKnownUpdatedAt] = useState<string | null>(null);
 
@@ -96,36 +77,21 @@ export function useInstructionSetEditor({
     [selectedDocuments]
   );
 
-  // Fetch data on mount
+  // Fetch instruction set data on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
         setLoadError(null);
 
-        const [setData, docsData] = await Promise.all([
-          apiClient.get(`workspaces/${workspaceId}/instruction-sets/${setId}`).json<InstructionSetDetail>(),
-          apiClient
-            .get(`workspaces/${workspaceId}/documents?verificationStatus=VERIFIED`)
-            .json<DocumentsResponse>()
-            .catch(() => ({ documents: [] })),
-        ]);
+        const setData = await apiClient
+          .get(`workspaces/${workspaceId}/instruction-sets/${setId}`)
+          .json<InstructionSetDetail>();
 
         // Set form state from fetched data
         setInstructionSet(setData);
         setSelectedDocuments(setData.documents);
         setLastKnownUpdatedAt(setData.updatedAt);
-
-        // Transform available documents (including content for client-side preview)
-        const available: AvailableDocument[] = docsData.documents.map((doc) => ({
-          id: doc.id,
-          title: doc.title,
-          sizeBytes: doc.content ? new TextEncoder().encode(doc.content).length : 0,
-          purpose: doc.purpose || DEFAULT_DOCUMENT_PURPOSE,
-          verificationStatus: doc.verificationStatus,
-          content: doc.content || '',
-        }));
-        setAvailableDocuments(available);
       } catch (error) {
         console.error('Failed to fetch instruction set:', error);
         setLoadError('Failed to load instruction set');
@@ -143,7 +109,6 @@ export function useInstructionSetEditor({
     isLoading,
     loadError,
     instructionSet,
-    availableDocuments,
     selectedDocuments,
     lastKnownUpdatedAt,
     totalSizeBytes,

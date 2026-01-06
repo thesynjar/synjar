@@ -10,6 +10,7 @@ import { EditorHeader } from './EditorHeader';
 import { MobileTabs, type MobileTab } from './MobileTabs';
 import {
   useInstructionSetEditor,
+  useAvailableDocuments,
   useDocumentOperations,
   useSetForm,
   useUnsavedChanges,
@@ -34,6 +35,7 @@ export function InstructionSetEditorPage() {
   // Search/filter state (kept local as it's UI-only state)
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPurpose, setFilterPurpose] = useState<DocumentPurposeFilter>('ALL');
+  const [docsPage, setDocsPage] = useState(1);
 
   // Mobile tab state
   const [mobileTab, setMobileTab] = useState<MobileTab>('available');
@@ -43,6 +45,20 @@ export function InstructionSetEditorPage() {
 
   // Data fetching and state management
   const editorData = useInstructionSetEditor({ workspaceId, setId });
+
+  // Available documents with server-side search and pagination
+  const availableDocs = useAvailableDocuments({
+    apiClient: editorData.apiClient,
+    workspaceId,
+    search: searchQuery,
+    page: docsPage,
+  });
+
+  // Reset page when search changes
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    setDocsPage(1);
+  };
 
   // Form state and save handler
   const formOps = useSetForm({
@@ -60,7 +76,7 @@ export function InstructionSetEditorPage() {
     workspaceId,
     setId,
     apiClient: editorData.apiClient,
-    availableDocuments: editorData.availableDocuments,
+    availableDocuments: availableDocs.documents,
     selectedDocuments: editorData.selectedDocuments,
     totalSizeBytes: editorData.totalSizeBytes,
     instructionSet: editorData.instructionSet,
@@ -75,7 +91,7 @@ export function InstructionSetEditorPage() {
     formName: formOps.name,
     formDescription: formOps.description,
     selectedDocuments: editorData.selectedDocuments,
-    availableDocuments: editorData.availableDocuments,
+    availableDocuments: availableDocs.documents,
   });
 
   // Unsaved changes navigation warning
@@ -181,17 +197,20 @@ export function InstructionSetEditorPage() {
         {/* Available Documents - Hidden on mobile when "selected" tab is active */}
         <div className={`min-h-80 ${mobileTab !== 'available' ? 'hidden md:block' : ''}`}>
           <AvailableDocumentsList
-            documents={editorData.availableDocuments}
+            documents={availableDocs.documents}
             selectedIds={editorData.selectedDocumentIds}
             searchQuery={searchQuery}
             filterPurpose={filterPurpose}
-            onSearchChange={setSearchQuery}
+            pagination={availableDocs.pagination}
+            onSearchChange={handleSearchChange}
             onFilterChange={setFilterPurpose}
+            onPageChange={setDocsPage}
             onAddDocument={docOps.handleAddDocument}
             maxDocuments={MAX_DOCUMENTS}
             currentDocumentCount={editorData.selectedDocuments.length}
             currentSize={editorData.totalSizeBytes}
             maxSize={MAX_SIZE_BYTES}
+            isLoading={availableDocs.isLoading}
           />
         </div>
 

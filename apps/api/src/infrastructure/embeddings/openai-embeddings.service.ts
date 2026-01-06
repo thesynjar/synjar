@@ -20,7 +20,9 @@ export class OpenAIEmbeddingsService implements IEmbeddingsService {
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
     if (!text || !text.trim()) {
-      throw new Error('Cannot generate embedding for empty text');
+      throw new Error(
+        `Cannot generate embedding: input text is empty or whitespace-only (length: ${text?.length ?? 0})`,
+      );
     }
 
     const response = await this.client.embeddings.create({
@@ -36,7 +38,7 @@ export class OpenAIEmbeddingsService implements IEmbeddingsService {
 
   async generateEmbeddings(texts: string[]): Promise<EmbeddingResult[]> {
     if (texts.length === 0) {
-      throw new Error('Cannot generate embeddings for empty texts array');
+      throw new Error('Cannot generate embeddings: input array is empty');
     }
 
     // Validate all texts are non-empty
@@ -45,7 +47,7 @@ export class OpenAIEmbeddingsService implements IEmbeddingsService {
       .filter((i) => i !== -1);
     if (emptyIndices.length > 0) {
       throw new Error(
-        `Cannot generate embeddings for empty texts at indices: ${emptyIndices.join(', ')}`,
+        `Cannot generate embeddings: ${emptyIndices.length} of ${texts.length} texts are empty at indices [${emptyIndices.join(', ')}]`,
       );
     }
 

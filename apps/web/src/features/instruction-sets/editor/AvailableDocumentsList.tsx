@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { DocumentPurpose } from '@/shared/types/document.types';
+import { TagPill } from '@/features/documents/TagPill';
 
 type DocumentPurposeFilter = 'ALL' | DocumentPurpose;
 
@@ -8,6 +9,14 @@ interface AvailableDocument {
   title: string;
   sizeBytes: number;
   purpose: DocumentPurpose;
+  tags: Array<{ tag: { id: string; name: string } }>;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 interface AvailableDocumentsListProps {
@@ -15,8 +24,10 @@ interface AvailableDocumentsListProps {
   selectedIds: string[];
   searchQuery: string;
   filterPurpose: DocumentPurposeFilter;
+  pagination: Pagination;
   onSearchChange: (query: string) => void;
   onFilterChange: (purpose: DocumentPurposeFilter) => void;
+  onPageChange: (page: number) => void;
   onAddDocument: (documentId: string) => void;
   maxDocuments: number;
   currentDocumentCount: number;
@@ -25,15 +36,17 @@ interface AvailableDocumentsListProps {
   isLoading?: boolean;
 }
 
-const SEARCH_DEBOUNCE_MS = 150;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export function AvailableDocumentsList({
   documents,
   selectedIds,
   searchQuery,
   filterPurpose,
+  pagination,
   onSearchChange,
   onFilterChange,
+  onPageChange,
   onAddDocument,
   maxDocuments,
   currentDocumentCount,
@@ -71,38 +84,39 @@ export function AvailableDocumentsList({
     onSearchChange('');
     onFilterChange('ALL');
   }, [onSearchChange, onFilterChange]);
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Filter documents: exclude already selected, apply search and purpose filter
-  // Use localSearchQuery for immediate filtering feedback
+  // Filter documents: exclude already selected, apply purpose filter (search is server-side)
   const filteredDocuments = useMemo(() => {
     return documents.filter((doc) => {
       // Exclude already selected
       if (selectedIds.includes(doc.id)) return false;
 
-      // Apply search filter (case-insensitive) - use local state for immediate feedback
-      if (localSearchQuery && !doc.title.toLowerCase().includes(localSearchQuery.toLowerCase())) {
-        return false;
-      }
-
-      // Apply purpose filter
+      // Apply purpose filter (client-side since API doesn't support it yet)
       if (filterPurpose !== 'ALL' && doc.purpose !== filterPurpose) {
         return false;
       }
 
       return true;
     });
-  }, [documents, selectedIds, localSearchQuery, filterPurpose]);
+  }, [documents, selectedIds, filterPurpose]);
 
   const canAddMore = currentDocumentCount < maxDocuments;
 
   const wouldExceedSize = useCallback((docSize: number) => {
     return currentSize + docSize > maxSize;
   }, [currentSize, maxSize]);
+
+  const hasNextPage = pagination.page < pagination.totalPages;
+  const hasPrevPage = pagination.page > 1;
+
+  // Show spinner when typing (debounce pending) OR when loading from API
+  const isSearching = (localSearchQuery !== searchQuery) || (isLoading && localSearchQuery !== '');
 
   if (isLoading) {
     return (
@@ -133,7 +147,14 @@ export function AvailableDocumentsList({
 
   return (
     <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 h-full flex flex-col">
-      <h3 className="text-lg font-medium text-white mb-4">Available Documents</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-medium text-white">Available Documents</h3>
+        {pagination.total > 0 && (
+          <span className="text-sm text-slate-400">
+            {pagination.total} total
+          </span>
+        )}
+      </div>
 
       {/* Search and Filter */}
       <div className="space-y-3 mb-4">
@@ -155,11 +176,36 @@ export function AvailableDocumentsList({
             type="search"
             value={localSearchQuery}
             onChange={handleSearchInputChange}
-            placeholder="Search documents..."
+            placeholder="Search all documents..."
             maxLength={200}
             aria-label="Search documents by title"
-            className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+            className="w-full pl-10 pr-10 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
           />
+          {/* Loading spinner when searching (debounce pending or API loading) */}
+          {isSearching && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <svg
+                className="animate-spin h-4 w-4 text-slate-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            </div>
+          )}
         </div>
 
         <select
@@ -257,7 +303,7 @@ export function AvailableDocumentsList({
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-medium truncate">{doc.title}</p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className="text-slate-500 text-sm">{formatSize(doc.sizeBytes)}</span>
                     <span
                       className={`px-1.5 py-0.5 rounded text-xs ${
@@ -268,6 +314,12 @@ export function AvailableDocumentsList({
                     >
                       {doc.purpose}
                     </span>
+                    {doc.tags.slice(0, 2).map(({ tag }) => (
+                      <TagPill key={tag.id} name={tag.name} />
+                    ))}
+                    {doc.tags.length > 2 && (
+                      <span className="text-slate-500 text-xs">+{doc.tags.length - 2}</span>
+                    )}
                   </div>
                 </div>
                 <button
@@ -292,6 +344,29 @@ export function AvailableDocumentsList({
           })
         )}
       </div>
+
+      {/* Pagination */}
+      {pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-700">
+          <button
+            onClick={() => onPageChange(pagination.page - 1)}
+            disabled={!hasPrevPage}
+            className="px-3 py-1.5 text-sm text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-700 transition-colors"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-slate-400">
+            Page {pagination.page} of {pagination.totalPages}
+          </span>
+          <button
+            onClick={() => onPageChange(pagination.page + 1)}
+            disabled={!hasNextPage}
+            className="px-3 py-1.5 text-sm text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-700 transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }

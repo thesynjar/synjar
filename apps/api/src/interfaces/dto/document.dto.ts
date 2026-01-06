@@ -111,6 +111,12 @@ export class UpdateDocumentDto {
 }
 
 export class ListDocumentsQueryDto {
+  @ApiPropertyOptional({ description: 'Search documents by title (case-insensitive)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  search?: string;
+
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()

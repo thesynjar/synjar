@@ -1348,4 +1348,77 @@ describe('DocumentService', () => {
       expect(prismaStub.forWorkspace).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('processDocument (empty chunks handling)', () => {
+    it('should mark document as COMPLETED when all chunks are empty/whitespace', async () => {
+      // Arrange
+      const workspaceId = 'workspace-id-123';
+      const userId = 'user-id-123';
+      const createDto = {
+        title: 'Whitespace Document',
+        content: '   \n\t   \n   ', // All whitespace content
+        tags: [],
+      };
+
+      const createdDocument = {
+        id: 'document-id-123',
+        workspaceId,
+        title: createDto.title,
+        content: createDto.content,
+        processingStatus: ProcessingStatus.PENDING,
+        purpose: 'KNOWLEDGE',
+        tags: [],
+        chunks: [],
+      };
+
+      // Track document updates to verify final status
+      const documentUpdates: { processingStatus?: ProcessingStatus }[] = [];
+
+      // Mock chunkingService to return empty chunks (simulating all whitespace)
+      chunkingServiceStub.chunk = jest.fn().mockResolvedValue([
+        { content: '   ', type: 'paragraph', summary: '' },
+        { content: '\n\t\n', type: 'paragraph', summary: '' },
+        { content: '', type: 'paragraph', summary: '' },
+      ]);
+
+      // Mock forWorkspace for document creation and processing
+      prismaStub.forWorkspace = jest.fn((_workspaceId, callback) => {
+        const tx = {
+          document: {
+            create: jest.fn().mockResolvedValue(createdDocument),
+            findUnique: jest.fn().mockResolvedValue(createdDocument),
+            update: jest.fn().mockImplementation((args) => {
+              if (args.data.processingStatus) {
+                documentUpdates.push({ processingStatus: args.data.processingStatus });
+              }
+              return Promise.resolve({
+                ...createdDocument,
+                ...args.data,
+              });
+            }),
+          },
+          chunk: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
+          $executeRaw: jest.fn(),
+        } as any;
+        return callback(tx);
+      }) as any;
+
+      // Act
+      await service.create(workspaceId, userId, createDto);
+
+      // Wait for async processing to complete
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Assert
+      // Document should transition: PENDING -> PROCESSING -> COMPLETED (not FAILED)
+      expect(chunkingServiceStub.chunk).toHaveBeenCalledWith(createDto.content);
+      // Embeddings should NOT be generated when all chunks are empty
+      expect(embeddingsServiceStub.generateEmbeddings).not.toHaveBeenCalled();
+      // Final status should be COMPLETED
+      const finalUpdate = documentUpdates[documentUpdates.length - 1];
+      expect(finalUpdate?.processingStatus).toBe(ProcessingStatus.COMPLETED);
+    });
+  });
 });
