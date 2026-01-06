@@ -1,50 +1,50 @@
 # SPEC-007: Fixed-size Chunking (FREE)
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P1 (Feature differentiation)
-**Zależności:** ENTERPRISE-007 (Plan) - enterprise repo
+**Priority:** P1 (Feature differentiation)
+**Dependencies:** ENTERPRISE-007 (Plan) - enterprise repo
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Implementacja prostszej strategii chunking dla planu FREE - dzielenie programistyczne po sekcjach z overlap, bez użycia LLM.
+Implementation of a simpler chunking strategy for the FREE plan - programmatic division by sections with overlap, without using LLM.
 
-### Wartość MVP
+### MVP Value
 
-- Obniżenie kosztów dla FREE users (brak wywołań LLM)
-- Różnicowanie produktu (PREMIUM = lepszy chunking)
-- Nadal dobra jakość wyszukiwania dla prostych dokumentów
+- Lower costs for FREE users (no LLM calls)
+- Product differentiation (PREMIUM = better chunking)
+- Still good search quality for simple documents
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Strategia Fixed-size
+### 2.1 Fixed-size Strategy
 
-| Parametr | Wartość |
+| Parameter | Value |
 |----------|---------|
-| Chunk size | 500 tokenów (target) |
-| Overlap | 10-15% (50-75 tokenów) |
-| Separator priority | `\n\n` (akapity) > `\n` (linie) > `. ` (zdania) |
-| Min chunk size | 100 tokenów |
-| Max chunk size | 750 tokenów |
+| Chunk size | 500 tokens (target) |
+| Overlap | 10-15% (50-75 tokens) |
+| Separator priority | `\n\n` (paragraphs) > `\n` (lines) > `. ` (sentences) |
+| Min chunk size | 100 tokens |
+| Max chunk size | 750 tokens |
 
-### 2.2 Algorytm
+### 2.2 Algorithm
 
 ```
-1. Podziel tekst na akapity (split by \n\n)
-2. Dla każdego akapitu:
-   a. Jeśli < min_size → łącz z następnym
-   b. Jeśli > max_size → podziel po zdaniach
-3. Dodaj overlap z poprzedniego chunka (ostatnie 50-75 tokenów)
-4. Zachowaj metadata: startOffset, endOffset, chunkIndex
+1. Split text into paragraphs (split by \n\n)
+2. For each paragraph:
+   a. If < min_size → merge with next
+   b. If > max_size → split by sentences
+3. Add overlap from previous chunk (last 50-75 tokens)
+4. Preserve metadata: startOffset, endOffset, chunkIndex
 ```
 
-### 2.3 Obsługa formatów
+### 2.3 Format Handling
 
-| Format | Separatory |
+| Format | Separators |
 |--------|------------|
 | Markdown | `##`, `###`, `---`, `\n\n` |
 | Plain text | `\n\n`, `\n`, `. ` |
@@ -53,7 +53,7 @@ Implementacja prostszej strategii chunking dla planu FREE - dzielenie programist
 
 ---
 
-## 3. Implementacja
+## 3. Implementation
 
 ### 3.1 FixedSizeChunkingStrategy
 
@@ -220,7 +220,7 @@ export class FixedSizeChunkingStrategy implements IChunkingStrategy {
 }
 ```
 
-### 3.2 Rejestracja strategii
+### 3.2 Strategy Registration
 
 ```typescript
 // src/application/chunking/chunking.module.ts
@@ -256,11 +256,11 @@ export class ChunkingModule {}
 
 ---
 
-## 4. Porównanie strategii
+## 4. Strategy Comparison
 
-| Aspekt | FIXED_SIZE | SMART (LLM) |
+| Aspect | FIXED_SIZE | SMART (LLM) |
 |--------|------------|-------------|
-| Koszt | $0 | ~$0.001 per 1K tokens |
+| Cost | $0 | ~$0.001 per 1K tokens |
 | Latency | <100ms | 1-5s |
 | Quality | Good | Excellent |
 | Semantic coherence | Medium | High |
@@ -268,45 +268,45 @@ export class ChunkingModule {}
 
 ---
 
-## 5. Testy akceptacyjne
+## 5. Acceptance Tests
 
-### 5.1 Test: Podział na chunki
+### 5.1 Test: Division into chunks
 
 ```gherkin
-Scenario: Dokument dzielony na chunki ~500 tokenów
-  Given Dokument tekstowy 2000 tokenów
-  When Przetwarzam przez FixedSizeChunkingStrategy
-  Then Otrzymuję 4-5 chunków
-  And Każdy chunk ma 400-600 tokenów
-  And Chunki mają overlap ~12%
+Scenario: Document divided into chunks ~500 tokens
+  Given Text document of 2000 tokens
+  When Processed by FixedSizeChunkingStrategy
+  Then We get 4-5 chunks
+  And Each chunk has 400-600 tokens
+  And Chunks have ~12% overlap
 ```
 
-### 5.2 Test: Zachowanie akapitów
+### 5.2 Test: Paragraph preservation
 
 ```gherkin
-Scenario: Akapit nie jest dzielony jeśli mieści się w limicie
-  Given Dokument z 3 akapitami po 200 tokenów
-  When Przetwarzam przez FixedSizeChunkingStrategy
-  Then Otrzymuję 2 chunki
-  And Pierwszy chunk zawiera akapity 1-2
-  And Drugi chunk zawiera akapit 3 + overlap
+Scenario: Paragraph is not split if it fits in limit
+  Given Document with 3 paragraphs of 200 tokens each
+  When Processed by FixedSizeChunkingStrategy
+  Then We get 2 chunks
+  And First chunk contains paragraphs 1-2
+  And Second chunk contains paragraph 3 + overlap
 ```
 
-### 5.3 Test: Duży akapit dzielony po zdaniach
+### 5.3 Test: Large paragraph split by sentences
 
 ```gherkin
-Scenario: Duży akapit jest dzielony
-  Given Akapit 1000 tokenów (jedna ściana tekstu)
-  When Przetwarzam przez FixedSizeChunkingStrategy
-  Then Akapit jest podzielony na ~2 chunki
-  And Podział następuje między zdaniami
+Scenario: Large paragraph is split
+  Given Paragraph of 1000 tokens (one wall of text)
+  When Processed by FixedSizeChunkingStrategy
+  Then Paragraph is split into ~2 chunks
+  And Split occurs between sentences
 ```
 
-### 5.4 Test: Markdown headers jako separatory
+### 5.4 Test: Markdown headers as separators
 
 ```gherkin
-Scenario: Headers markdown dzielą sekcje
-  Given Dokument markdown:
+Scenario: Markdown headers split sections
+  Given Markdown document:
     """
     ## Section 1
     Content 1...
@@ -314,8 +314,8 @@ Scenario: Headers markdown dzielą sekcje
     ## Section 2
     Content 2...
     """
-  When Przetwarzam przez FixedSizeChunkingStrategy
-  Then Sekcje są osobnymi chunkami (jeśli wystarczająco duże)
+  When Processed by FixedSizeChunkingStrategy
+  Then Sections are separate chunks (if large enough)
 ```
 
 ---
@@ -323,24 +323,24 @@ Scenario: Headers markdown dzielą sekcje
 ## 6. Definition of Done
 
 - [ ] FixedSizeChunkingStrategy implementation
-- [ ] Unit testy strategii
-- [ ] Testy z różnymi formatami (MD, TXT, extracted PDF)
-- [ ] Benchmarki wydajności
-- [ ] Dokumentacja algorytmu
+- [ ] Unit tests for strategy
+- [ ] Tests with various formats (MD, TXT, extracted PDF)
+- [ ] Performance benchmarks
+- [ ] Algorithm documentation
 
 ---
 
-## 7. Estymacja
+## 7. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
-| Implementacja strategii | M |
-| Obsługa różnych formatów | S |
-| Testy | M |
+| Strategy implementation | M |
+| Various format handling | S |
+| Tests | M |
 | **TOTAL** | **M** |
 
 ---
 
-## 8. Następna specyfikacja
+## 8. Next Specification
 
-Po wdrożeniu: **SPEC-008: Wybór strategii chunking wg planu**
+After implementation: **SPEC-008: Chunking strategy selection by plan**

@@ -1,311 +1,311 @@
 # Specification Review - Pre-Implementation Verification
 
-Wykonaj review specyfikacji PRZED rozpoczęciem implementacji.
+Perform specification review BEFORE starting implementation.
 
-## Cel
+## Goal
 
-Upewnij się, że specyfikacja jest kompletna, spójna i zgodna z zasadami architektonicznymi projektu, zanim zostanie napisana choćby jedna linia kodu.
+Ensure the specification is complete, consistent, and compliant with project's architectural principles before a single line of code is written.
 
-## Krok 1: Przygotowanie kontekstu
+## Step 1: Context Preparation
 
-1. Przeczytaj CLAUDE.md i docs/README.md
-2. Znajdź specyfikację do review:
-   - Jeśli podano ścieżkę → użyj jej
-   - Jeśli nie → znajdź najnowszą w docs/specifications/ (sortuj po dacie)
-3. Przeczytaj powiązane dokumenty:
+1. Read CLAUDE.md and docs/README.md
+2. Find the specification to review:
+   - If path is provided → use it
+   - If not → find the latest in docs/specifications/ (sort by date)
+3. Read related documents:
    - docs/ecosystem.md (bounded contexts)
-   - Powiązane ADR z docs/adr/
-   - README.md produktów, których dotyczy specyfikacja
+   - Related ADRs from docs/adr/
+   - README.md of products the specification relates to
 
-## Krok 2: Uruchom agentów-ekspertów RÓWNOLEGLE
+## Step 2: Run Expert Agents IN PARALLEL
 
-Użyj narzędzia Task aby uruchomić agentów jednocześnie (w jednej wiadomości).
+Use the Task tool to run agents simultaneously (in one message).
 
-**Każdy agent automatycznie zapisuje swój raport do `docs/agents/[nazwa-agenta]/reports/YYYY-MM-DD-HH-ii-spec-review.md`**
+**Each agent automatically saves its report to `docs/agents/[agent-name]/reports/YYYY-MM-DD-HH-ii-spec-review.md`**
 
 ### Agent 1: architecture-reviewer
 
 Prompt:
 ```
-Review specyfikacji pod kątem architektury. Przeczytaj specyfikację i oceń:
+Review specification from architecture perspective. Read the specification and evaluate:
 
 1. **DDD Compliance:**
-   - Czy bounded contexts są poprawnie zdefiniowane?
-   - Czy agregaty mają jasno określone granice i invarianty?
-   - Czy Value Objects są zidentyfikowane?
-   - Czy Domain Events są zdefiniowane (past tense)?
-   - Czy jest ACL dla integracji zewnętrznych?
+   - Are bounded contexts properly defined?
+   - Do aggregates have clearly defined boundaries and invariants?
+   - Are Value Objects identified?
+   - Are Domain Events defined (past tense)?
+   - Is there ACL for external integrations?
 
-2. **SOLID w designie:**
-   - Czy komponenty mają pojedynczą odpowiedzialność?
-   - Czy design jest otwarty na rozszerzenia?
-   - Czy interfejsy są małe i fokusowane?
+2. **SOLID in design:**
+   - Do components have single responsibility?
+   - Is design open for extension?
+   - Are interfaces small and focused?
 
-3. **Warstwy:**
-   - Czy jasno rozdzielono Domain/Application/Infrastructure?
-   - Czy domena nie ma zależności od infrastruktury?
+3. **Layers:**
+   - Is Domain/Application/Infrastructure clearly separated?
+   - Does domain have no infrastructure dependencies?
 
-4. **Zgodność z ekosystemem:**
-   - Czy pasuje do istniejących bounded contexts (docs/ecosystem.md)?
-   - Czy nie duplikuje funkcjonalności innych modułów?
-   - Czy integracje są przez ACL?
+4. **Ecosystem compliance:**
+   - Does it fit existing bounded contexts (docs/ecosystem.md)?
+   - Does it not duplicate functionality of other modules?
+   - Are integrations through ACL?
 
 5. **Enterprise Patterns:**
-   - Czy użyto odpowiednich wzorców (Repository, Orchestrator, Factory)?
-   - Czy są zdefiniowane strategie dla złożonej logiki?
+   - Are appropriate patterns used (Repository, Orchestrator, Factory)?
+   - Are strategies defined for complex logic?
 
-Zapisz raport do docs/agents/architecture-reviewer/reports/
+Save report to docs/agents/architecture-reviewer/reports/
 ```
 
 ### Agent 2: security-reviewer
 
 Prompt:
 ```
-Review specyfikacji pod kątem bezpieczeństwa. Przeczytaj specyfikację i oceń:
+Review specification from security perspective. Read the specification and evaluate:
 
 1. **Authentication & Authorization:**
-   - Czy zdefiniowano kto ma dostęp do funkcjonalności?
-   - Czy multi-tenancy jest uwzględnione (RLS)?
-   - Czy są role i permissions?
+   - Is access to functionality defined?
+   - Is multi-tenancy considered (RLS)?
+   - Are there roles and permissions?
 
 2. **Data Protection:**
-   - Czy wrażliwe dane są zidentyfikowane?
-   - Czy jest plan szyfrowania (at rest, in transit)?
-   - Czy credentials są bezpiecznie przechowywane?
+   - Is sensitive data identified?
+   - Is there an encryption plan (at rest, in transit)?
+   - Are credentials stored securely?
 
 3. **Input Validation:**
-   - Czy zdefiniowano walidację inputów?
-   - Czy są limity (rate limiting, size limits)?
+   - Is input validation defined?
+   - Are there limits (rate limiting, size limits)?
 
 4. **OWASP Top 10:**
-   - Czy design chroni przed injection?
-   - Czy jest zabezpieczenie przed XSS/CSRF?
-   - Czy są secure defaults?
+   - Does design protect against injection?
+   - Is there XSS/CSRF protection?
+   - Are there secure defaults?
 
 5. **Audit & Compliance:**
-   - Czy jest logging zdarzeń bezpieczeństwa?
-   - Czy są wymagania compliance (GDPR, etc.)?
+   - Is security event logging defined?
+   - Are there compliance requirements (GDPR, etc.)?
 
-Zapisz raport do docs/agents/security-reviewer/reports/
+Save report to docs/agents/security-reviewer/reports/
 ```
 
 ### Agent 3: documentation-reviewer
 
 Prompt:
 ```
-Review specyfikacji pod kątem kompletności dokumentacji. Przeczytaj specyfikację i oceń:
+Review specification from documentation completeness perspective. Read the specification and evaluate:
 
-1. **Struktura specyfikacji:**
-   - Czy ma jasny cel i scope?
-   - Czy są zdefiniowane user stories/requirements?
-   - Czy są kryteria akceptacji?
-   - Czy są zdefiniowane out-of-scope?
+1. **Specification structure:**
+   - Does it have clear goal and scope?
+   - Are user stories/requirements defined?
+   - Are there acceptance criteria?
+   - Is out-of-scope defined?
 
 2. **Technical Design:**
-   - Czy są diagramy (sekwencji, architektury)?
-   - Czy API contracts są zdefiniowane?
-   - Czy są przykłady request/response?
-   - Czy schema DB jest opisana?
+   - Are there diagrams (sequence, architecture)?
+   - Are API contracts defined?
+   - Are there request/response examples?
+   - Is DB schema described?
 
-3. **Spójność z dokumentacją:**
-   - Czy jest zgodna z docs/ecosystem.md?
-   - Czy referencuje odpowiednie ADR?
-   - Czy jest plan aktualizacji docs/ po implementacji?
+3. **Documentation consistency:**
+   - Is it consistent with docs/ecosystem.md?
+   - Does it reference appropriate ADRs?
+   - Is there a plan to update docs/ after implementation?
 
-4. **Kompletność:**
-   - Czy są zdefiniowane edge cases?
-   - Czy są error scenarios?
-   - Czy są migration steps (jeśli potrzebne)?
+4. **Completeness:**
+   - Are edge cases defined?
+   - Are error scenarios defined?
+   - Are migration steps defined (if needed)?
 
-5. **Czytelność:**
-   - Czy jest zrozumiała bez dodatkowego kontekstu?
-   - Czy terminologia jest spójna z domeną?
+5. **Readability:**
+   - Is it understandable without additional context?
+   - Is terminology consistent with domain?
 
-Zapisz raport do docs/agents/documentation-reviewer/reports/
+Save report to docs/agents/documentation-reviewer/reports/
 ```
 
 ### Agent 4: test-reviewer
 
 Prompt:
 ```
-Review specyfikacji pod kątem testowalności. Przeczytaj specyfikację i oceń:
+Review specification from testability perspective. Read the specification and evaluate:
 
 1. **Test Strategy:**
-   - Czy są zdefiniowane scenariusze testowe?
-   - Czy są happy path i error scenarios?
-   - Czy są edge cases?
+   - Are test scenarios defined?
+   - Are happy path and error scenarios defined?
+   - Are edge cases defined?
 
-2. **Testowalność designu:**
-   - Czy komponenty są łatwe do mockowania?
-   - Czy są jasne granice do unit testów?
-   - Czy są zdefiniowane integration test points?
+2. **Design testability:**
+   - Are components easy to mock?
+   - Are there clear boundaries for unit tests?
+   - Are integration test points defined?
 
 3. **Acceptance Criteria:**
-   - Czy kryteria akceptacji są mierzalne?
-   - Czy można je zautomatyzować?
-   - Czy są Given-When-Then scenarios?
+   - Are acceptance criteria measurable?
+   - Can they be automated?
+   - Are there Given-When-Then scenarios?
 
 4. **Test Data:**
-   - Czy są przykładowe dane testowe?
-   - Czy są fixtures dla external APIs?
+   - Is sample test data provided?
+   - Are there fixtures for external APIs?
 
 5. **Coverage expectations:**
-   - Czy są zdefiniowane wymagania pokrycia?
-   - Czy są krytyczne ścieżki do przetestowania?
+   - Are coverage requirements defined?
+   - Are critical paths to test defined?
 
-Zapisz raport do docs/agents/test-reviewer/reports/
+Save report to docs/agents/test-reviewer/reports/
 ```
 
-### Agent 5: ux-reviewer (jeśli specyfikacja dotyczy UI/API)
+### Agent 5: ux-reviewer (if specification involves UI/API)
 
-Sprawdź czy specyfikacja zawiera elementy UI lub API contracts. Jeśli tak, uruchom tego agenta.
+Check if specification contains UI elements or API contracts. If so, run this agent.
 
 Prompt:
 ```
-Review specyfikacji pod kątem UX. Przeczytaj specyfikację i oceń:
+Review specification from UX perspective. Read the specification and evaluate:
 
 1. **User Experience:**
-   - Czy user journey jest zdefiniowany?
-   - Czy są mockupy/wireframes?
-   - Czy są zdefiniowane stany (loading, error, empty)?
+   - Is user journey defined?
+   - Are there mockups/wireframes?
+   - Are states defined (loading, error, empty)?
 
 2. **API Design:**
-   - Czy API jest RESTful/consistent?
-   - Czy nazewnictwo jest intuicyjne?
-   - Czy pagination jest zdefiniowana?
-   - Czy error responses są ustandaryzowane?
+   - Is API RESTful/consistent?
+   - Is naming intuitive?
+   - Is pagination defined?
+   - Are error responses standardized?
 
 3. **Accessibility:**
-   - Czy są wymagania a11y?
-   - Czy są zdefiniowane keyboard interactions?
+   - Are there a11y requirements?
+   - Are keyboard interactions defined?
 
 4. **Responsiveness:**
-   - Czy są wymagania mobile/desktop?
-   - Czy są breakpoints?
+   - Are there mobile/desktop requirements?
+   - Are there breakpoints?
 
 5. **Consistency:**
-   - Czy używa istniejących komponentów UI?
-   - Czy jest spójna z resztą aplikacji?
+   - Does it use existing UI components?
+   - Is it consistent with rest of application?
 
-Zapisz raport do docs/agents/ux-reviewer/reports/
+Save report to docs/agents/ux-reviewer/reports/
 ```
 
-### Agent 6: migration-reviewer (jeśli specyfikacja zawiera zmiany DB)
+### Agent 6: migration-reviewer (if specification contains DB changes)
 
-Sprawdź czy specyfikacja zawiera zmiany w schemacie bazy danych. Jeśli tak, uruchom tego agenta.
+Check if specification contains database schema changes. If so, run this agent.
 
 Prompt:
 ```
-Review specyfikacji pod kątem migracji DB. Przeczytaj specyfikację i oceń:
+Review specification from DB migration perspective. Read the specification and evaluate:
 
 1. **Schema Changes:**
-   - Czy zmiany są backwards compatible?
-   - Czy są nullable fields dla nowych kolumn?
-   - Czy są default values?
+   - Are changes backwards compatible?
+   - Are there nullable fields for new columns?
+   - Are there default values?
 
 2. **Data Migration:**
-   - Czy jest plan migracji istniejących danych?
-   - Czy jest rollback strategy?
-   - Czy jest backup plan?
+   - Is there a plan for migrating existing data?
+   - Is there a rollback strategy?
+   - Is there a backup plan?
 
 3. **Multi-tenancy:**
-   - Czy RLS jest uwzględnione?
-   - Czy tenant_id jest na wszystkich tabelach?
-   - Czy są odpowiednie indeksy?
+   - Is RLS considered?
+   - Is tenant_id on all tables?
+   - Are there appropriate indexes?
 
 4. **Performance:**
-   - Czy są zdefiniowane indeksy?
-   - Czy duże tabele są uwzględnione?
-   - Czy jest plan dla zero-downtime migration?
+   - Are indexes defined?
+   - Are large tables considered?
+   - Is there a plan for zero-downtime migration?
 
 5. **Timestamps:**
-   - Czy wszystkie timestampy są "timestamp with time zone"?
+   - Are all timestamps "timestamp with time zone"?
 
-Zapisz raport do docs/agents/migration-reviewer/reports/
+Save report to docs/agents/migration-reviewer/reports/
 ```
 
-## Krok 3: Agregacja wyników
+## Step 3: Results Aggregation
 
-Po otrzymaniu wyników od wszystkich agentów, przedstaw SKONSOLIDOWANY RAPORT:
+After receiving results from all agents, present CONSOLIDATED REPORT:
 
 ```markdown
-# 📋 Specification Review Report
+# Specification Review Report
 
-## Specyfikacja: [nazwa pliku]
+## Specification: [filename]
 
-## Podsumowanie
+## Summary
 
-- 🔴 Critical: X issues (blokuje implementację)
-- 🟠 High: X issues (wymaga poprawy przed implementacją)
-- 🟡 Medium: X issues (do doprecyzowania w trakcie)
-- 🟢 Low: X issues (nice to have)
+- Critical: X issues (blocks implementation)
+- High: X issues (requires fix before implementation)
+- Medium: X issues (to clarify during implementation)
+- Low: X issues (nice to have)
 
-## Status kontroli
+## Check Status
 
-| Obszar        | Status       | Uwagi |
-| ------------- | ------------ | ----- |
-| Architecture  | ✅/⚠️/❌     |       |
-| Security      | ✅/⚠️/❌     |       |
-| Documentation | ✅/⚠️/❌     |       |
-| Testability   | ✅/⚠️/❌     |       |
-| UX            | ✅/⚠️/❌/N/A |       |
-| Migrations    | ✅/⚠️/❌/N/A |       |
+| Area          | Status            | Notes |
+| ------------- | ----------------- | ----- |
+| Architecture  | Pass/Warning/Fail |       |
+| Security      | Pass/Warning/Fail |       |
+| Documentation | Pass/Warning/Fail |       |
+| Testability   | Pass/Warning/Fail |       |
+| UX            | Pass/Warning/Fail/N/A |   |
+| Migrations    | Pass/Warning/Fail/N/A |   |
 
-## 🔴 CRITICAL (blokuje implementację)
+## CRITICAL (blocks implementation)
 
-[zagregowane z wszystkich agentów]
+[aggregated from all agents]
 
-## 🟠 HIGH (poprawić przed implementacją)
+## HIGH (fix before implementation)
 
-[zagregowane z wszystkich agentów]
+[aggregated from all agents]
 
-## 🟡 MEDIUM (doprecyzować w trakcie)
+## MEDIUM (clarify during implementation)
 
-[zagregowane z wszystkich agentów]
+[aggregated from all agents]
 
-## 🟢 LOW (nice to have)
+## LOW (nice to have)
 
-[zagregowane z wszystkich agentów]
+[aggregated from all agents]
 
-## ✅ Co jest dobrze
+## What Is Good
 
-[pozytywne aspekty specyfikacji]
+[positive aspects of specification]
 
-## 📝 Wymagane zmiany w specyfikacji
+## Required Specification Changes
 
-1. [zmiana - priorytet]
-2. [zmiana - priorytet]
+1. [change - priority]
+2. [change - priority]
    ...
 
-## ❓ Pytania do wyjaśnienia
+## Questions to Clarify
 
-1. [pytanie]
-2. [pytanie]
+1. [question]
+2. [question]
    ...
 ```
 
-## Krok 4: Aktualizacja specyfikacji
+## Step 4: Specification Update
 
-Jeśli są CRITICAL lub HIGH issues:
+If there are CRITICAL or HIGH issues:
 
-1. Zaproponuj konkretne zmiany w specyfikacji
-2. Po akceptacji użytkownika, zaktualizuj specyfikację
-3. Dodaj sekcję "Review History" na końcu specyfikacji:
+1. Propose specific changes to specification
+2. After user acceptance, update the specification
+3. Add "Review History" section at the end of specification:
 
 ```markdown
 ## Review History
 
 ### YYYY-MM-DD - Pre-Implementation Review
 - Reviewed by: Claude (architecture, security, documentation, test, ux, migration)
-- Status: ✅ Approved / ⚠️ Approved with comments / ❌ Requires changes
-- Findings: [link do raportów w docs/agents/]
+- Status: Approved / Approved with comments / Requires changes
+- Findings: [link to reports in docs/agents/]
 ```
 
-## Ważne zasady
+## Important Rules
 
-- Review specyfikacji PRZED implementacją oszczędza czas
-- CRITICAL issues MUSZĄ być rozwiązane przed rozpoczęciem kodowania
-- HIGH issues powinny być rozwiązane, ale można zacząć z jasnym planem
-- Każdy agent analizuje specyfikację w kontekście całego ekosystemu
-- Deduplikuj problemy jeśli kilku agentów wykryło to samo
-- Zapisuj raporty do docs/agents/[nazwa-agenta]/reports/
+- Specification review BEFORE implementation saves time
+- CRITICAL issues MUST be resolved before starting coding
+- HIGH issues should be resolved, but you can start with a clear plan
+- Each agent analyzes specification in context of entire ecosystem
+- Deduplicate issues if multiple agents detected the same thing
+- Save reports to docs/agents/[agent-name]/reports/

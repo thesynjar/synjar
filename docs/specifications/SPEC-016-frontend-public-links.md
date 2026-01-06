@@ -1,61 +1,61 @@
 # SPEC-016: Frontend - Public Links
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P1 (Core feature)
-**Zależności:** SPEC-012 (Frontend Dashboard)
+**Priority:** P1 (Core feature)
+**Dependencies:** SPEC-012 (Frontend Dashboard)
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Zarządzanie publicznymi linkami - tworzenie, konfiguracja, monitorowanie dostępu zewnętrznego do bazy wiedzy.
+Public link management - creating, configuring, monitoring external access to the knowledge base.
 
-### Wartość MVP
+### MVP Value
 
-- Tworzenie publicznych linków
-- Konfiguracja zakresu (tagi)
-- Data wygaśnięcia
-- Kopiowanie URL
-- Lista aktywnych linków
+- Creating public links
+- Scope configuration (tags)
+- Expiration date
+- URL copying
+- List of active links
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Strony
+### 2.1 Pages
 
-| Strona | URL | Opis |
+| Page | URL | Description |
 |--------|-----|------|
-| Public Links List | /workspaces/:id/public-links | Lista linków |
-| Create Link | Modal | Tworzenie linku |
-| Link Details | Sheet/Modal | Szczegóły i URL |
+| Public Links List | /workspaces/:id/public-links | Link list |
+| Create Link | Modal | Link creation |
+| Link Details | Sheet/Modal | Details and URL |
 
-### 2.2 Funkcjonalności
+### 2.2 Features
 
-1. **Lista linków**
-   - Nazwa linku
+1. **Link list**
+   - Link name
    - Status (active/expired)
-   - Dozwolone tagi
-   - Data wygaśnięcia
-   - Akcje (copy, edit, delete)
+   - Allowed tags
+   - Expiration date
+   - Actions (copy, edit, delete)
 
-2. **Tworzenie linku**
-   - Nazwa (opcjonalna)
-   - Dozwolone tagi (multi-select lub wszystkie)
-   - Data wygaśnięcia (opcjonalna)
-   - Generowany URL
+2. **Link creation**
+   - Name (optional)
+   - Allowed tags (multi-select or all)
+   - Expiration date (optional)
+   - Generated URL
 
-3. **Szczegóły linku**
-   - URL do skopiowania
-   - Przykład użycia (curl)
-   - QR code (opcjonalnie)
+3. **Link details**
+   - URL to copy
+   - Usage example (curl)
+   - QR code (optional)
 
 ---
 
-## 3. Implementacja
+## 3. Implementation
 
-### 3.1 Struktura plików
+### 3.1 File Structure
 
 ```
 apps/web/src/features/public-links/
@@ -662,37 +662,37 @@ interface PublicSearchResultDto {
 ### 4.1 Public Links List mockup
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Public Links                                [Create Link]  │
-│  Share your knowledge base with external systems            │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ ℹ️ Public links allow external systems to search    │    │
-│  │    your knowledge base without authentication.      │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-│  Active Links (2)                                           │
-│                                                             │
-│  ┌─────────────────────────┐  ┌─────────────────────────┐   │
-│  │ 🔗 ChatGPT Integration  │  │ 🔗 Customer Bot         │   │
-│  │                  Active │  │                  Active │   │
-│  │                         │  │                         │   │
-│  │ All documents           │  │ [support] [faq]         │   │
-│  │                         │  │                         │   │
-│  │ Never expires           │  │ Expires in 25 days      │   │
-│  │                         │  │                         │   │
-│  │ [Copy URL]              │  │ [Copy URL]              │   │
-│  └─────────────────────────┘  └─────────────────────────┘   │
-│                                                             │
-│  Expired Links (1)                                          │
-│                                                             │
-│  ┌─────────────────────────┐                                │
-│  │ 🔗 Old Integration      │                                │
-│  │                 Expired │                                │
-│  │ Expired 5 days ago      │                                │
-│  └─────────────────────────┘                                │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|  Public Links                                [Create Link]   |
+|  Share your knowledge base with external systems             |
+|                                                              |
+|  +-----------------------------------------------------+     |
+|  | [info] Public links allow external systems to search |    |
+|  |        your knowledge base without authentication.   |    |
+|  +-----------------------------------------------------+     |
+|                                                              |
+|  Active Links (2)                                            |
+|                                                              |
+|  +-------------------------+  +-------------------------+    |
+|  | [link] ChatGPT Integr.  |  | [link] Customer Bot     |    |
+|  |                  Active |  |                  Active |    |
+|  |                         |  |                         |    |
+|  | All documents           |  | [support] [faq]         |    |
+|  |                         |  |                         |    |
+|  | Never expires           |  | Expires in 25 days      |    |
+|  |                         |  |                         |    |
+|  | [Copy URL]              |  | [Copy URL]              |    |
+|  +-------------------------+  +-------------------------+    |
+|                                                              |
+|  Expired Links (1)                                           |
+|                                                              |
+|  +-------------------------+                                 |
+|  | [link] Old Integration  |                                 |
+|  |                 Expired |                                 |
+|  | Expired 5 days ago      |                                 |
+|  +-------------------------+                                 |
+|                                                              |
++-------------------------------------------------------------+
 ```
 
 ---
@@ -704,33 +704,33 @@ interface PublicSearchResultDto {
 - [ ] CreateLinkModal
 - [ ] LinkDetailsSheet
 - [ ] CopyableUrl component
-- [ ] UsageExample z code snippets
+- [ ] UsageExample with code snippets
 - [ ] usePublicLinks hook
 - [ ] Delete confirmation
-- [ ] Unit testy
+- [ ] Unit tests
 - [ ] E2E test create link
 
 ---
 
-## 6. Estymacja
+## 6. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
 | PublicLinksPage | S |
 | CreateLinkModal | M |
 | LinkDetailsSheet | M |
 | UsageExample | S |
 | Hooks + API | S |
-| Testy | S |
+| Tests | S |
 | **TOTAL** | **M** |
 
 ---
 
-## 7. Podsumowanie specyfikacji
+## 7. Specification Summary
 
-To kończy serię specyfikacji dla MVP Synjar:
+This concludes the specification series for Synjar MVP:
 
-| # | Specyfikacja | Priorytet | Złożoność |
+| # | Specification | Priority | Complexity |
 |---|--------------|-----------|-----------|
 | 001 | RLS | P0 | M |
 | 002 | Plan/Subscription | P0 | M |
@@ -749,10 +749,10 @@ To kończy serię specyfikacji dla MVP Synjar:
 | 015 | Frontend Search | P1 | M |
 | 016 | Frontend Public Links | P1 | M |
 
-**Rekomendowana kolejność implementacji:**
-1. SPEC-001 → SPEC-003/004/005 (fundamenty) - Plan/Subscription w enterprise
-2. SPEC-011 → SPEC-012 → SPEC-013 (frontend core)
-3. SPEC-006 → SPEC-007 → SPEC-008 (usage + chunking)
-4. SPEC-015 → SPEC-016 (frontend features)
+**Recommended implementation order:**
+1. SPEC-001 -> SPEC-003/004/005 (foundations) - Plan/Subscription in enterprise
+2. SPEC-011 -> SPEC-012 -> SPEC-013 (frontend core)
+3. SPEC-006 -> SPEC-007 -> SPEC-008 (usage + chunking)
+4. SPEC-015 -> SPEC-016 (frontend features)
 5. SPEC-014 (markdown editor)
-6. SPEC-009 → SPEC-010 (premium features)
+6. SPEC-009 -> SPEC-010 (premium features)

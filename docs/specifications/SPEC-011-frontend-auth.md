@@ -1,60 +1,60 @@
 # SPEC-011: Frontend - Auth
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P0 (Foundation)
-**Zależności:** Backend API (existing)
+**Priority:** P0 (Foundation)
+**Dependencies:** Backend API (existing)
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Implementacja podstawowego flow autentykacji w React: login, rejestracja, zarządzanie sesją.
+Implementation of basic authentication flow in React: login, registration, session management.
 
-### Wartość MVP
+### MVP Value
 
-- User może się zarejestrować i zalogować
-- Sesja utrzymywana przez JWT
-- Automatyczne odświeżanie tokenu
-- Ochrona routów dla zalogowanych
+- User can register and log in
+- Session maintained via JWT
+- Automatic token refresh
+- Route protection for logged-in users
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Strony
+### 2.1 Pages
 
-| Strona | URL | Dostęp |
+| Page | URL | Access |
 |--------|-----|--------|
 | Login | /login | Public |
 | Register | /register | Public |
 | Forgot Password | /forgot-password | Public (v2) |
 
-### 2.2 Funkcjonalności
+### 2.2 Features
 
 1. **Login**
    - Email + password
    - "Remember me" checkbox
-   - Link do rejestracji
+   - Link to registration
    - Error handling
 
 2. **Register**
    - Email + password + name
    - Password confirmation
    - Terms of service checkbox
-   - Link do logowania
+   - Link to login
 
 3. **Session management**
-   - JWT w HTTP-only cookies (backend)
-   - Auto-refresh przed wygaśnięciem
+   - JWT in HTTP-only cookies (backend)
+   - Auto-refresh before expiration
    - Logout (clear cookies)
-   - Redirect po login/logout
+   - Redirect after login/logout
 
 ---
 
-## 3. Stack technologiczny
+## 3. Technology Stack
 
-| Technologia | Użycie |
+| Technology | Usage |
 |-------------|--------|
 | React 18 | UI Framework |
 | Vite | Build tool |
@@ -67,9 +67,9 @@ Implementacja podstawowego flow autentykacji w React: login, rejestracja, zarzą
 
 ---
 
-## 4. Implementacja
+## 4. Implementation
 
-### 4.1 Struktura plików
+### 4.1 File Structure
 
 ```
 apps/web/src/
@@ -185,7 +185,7 @@ export function useAuth() {
 }
 ```
 
-### 4.3 API Client z auto-refresh
+### 4.3 API Client with auto-refresh
 
 ```typescript
 // src/shared/lib/api-client.ts
@@ -296,7 +296,7 @@ export function LoginForm() {
         <Input
           type="password"
           {...register('password')}
-          placeholder="••••••••"
+          placeholder="********"
         />
       </FormField>
 
@@ -387,33 +387,33 @@ export const router = createBrowserRouter([
 ### 5.1 Login Page mockup
 
 ```
-┌─────────────────────────────────────────┐
-│                                         │
-│           Synjar                        │
-│                                         │
-│  ┌─────────────────────────────────┐    │
-│  │                                 │    │
-│  │  Sign in to your account        │    │
-│  │                                 │    │
-│  │  Email                          │    │
-│  │  ┌─────────────────────────┐    │    │
-│  │  │ you@example.com         │    │    │
-│  │  └─────────────────────────┘    │    │
-│  │                                 │    │
-│  │  Password                       │    │
-│  │  ┌─────────────────────────┐    │    │
-│  │  │ ••••••••                │    │    │
-│  │  └─────────────────────────┘    │    │
-│  │                                 │    │
-│  │  ┌─────────────────────────┐    │    │
-│  │  │      Sign in            │    │    │
-│  │  └─────────────────────────┘    │    │
-│  │                                 │    │
-│  │  Don't have an account? Sign up │    │
-│  │                                 │    │
-│  └─────────────────────────────────┘    │
-│                                         │
-└─────────────────────────────────────────┘
++-------------------------------------------+
+|                                           |
+|           Synjar                          |
+|                                           |
+|  +-------------------------------------+  |
+|  |                                     |  |
+|  |  Sign in to your account            |  |
+|  |                                     |  |
+|  |  Email                              |  |
+|  |  +-----------------------------+    |  |
+|  |  | you@example.com             |    |  |
+|  |  +-----------------------------+    |  |
+|  |                                     |  |
+|  |  Password                           |  |
+|  |  +-----------------------------+    |  |
+|  |  | ********                    |    |  |
+|  |  +-----------------------------+    |  |
+|  |                                     |  |
+|  |  +-----------------------------+    |  |
+|  |  |      Sign in                |    |  |
+|  |  +-----------------------------+    |  |
+|  |                                     |  |
+|  |  Don't have an account? Sign up     |  |
+|  |                                     |  |
+|  +-------------------------------------+  |
+|                                           |
++-------------------------------------------+
 ```
 
 ### 5.2 Design tokens
@@ -446,7 +446,7 @@ colors: {
 
 ---
 
-## 6. Testy
+## 6. Tests
 
 ### 6.1 Unit tests
 
@@ -498,31 +498,31 @@ describe('LoginForm', () => {
 
 - [ ] Project setup (Vite + React + TypeScript)
 - [ ] Tailwind CSS configuration
-- [ ] API client z credentials i interceptors
+- [ ] API client with credentials and interceptors
 - [ ] AuthContext + useAuth hook
 - [ ] LoginPage + LoginForm
 - [ ] RegisterPage + RegisterForm
 - [ ] ProtectedRoute component
 - [ ] Router configuration
-- [ ] Unit testy dla formularzy
+- [ ] Unit tests for forms
 - [ ] E2E test login flow
 
 ---
 
-## 8. Estymacja
+## 8. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
 | Project setup | S |
 | Auth context | M |
 | Login page | S |
 | Register page | S |
 | Protected routes | S |
-| Testy | M |
+| Tests | M |
 | **TOTAL** | **M** |
 
 ---
 
-## 9. Następna specyfikacja
+## 9. Next Specification
 
-Po wdrożeniu: **SPEC-012: Frontend - Dashboard**
+After implementation: **SPEC-012: Frontend - Dashboard**

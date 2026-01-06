@@ -1,53 +1,53 @@
 # SPEC-006: Usage Tracking
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P1 (Visibility)
-**Zależności:** ENTERPRISE-007 (Plan - enterprise), SPEC-004 (Document limit), SPEC-005 (Storage limit)
+**Priority:** P1 (Visibility)
+**Dependencies:** ENTERPRISE-007 (Plan - enterprise), SPEC-004 (Document limit), SPEC-005 (Storage limit)
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Zapewnienie pełnej widoczności wykorzystania zasobów dla użytkownika i systemu.
+Provide full visibility of resource usage for users and the system.
 
-### Wartość MVP
+### MVP Value
 
-- User widzi ile wykorzystał z każdego limitu
-- Podstawa do alertów o zbliżaniu się do limitu
-- Dashboard z usage w aplikacji
+- User sees how much they've used of each limit
+- Foundation for alerts about approaching limits
+- Usage dashboard in the application
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Metryki do śledzenia
+### 2.1 Metrics to Track
 
-| Metryka | Zakres | Jak liczymy |
+| Metric | Scope | How We Count |
 |---------|--------|-------------|
 | Workspaces count | Per user (OWNER) | COUNT WorkspaceMember WHERE role=OWNER |
 | Documents count | Per workspace | COUNT Document WHERE workspaceId |
-| Storage used | Per user (wszystkie owned ws) | SUM(fileSize + content length) |
+| Storage used | Per user (all owned ws) | SUM(fileSize + content length) |
 | Chunks count | Per workspace | COUNT Chunk |
 | Public links | Per workspace | COUNT PublicLink |
 
-### 2.2 Dane historyczne (opcjonalnie v2)
+### 2.2 Historical Data (optional v2)
 
-W MVP liczymy na żywo. W v2 można dodać:
-- Dzienny snapshot usage
-- Trendy (wzrost/spadek)
-- Alerty przy 80%, 90%, 100%
+In MVP we count live. In v2 we can add:
+- Daily usage snapshot
+- Trends (growth/decline)
+- Alerts at 80%, 90%, 100%
 
 ---
 
 ## 3. API
 
-### 3.1 Endpointy
+### 3.1 Endpoints
 
 ```
-GET /usage                     # Całościowe usage usera
+GET /usage                     # User's total usage
 GET /usage/workspaces          # Usage per workspace
-GET /workspaces/:id/usage      # Usage konkretnego workspace'a
+GET /workspaces/:id/usage      # Specific workspace usage
 ```
 
 ### 3.2 DTOs
@@ -85,7 +85,7 @@ interface WorkspacesUsageResponseDto {
     role: Role;
     documents: {
       current: number;
-      limit: number;      // limit zależy od OWNER'a
+      limit: number;      // limit depends on OWNER
       percentUsed: number;
     };
     storage: {
@@ -148,7 +148,7 @@ interface WorkspaceUsageResponseDto {
 
 ---
 
-## 4. Implementacja
+## 4. Implementation
 
 ### 4.1 UsageService
 
@@ -292,16 +292,16 @@ export class UsageController {
 
 ---
 
-## 5. Testy akceptacyjne
+## 5. Acceptance Tests
 
-### 5.1 Test: User widzi swoje usage
+### 5.1 Test: User sees their usage
 
 ```gherkin
-Scenario: User pobiera swoje usage
-  Given User z planem FREE
-  And User ma 1 workspace z 50 dokumentami używającymi 45 MB
-  When User wykonuje GET /usage
-  Then Response zawiera:
+Scenario: User fetches their usage
+  Given User with FREE plan
+  And User has 1 workspace with 50 documents using 45 MB
+  When User executes GET /usage
+  Then Response contains:
     | workspaces.current | 1 |
     | workspaces.limit | 1 |
     | workspaces.percentUsed | 100 |
@@ -313,10 +313,10 @@ Scenario: User pobiera swoje usage
 ### 5.2 Test: Usage per workspace
 
 ```gherkin
-Scenario: User widzi szczegóły workspace'a
-  Given Workspace z 10 dokumentami (5 verified, 5 unverified)
-  When User wykonuje GET /workspaces/{id}/usage
-  Then Response zawiera:
+Scenario: User sees workspace details
+  Given Workspace with 10 documents (5 verified, 5 unverified)
+  When User executes GET /workspaces/{id}/usage
+  Then Response contains:
     | documents.total | 10 |
     | documents.byVerification.verified | 5 |
     | documents.byVerification.unverified | 5 |
@@ -326,26 +326,26 @@ Scenario: User widzi szczegóły workspace'a
 
 ## 6. Definition of Done
 
-- [ ] UsageService z metodami
+- [ ] UsageService with methods
 - [ ] GET /usage endpoint
 - [ ] GET /usage/workspaces endpoint
 - [ ] GET /workspaces/:id/usage endpoint
-- [ ] Testy jednostkowe
-- [ ] Dokumentacja Swagger
+- [ ] Unit tests
+- [ ] Swagger documentation
 
 ---
 
-## 7. Estymacja
+## 7. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
 | UsageService | M |
 | Endpoints | S |
-| Testy | S |
+| Tests | S |
 | **TOTAL** | **M** |
 
 ---
 
-## 8. Następna specyfikacja
+## 8. Next Specification
 
-Po wdrożeniu: **SPEC-007: Fixed-size chunking dla FREE**
+After implementation: **SPEC-007: Fixed-size chunking for FREE**

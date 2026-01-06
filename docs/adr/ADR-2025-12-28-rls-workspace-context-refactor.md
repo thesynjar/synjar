@@ -6,9 +6,9 @@
 
 ## Context
 
-### Obecna architektura (user-based RLS)
+### Current architecture (user-based RLS)
 
-Obecny RLS (zaimplementowany w SPEC-001 3 dni temu) używa **user context**:
+The current RLS (implemented in SPEC-001 3 days ago) uses **user context**:
 
 ```sql
 CREATE POLICY document_isolation ON "Document"
@@ -16,7 +16,7 @@ CREATE POLICY document_isolation ON "Document"
   USING ("workspaceId" IN (SELECT * FROM get_user_workspace_ids()));
 ```
 
-Gdzie `get_user_workspace_ids()` to funkcja:
+Where `get_user_workspace_ids()` is a function:
 
 ```sql
 CREATE FUNCTION get_user_workspace_ids()
@@ -29,37 +29,37 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 ### Problem
 
-**Document Processing Scheduler** wymaga przetwarzania dokumentów per workspace, ale:
+**Document Processing Scheduler** requires processing documents per workspace, but:
 
-1. **Obecny RLS wymaga `user_id`** - scheduler musiał używać `workspace.createdById` jako context
-2. **Semantycznie niepoprawne** - scheduler przetwarza workspace, nie user
-3. **`withoutRls()` jest niebezpieczne** - bypasuje CAŁE RLS, widzi WSZYSTKIE workspaces
+1. **Current RLS requires `user_id`** - scheduler had to use `workspace.createdById` as context
+2. **Semantically incorrect** - scheduler processes workspace, not user
+3. **`withoutRls()` is dangerous** - bypasses ENTIRE RLS, sees ALL workspaces
 
 ```typescript
-// Obecne rozwiązanie - PROBLEMATYCZNE
+// Current solution - PROBLEMATIC
 await this.prisma.forUser(workspace.createdById, async (tx) => {
-  // Używa ownera workspace'a jako kontekst - co jeśli owner opuści workspace?
+  // Uses workspace owner as context - what if owner leaves workspace?
 });
 
-// Alternatywa - JESZCZE GORZEJ
+// Alternative - EVEN WORSE
 await this.prisma.withoutRls(async (tx) => {
-  // Widzi WSZYSTKIE dane wszystkich workspaces!
+  // Sees ALL data from all workspaces!
 });
 ```
 
-### Dlaczego zmieniamy SPEC-001 po 3 dniach?
+### Why are we changing SPEC-001 after 3 days?
 
-SPEC-001 rozwiązał problem **API request isolation** (user widzi tylko swoje workspaces). Ale nie przewidział:
+SPEC-001 solved the problem of **API request isolation** (user sees only their workspaces). But it didn't anticipate:
 
-1. **Background jobs** - scheduler nie ma user context
+1. **Background jobs** - scheduler has no user context
 2. **System operations** - cron jobs, webhooks, migrations
-3. **Performance** - JOIN przez `WorkspaceMember` w każdym query
+3. **Performance** - JOIN through `WorkspaceMember` in every query
 
 ## Decision
 
-**Zmienić mechanizm context propagation z user-based na workspace-based.**
+**Change the context propagation mechanism from user-based to workspace-based.**
 
-### Nowa architektura (workspace-based RLS)
+### New architecture (workspace-based RLS)
 
 ```sql
 CREATE POLICY document_select ON "Document"
@@ -67,25 +67,25 @@ CREATE POLICY document_select ON "Document"
   USING ("workspaceId" = current_setting('app.current_workspace_id', true)::UUID);
 ```
 
-### Kluczowe zmiany
+### Key changes
 
-1. **RLS policies** używają bezpośrednio `app.current_workspace_id`
-2. **Middleware** weryfikuje membership PRZED ustawieniem context
-3. **PrismaService.forWorkspace()** dla scheduler i system operations
-4. **WorkspaceProcessingQueue** jako system table (bez RLS) dla routing
+1. **RLS policies** use `app.current_workspace_id` directly
+2. **Middleware** verifies membership BEFORE setting context
+3. **PrismaService.forWorkspace()** for scheduler and system operations
+4. **WorkspaceProcessingQueue** as system table (without RLS) for routing
 
 ### Security Model
 
 **Defense in depth:**
 
-1. **Warstwa 1:** Middleware weryfikuje membership (`WorkspaceMember`)
-2. **Warstwa 2:** RLS policies filtrują po `workspaceId`
+1. **Layer 1:** Middleware verifies membership (`WorkspaceMember`)
+2. **Layer 2:** RLS policies filter by `workspaceId`
 
-Nawet jeśli middleware zawiedzie, RLS nadal blokuje dostęp (o ile `app.current_workspace_id` nie został ustawiony).
+Even if middleware fails, RLS still blocks access (as long as `app.current_workspace_id` wasn't set).
 
 ## Alternatives Considered
 
-### Alt 1: Scheduler używa `withoutRls()` + explicit filter
+### Alt 1: Scheduler uses `withoutRls()` + explicit filter
 
 ```typescript
 await prisma.withoutRls(async (tx) => {
@@ -95,22 +95,22 @@ await prisma.withoutRls(async (tx) => {
 });
 ```
 
-**Odrzucone:**
-- `withoutRls()` widzi WSZYSTKIE dane (dangerous)
-- Wymaga manualnego filtrowania (error-prone)
-- Loguje WARNING (celowo, żeby odstraszyć)
+**Rejected:**
+- `withoutRls()` sees ALL data (dangerous)
+- Requires manual filtering (error-prone)
+- Logs WARNING (intentionally, to discourage use)
 
-### Alt 2: Scheduler używa `forUser(workspace.ownerId)`
+### Alt 2: Scheduler uses `forUser(workspace.ownerId)`
 
 ```typescript
 const owner = await getWorkspaceOwner(workspaceId);
 await prisma.forUser(owner.id, async (tx) => {...});
 ```
 
-**Odrzucone:**
-- Scheduler nie powinien znać "właściciela" workspace'a
-- Co jeśli owner opuści workspace?
-- Semantycznie niepoprawne
+**Rejected:**
+- Scheduler shouldn't know about workspace "owner"
+- What if owner leaves workspace?
+- Semantically incorrect
 
 ### Alt 3: Dual context (user + workspace)
 
@@ -121,38 +121,38 @@ USING (
 )
 ```
 
-**Odrzucone:**
-- Overcomplication - dwa mechanizmy do maintainowania
-- Wydajność - nadal JOIN przez `WorkspaceMember`
-- Trudniejsze do debugowania
+**Rejected:**
+- Overcomplication - two mechanisms to maintain
+- Performance - still JOIN through `WorkspaceMember`
+- Harder to debug
 
-### Alt 4: Osobna baza per workspace (database isolation)
+### Alt 4: Separate database per workspace (database isolation)
 
-**Odrzucone:**
-- Ogromny overhead (każdy workspace = osobna baza)
-- Komplikuje migrations, backupy, monitoring
-- Overkill dla naszego scale
+**Rejected:**
+- Huge overhead (each workspace = separate database)
+- Complicates migrations, backups, monitoring
+- Overkill for our scale
 
 ## Consequences
 
 ### Positive
 
-1. **Prostsze RLS** - bezpośrednie porównanie `workspaceId`, bez funkcji SQL
-2. **Scheduler semantycznie poprawny** - przetwarza workspace, nie user
-3. **~15x lepsza wydajność** - brak JOIN w każdym query
+1. **Simpler RLS** - direct `workspaceId` comparison, no SQL functions
+2. **Scheduler semantically correct** - processes workspace, not user
+3. **~15x better performance** - no JOIN in every query
 4. **Defense in depth** - middleware + RLS
 
 ### Negative
 
-1. **Breaking change** - wszystkie `forUser()` calls muszą być zmienione
-2. **Middleware complexity** - musi weryfikować membership przed ustawieniem context
-3. **Hybrid policies** - dla endpoints bez workspaceId (GET /workspaces) nadal potrzebny user context
+1. **Breaking change** - all `forUser()` calls must be changed
+2. **Middleware complexity** - must verify membership before setting context
+3. **Hybrid policies** - for endpoints without workspaceId (GET /workspaces) user context still needed
 
 ### Risks
 
 | Risk | Mitigation |
 |------|------------|
-| Middleware nie weryfikuje membership → RLS bypass | Integration test: alien workspace access returns 403 |
+| Middleware doesn't verify membership → RLS bypass | Integration test: alien workspace access returns 403 |
 | SQL Injection via workspaceId | UUID validation + `::UUID` cast |
 | Migration failure → inconsistent state | Atomic migration (BEGIN/COMMIT) + rollback script |
 
@@ -162,10 +162,10 @@ See: [SPEC: RLS Per-Workspace Refactor](../specifications/2025-12-28-rls-per-wor
 
 ### Migration Phases
 
-1. **Faza 1-2:** Backwards compatible additions (`forWorkspace()`, `WorkspaceProcessingQueue`)
-2. **Faza 3:** Atomic RLS policies migration
-3. **Faza 4:** Code refactor (middleware, scheduler, services)
-4. **Faza 5:** Cleanup (`forUser()` removal)
+1. **Phase 1-2:** Backwards compatible additions (`forWorkspace()`, `WorkspaceProcessingQueue`)
+2. **Phase 3:** Atomic RLS policies migration
+3. **Phase 4:** Code refactor (middleware, scheduler, services)
+4. **Phase 5:** Cleanup (`forUser()` removal)
 
 ## Related
 
@@ -177,15 +177,15 @@ See: [SPEC: RLS Per-Workspace Refactor](../specifications/2025-12-28-rls-per-wor
 
 ### Why not extend SPEC-001?
 
-SPEC-001 definiuje **user-based RLS** jako fundamentalne założenie. Ta zmiana to **architectural shift** - zasługuje na osobny ADR i osobną specyfikację.
+SPEC-001 defines **user-based RLS** as a fundamental assumption. This change is an **architectural shift** - it deserves a separate ADR and separate specification.
 
 ### Future: Organization as tenant
 
-Jeśli w przyszłości `Organization` stanie się unit of isolation (jeden billing dla wielu workspaces), RLS context może zostać rozszerzony:
+If in the future `Organization` becomes the unit of isolation (one billing for multiple workspaces), RLS context can be extended:
 
 ```typescript
 forOrganization(orgId, callback)  // Organization context
 forWorkspace(workspaceId, callback)  // Workspace context (nested)
 ```
 
-Obecny design to umożliwia bez breaking changes.
+The current design enables this without breaking changes.

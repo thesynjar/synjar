@@ -1,35 +1,35 @@
-# SPEC-008: Wybór strategii chunking wg planu
+# SPEC-008: Chunking Strategy Selection by Plan
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P1 (Feature differentiation)
-**Zależności:** ENTERPRISE-007 (Plan - enterprise), SPEC-007 (Fixed-size chunking)
+**Priority:** P1 (Feature differentiation)
+**Dependencies:** ENTERPRISE-007 (Plan - enterprise), SPEC-007 (Fixed-size chunking)
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Automatyczny wybór strategii chunking na podstawie planu użytkownika - FREE używa fixed-size, PREMIUM używa LLM-based.
+Automatic chunking strategy selection based on user's plan - FREE uses fixed-size, PREMIUM uses LLM-based.
 
-### Wartość MVP
+### MVP Value
 
-- Różnicowanie produktu (PREMIUM = lepszy chunking)
-- Kontrola kosztów (LLM tylko dla płacących)
-- Transparentność dla użytkownika
+- Product differentiation (PREMIUM = better chunking)
+- Cost control (LLM only for paying users)
+- Transparency for user
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Mapowanie plan → strategia
+### 2.1 Plan to Strategy Mapping
 
-| Plan | Strategia | Opis |
+| Plan | Strategy | Description |
 |------|-----------|------|
-| FREE | FIXED_SIZE | Programistyczny, bez LLM |
-| STARTER+ | SMART | LLM-based dla małych/średnich dokumentów |
-| STARTER+ | HIERARCHICAL | LLM-based dla dużych dokumentów |
+| FREE | FIXED_SIZE | Programmatic, no LLM |
+| STARTER+ | SMART | LLM-based for small/medium documents |
+| STARTER+ | HIERARCHICAL | LLM-based for large documents |
 
-### 2.2 Logika wyboru (dla PREMIUM)
+### 2.2 Selection Logic (for PREMIUM)
 
 ```
 IF tokens < 1000:
@@ -40,18 +40,18 @@ ELSE:
   → HIERARCHICAL (structure + LLM)
 ```
 
-### 2.3 Logika wyboru (dla FREE)
+### 2.3 Selection Logic (for FREE)
 
 ```
 IF tokens < 500:
   → NO_SPLIT (1 chunk)
 ELSE:
-  → FIXED_SIZE (programistyczny)
+  → FIXED_SIZE (programmatic)
 ```
 
 ---
 
-## 3. Implementacja
+## 3. Implementation
 
 ### 3.1 ChunkingStrategySelector
 
@@ -115,7 +115,7 @@ export class ChunkingStrategySelector {
 }
 ```
 
-### 3.2 Aktualizacja DocumentProcessorService
+### 3.2 DocumentProcessorService Update
 
 ```typescript
 // src/application/document/document-processor.service.ts
@@ -200,7 +200,7 @@ export class DocumentProcessorService {
 }
 ```
 
-### 3.3 Informacja o użytej strategii w API
+### 3.3 Strategy Information in API
 
 ```typescript
 // Response DTO
@@ -221,7 +221,7 @@ interface DocumentResponseDto {
 
 ## 4. API
 
-### 4.1 Endpoint informacyjny
+### 4.1 Informational Endpoint
 
 ```typescript
 // GET /chunking/preview
@@ -240,83 +240,83 @@ interface ChunkingPreviewResponseDto {
 
 ---
 
-## 5. Testy akceptacyjne
+## 5. Acceptance Tests
 
-### 5.1 Test: FREE user używa FIXED_SIZE
+### 5.1 Test: FREE user uses FIXED_SIZE
 
 ```gherkin
-Scenario: FREE user uploaduje dokument
-  Given User z planem FREE
-  And Dokument 2000 tokenów
-  When User uploaduje dokument
-  Then Dokument jest przetwarzany strategią FIXED_SIZE
+Scenario: FREE user uploads document
+  Given User with FREE plan
+  And Document of 2000 tokens
+  When User uploads document
+  Then Document is processed with FIXED_SIZE strategy
   And Chunk.metadata.strategy = "FIXED_SIZE"
 ```
 
-### 5.2 Test: PREMIUM user używa SMART
+### 5.2 Test: PREMIUM user uses SMART
 
 ```gherkin
-Scenario: PREMIUM user uploaduje średni dokument
-  Given User z planem STARTER
-  And Dokument 5000 tokenów
-  When User uploaduje dokument
-  Then Dokument jest przetwarzany strategią SMART
+Scenario: PREMIUM user uploads medium document
+  Given User with STARTER plan
+  And Document of 5000 tokens
+  When User uploads document
+  Then Document is processed with SMART strategy
   And Chunk.metadata.strategy = "SMART"
 ```
 
-### 5.3 Test: PREMIUM user z dużym dokumentem
+### 5.3 Test: PREMIUM user with large document
 
 ```gherkin
-Scenario: PREMIUM user uploaduje duży dokument
-  Given User z planem PRO
-  And Dokument 50000 tokenów
-  When User uploaduje dokument
-  Then Dokument jest przetwarzany strategią HIERARCHICAL
+Scenario: PREMIUM user uploads large document
+  Given User with PRO plan
+  And Document of 50000 tokens
+  When User uploads document
+  Then Document is processed with HIERARCHICAL strategy
 ```
 
-### 5.4 Test: Mały dokument nie jest dzielony
+### 5.4 Test: Small document not split
 
 ```gherkin
-Scenario: Mały dokument = 1 chunk
-  Given User (dowolny plan)
-  And Dokument 300 tokenów
-  When User uploaduje dokument
-  Then Dokument ma 1 chunk (NO_SPLIT)
+Scenario: Small document = 1 chunk
+  Given User (any plan)
+  And Document of 300 tokens
+  When User uploads document
+  Then Document has 1 chunk (NO_SPLIT)
 ```
 
 ---
 
-## 6. Upgrade path
+## 6. Upgrade Path
 
-Gdy FREE user upgraduje do PREMIUM:
-- Istniejące dokumenty **NIE** są automatycznie re-procesowane
-- User może ręcznie zażądać re-processingu (v2 feature)
-- Nowe dokumenty używają lepszej strategii
+When FREE user upgrades to PREMIUM:
+- Existing documents are **NOT** automatically re-processed
+- User can manually request re-processing (v2 feature)
+- New documents use better strategy
 
 ---
 
 ## 7. Definition of Done
 
 - [ ] ChunkingStrategySelector service
-- [ ] Aktualizacja DocumentProcessorService
-- [ ] Metadata o strategii w Chunk
-- [ ] Endpoint preview (opcjonalnie)
-- [ ] Testy jednostkowe
-- [ ] Testy integracyjne
+- [ ] DocumentProcessorService update
+- [ ] Strategy metadata in Chunk
+- [ ] Preview endpoint (optional)
+- [ ] Unit tests
+- [ ] Integration tests
 
 ---
 
-## 8. Estymacja
+## 8. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
 | ChunkingStrategySelector | S |
-| Aktualizacja processor | S |
-| Testy | M |
+| Processor update | S |
+| Tests | M |
 | **TOTAL** | **S-M** |
 
 ---
 
-## 9. Następna specyfikacja
+## 9. Next Specification
 
-Po wdrożeniu: **SPEC-009: Conflict Auditor (PREMIUM)**
+After implementation: **SPEC-009: Conflict Auditor (PREMIUM)**

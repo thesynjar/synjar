@@ -1,56 +1,56 @@
 # SPEC-015: Frontend - Search
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P1 (Core feature)
-**Zależności:** SPEC-013 (Frontend Documents)
+**Priority:** P1 (Core feature)
+**Dependencies:** SPEC-013 (Frontend Documents)
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Wyszukiwanie semantyczne w bazie wiedzy - główna funkcjonalność RAG dla użytkowników.
+Semantic search in the knowledge base - main RAG functionality for users.
 
-### Wartość MVP
+### MVP Value
 
-- Wyszukiwanie semantyczne po treści dokumentów
-- Filtrowanie po tagach
-- Wyświetlanie wyników z relevance score
-- Podgląd kontekstu (chunk content)
+- Semantic search by document content
+- Tag filtering
+- Display results with relevance score
+- Context preview (chunk content)
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Funkcjonalności
+### 2.1 Features
 
 1. **Search input**
-   - Pole tekstowe na zapytanie
+   - Text field for query
    - Debounce (300ms)
    - Clear button
-   - Search history (ostatnie 5)
+   - Search history (last 5)
 
-2. **Filtry**
-   - Tagi (multi-select)
-   - Status weryfikacji
+2. **Filters**
+   - Tags (multi-select)
+   - Verification status
    - Include unverified toggle
 
-3. **Wyniki**
-   - Lista wyników z score
-   - Tytuł dokumentu
-   - Fragment tekstu (highlighted)
-   - Tagi
-   - Link do dokumentu
+3. **Results**
+   - List of results with score
+   - Document title
+   - Text fragment (highlighted)
+   - Tags
+   - Link to document
 
 4. **Empty states**
-   - Brak wyników
-   - Brak zapytania (placeholder)
+   - No results
+   - No query (placeholder)
 
 ---
 
-## 3. Implementacja
+## 3. Implementation
 
-### 3.1 Struktura plików
+### 3.1 File Structure
 
 ```
 apps/web/src/features/search/
@@ -502,39 +502,39 @@ export function useSearch(
 ### 4.1 Search Page mockup
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Search                                                     │
-│  Find information in your knowledge base                    │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ 🔍  How do I handle customer refunds?           ✕  │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                          Press Ctrl+K       │
-│                                                             │
-│  🏷️ [support] [policies]        ☑ Include unverified       │
-│                                                             │
-│  Found 3 results                                            │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ Refund Policy ✓                     Relevance: 92% │    │
-│  │                                                     │    │
-│  │ Customers can request a **refund** within 14 days  │    │
-│  │ of purchase. To process the **refund**, follow...  │    │
-│  │                                                     │    │
-│  │ [support] [policies]                               │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ Customer Service Guide ✓               Relevance: 78%│   │
-│  │ ...                                                 │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|  Search                                                      |
+|  Find information in your knowledge base                     |
+|                                                              |
+|  +-----------------------------------------------------+     |
+|  | [search icon]  How do I handle customer refunds?  X |     |
+|  +-----------------------------------------------------+     |
+|                                          Press Ctrl+K        |
+|                                                              |
+|  [tag icon] [support] [policies]        [x] Include unverified|
+|                                                              |
+|  Found 3 results                                             |
+|                                                              |
+|  +-----------------------------------------------------+     |
+|  | Refund Policy [checkmark]             Relevance: 92% |    |
+|  |                                                      |    |
+|  | Customers can request a **refund** within 14 days    |    |
+|  | of purchase. To process the **refund**, follow...    |    |
+|  |                                                      |    |
+|  | [support] [policies]                                 |    |
+|  +-----------------------------------------------------+     |
+|                                                              |
+|  +-----------------------------------------------------+     |
+|  | Customer Service Guide [checkmark]     Relevance: 78%|    |
+|  | ...                                                  |    |
+|  +-----------------------------------------------------+     |
+|                                                              |
++-------------------------------------------------------------+
 ```
 
 ---
 
-## 5. Testy
+## 5. Tests
 
 ```typescript
 describe('SearchPage', () => {
@@ -601,32 +601,32 @@ describe('SearchPage', () => {
 ## 6. Definition of Done
 
 - [ ] SearchPage
-- [ ] SearchInput z debounce
+- [ ] SearchInput with debounce
 - [ ] SearchFilters (tags, verification)
 - [ ] SearchResults list
-- [ ] SearchResultCard z highlighting
+- [ ] SearchResultCard with highlighting
 - [ ] Empty states (no query, no results)
 - [ ] useSearch hook
 - [ ] Keyboard shortcut (Ctrl+K)
-- [ ] Unit testy
+- [ ] Unit tests
 - [ ] E2E test search flow
 
 ---
 
-## 7. Estymacja
+## 7. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
 | SearchPage | M |
 | SearchInput | S |
 | SearchFilters | S |
 | SearchResults | M |
 | Highlighting | S |
-| Testy | M |
+| Tests | M |
 | **TOTAL** | **M** |
 
 ---
 
-## 8. Następna specyfikacja
+## 8. Next Specification
 
-Po wdrożeniu: **SPEC-016: Frontend - Public Links**
+After implementation: **SPEC-016: Frontend - Public Links**

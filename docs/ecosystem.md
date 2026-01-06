@@ -2,13 +2,13 @@
 
 ## Overview
 
-Synjar to multi-tenant RAG (Retrieval Augmented Generation) system do zarządzania bazą wiedzy. System wykorzystuje Clean Architecture z integracją Row Level Security (RLS) na poziomie bazy danych, zapewniając izolację danych między workspace'ami.
+Synjar is a multi-tenant RAG (Retrieval Augmented Generation) system for knowledge base management. The system uses Clean Architecture with Row Level Security (RLS) integration at the database level, ensuring data isolation between workspaces.
 
-### Kluczowe cechy
+### Key Features
 
-- **Multi-tenancy**: Workspace-based isolation z PostgreSQL RLS
-- **Semantic Search**: RAG wykorzystujący OpenAI embeddings + pgvector
-- **Security-first**: Defense in depth (kod + baza danych)
+- **Multi-tenancy**: Workspace-based isolation with PostgreSQL RLS
+- **Semantic Search**: RAG using OpenAI embeddings + pgvector
+- **Security-first**: Defense in depth (code + database)
 - **Clean Architecture**: DDD, SOLID, Dependency Injection
 - **Type-safe**: TypeScript + Prisma ORM
 
@@ -16,7 +16,7 @@ Synjar to multi-tenant RAG (Retrieval Augmented Generation) system do zarządzan
 
 ## Bounded Contexts
 
-System składa się z 6 głównych Bounded Contexts:
+The system consists of 6 main Bounded Contexts:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -51,14 +51,14 @@ System składa się z 6 głównych Bounded Contexts:
 
 ### Auth Context
 
-**Odpowiedzialność**: Autentykacja i autoryzacja użytkowników
+**Responsibility**: User authentication and authorization
 
 **Entities**:
-- `User` - użytkownik systemu (email, password hash)
+- `User` - system user (email, password hash)
 - `Session` - JWT-based session management
 
 **Use Cases**:
-- Rejestracja użytkownika
+- User registration
 - Login (JWT token generation)
 - Token validation
 
@@ -68,11 +68,11 @@ System składa się z 6 głównych Bounded Contexts:
 
 ### Workspace Context
 
-**Odpowiedzialność**: Multi-tenancy, workspace management, access control
+**Responsibility**: Multi-tenancy, workspace management, access control
 
 **Entities**:
-- `Workspace` - logiczny kontener dla dokumentów (tenant)
-- `WorkspaceMember` - relacja User ↔ Workspace z rolą
+- `Workspace` - logical container for documents (tenant)
+- `WorkspaceMember` - User ↔ Workspace relationship with role
 - `Role` - OWNER | MEMBER
 
 **Use Cases**:
@@ -86,22 +86,22 @@ System składa się z 6 głównych Bounded Contexts:
 - `WorkspaceService` - domain logic
 
 **Invariants**:
-- Workspace musi mieć co najmniej jednego OWNER
-- Creator workspace'a automatycznie staje się OWNER
-- RLS enforcement: user widzi tylko workspace'y, których jest członkiem
+- Workspace must have at least one OWNER
+- Workspace creator automatically becomes OWNER
+- RLS enforcement: user sees only workspaces they are a member of
 
 ### Document Context
 
-**Odpowiedzialność**: Zarządzanie dokumentami, chunking, tagging
+**Responsibility**: Document management, chunking, tagging
 
 **Entities**:
-- `Document` - dokument tekstowy lub plik
-- `Chunk` - fragment dokumentu z embedding (vector)
-- `Tag` - etykieta workspace-scoped (unikalna per workspace)
-- `DocumentTag` - relacja Document ↔ Tag
+- `Document` - text document or file
+- `Chunk` - document fragment with embedding (vector)
+- `Tag` - workspace-scoped label (unique per workspace)
+- `DocumentTag` - Document ↔ Tag relationship
 
 **Use Cases**:
-- Upload document (text lub file)
+- Upload document (text or file)
 - Process document (chunking + embeddings)
 - Tag documents
 - Search by tags
@@ -112,22 +112,22 @@ System składa się z 6 głównych Bounded Contexts:
 - `StorageService` - Backblaze B2 file storage
 
 **Invariants**:
-- Document należy do dokładnie jednego Workspace
-- Chunk należy do dokładnie jednego Document
-- RLS enforcement: user widzi tylko dokumenty ze swoich workspace'ów
-- Tag należy do dokładnie jednego Workspace
+- Document belongs to exactly one Workspace
+- Chunk belongs to exactly one Document
+- RLS enforcement: user sees only documents from their workspaces
+- Tag belongs to exactly one Workspace
 
 ### Public API Context
 
-**Odpowiedzialność**: Public access do workspace'ów przez token
+**Responsibility**: Public access to workspaces via token
 
 **Entities**:
-- `PublicLink` - token-based access do workspace
-- `Token` - unikalny UUID dla public link
+- `PublicLink` - token-based access to workspace
+- `Token` - unique UUID for public link
 
 **Use Cases**:
-- Create public link (z opcjonalnymi ograniczeniami: tags, expiry)
-- Semantic search przez public link
+- Create public link (with optional constraints: tags, expiry)
+- Semantic search via public link
 - Revoke public link
 
 **Infrastructure**:
@@ -138,19 +138,19 @@ System składa się z 6 głównych Bounded Contexts:
 **Security**:
 - Token validation via SECURITY DEFINER function (validates isActive, expiresAt)
 - After validation: `forWorkspace(workspaceId)` for RLS-protected queries
-- Optional tag filtering (tylko dokumenty z określonymi tagami)
+- Optional tag filtering (only documents with specified tags)
 - Optional expiry date
 - isActive flag (soft delete)
 
 ### Tenant Lookup Context
 
-**Odpowiedzialność**: Lookup workspace'ów użytkownika przez email (hashed)
+**Responsibility**: Lookup user's workspaces by email (hashed)
 
 **Entities**:
 - `TenantUserEmailLookup` - hashed email → workspaceId mapping
 
 **Use Cases**:
-- Find workspaces by user email (dla invite flow)
+- Find workspaces by user email (for invite flow)
 - Sync lookup entries on workspace membership changes
 
 **Infrastructure**:
@@ -158,27 +158,27 @@ System składa się z 6 głównych Bounded Contexts:
 - `CryptoService` - SHA-256 email hashing
 
 **Privacy**:
-- Email przechowywany jako SHA-256 hash (irreversible)
-- Lookup możliwy tylko jeśli znasz exact email
-- RLS enforcement: user widzi tylko entries swoich workspace'ów
+- Email stored as SHA-256 hash (irreversible)
+- Lookup possible only if you know the exact email
+- RLS enforcement: user sees only entries from their workspaces
 
 ### Instruction Set Context
 
-**Odpowiedzialność**: Agregacja dokumentów w instruction sets dla LLM agents
+**Responsibility**: Aggregation of documents into instruction sets for LLM agents
 
 **Entities**:
-- `InstructionSet` - kolekcja dokumentów do przekazania LLM (isPublic, name, description)
-- `InstructionSetDocument` - junction table z kolejnością (order)
+- `InstructionSet` - collection of documents to pass to LLM (isPublic, name, description)
+- `InstructionSetDocument` - junction table with order
 
 **Use Cases**:
 - Create/Update/Delete instruction sets
-- Add/Remove documents z zachowaniem kolejności
+- Add/Remove documents while preserving order
 - Toggle public access (isPublic flag)
-- Public access dla LLM agents (bez autentykacji)
+- Public access for LLM agents (without authentication)
 
 **Infrastructure**:
 - `InstructionSetService` - domain logic, orchestration
-- `PrismaInstructionSetRepository` - persistence z RLS
+- `PrismaInstructionSetRepository` - persistence with RLS
 - SQL SECURITY DEFINER functions:
   - `lookup_public_instruction_set(id)` - metadata lookup
   - `get_public_instruction_set_documents(id)` - documents (VERIFIED only)
@@ -309,41 +309,41 @@ System składa się z 6 głównych Bounded Contexts:
 ```
 
 **Key Security Improvements (2025-12-29):**
-- ❌ `withoutRls()` - REMOVED (dangerous, could bypass all RLS)
-- ✅ SECURITY DEFINER function - limited scope (token lookup only)
-- ✅ Validation at database level (isActive, expiresAt)
-- ✅ After validation: RLS enforced via `forWorkspace()`
+- `withoutRls()` - REMOVED (dangerous, could bypass all RLS)
+- SECURITY DEFINER function - limited scope (token lookup only)
+- Validation at database level (isActive, expiresAt)
+- After validation: RLS enforced via `forWorkspace()`
 
 ---
 
 ## RLS Architecture
 
-### Czym jest Row Level Security (RLS)?
+### What is Row Level Security (RLS)?
 
-PostgreSQL Row Level Security to mechanizm bazy danych, który automatycznie filtruje wyniki zapytań na podstawie polityk bezpieczeństwa. W Synjar RLS zapewnia, że:
+PostgreSQL Row Level Security is a database mechanism that automatically filters query results based on security policies. In Synjar, RLS ensures that:
 
-1. User widzi **tylko** dokumenty ze swoich workspace'ów
-2. Nawet jeśli kod aplikacji ma bug, baza danych **nie zwróci** obcych danych
-3. Defense in depth - druga warstwa zabezpieczeń
+1. User sees **only** documents from their workspaces
+2. Even if the application code has a bug, the database **will not return** other users' data
+3. Defense in depth - second layer of security
 
-### Implementacja RLS
+### RLS Implementation
 
 #### 1. Database Setup
 
 **Database Users**:
 ```
 postgres (superuser)
-├─ Użycie: migrations only
-├─ Charakterystyka: bypasses RLS (zawsze!)
+├─ Usage: migrations only
+├─ Characteristics: bypasses RLS (always!)
 └─ Connection: DATABASE_URL_MIGRATE
 
 synjar_app (non-superuser)
-├─ Użycie: application runtime
-├─ Charakterystyka: RLS enforced
+├─ Usage: application runtime
+├─ Characteristics: RLS enforced
 └─ Connection: DATABASE_URL
 ```
 
-**RLS Policies** (dla każdej tabeli):
+**RLS Policies** (for each table):
 ```sql
 -- Enable RLS
 ALTER TABLE "Workspace" ENABLE ROW LEVEL SECURITY;
@@ -440,7 +440,7 @@ export class UserContext {
 }
 ```
 
-**AsyncLocalStorage** zapewnia izolację requestów - każdy HTTP request ma swój własny context, nawet przy concurrent requests.
+**AsyncLocalStorage** ensures request isolation - each HTTP request has its own context, even with concurrent requests.
 
 #### 3. RlsMiddleware
 
@@ -467,7 +467,7 @@ export class RlsMiddleware implements NestMiddleware {
 **Middleware order**:
 1. JwtAuthGuard validates token → attaches `user` to request
 2. RlsMiddleware extracts `user.sub` → sets in AsyncLocalStorage
-3. Controller/Service może używać `prisma.withCurrentUser()`
+3. Controller/Service can use `prisma.withCurrentUser()`
 
 #### 4. PrismaService Methods
 
@@ -577,10 +577,10 @@ async search(token: string, query: string) {
 
 ### Security Guarantees
 
-1. **Database-level isolation**: PostgreSQL enforces RLS - nawet SQL injection nie zwróci obcych danych
-2. **Transaction-scoped context**: `SET LOCAL` jest aktywny tylko w ramach transakcji
-3. **Request isolation**: AsyncLocalStorage zapewnia, że concurrent requests nie mieszają context'ów
-4. **Non-superuser enforcement**: `synjar_app` role nie może ominąć RLS
+1. **Database-level isolation**: PostgreSQL enforces RLS - even SQL injection won't return other users' data
+2. **Transaction-scoped context**: `SET LOCAL` is active only within the transaction
+3. **Request isolation**: AsyncLocalStorage ensures concurrent requests don't mix contexts
+4. **Non-superuser enforcement**: `synjar_app` role cannot bypass RLS
 5. **SECURITY DEFINER limited scope**: Token lookup via SQL function, RLS enforced after validation
 
 ---
@@ -589,11 +589,11 @@ async search(token: string, query: string) {
 
 ### 1. PrismaService
 
-**Lokalizacja**: `apps/api/src/infrastructure/persistence/prisma/prisma.service.ts`
+**Location**: `apps/api/src/infrastructure/persistence/prisma/prisma.service.ts`
 
-**Odpowiedzialność**: ORM client z RLS wrappers
+**Responsibility**: ORM client with RLS wrappers
 
-**Kluczowe metody**:
+**Key methods**:
 
 | Method | Use Case | RLS Context |
 |--------|----------|-------------|
@@ -603,21 +603,21 @@ async search(token: string, query: string) {
 | `$queryRaw` | SECURITY DEFINER function calls | SQL function context |
 
 **Best Practices**:
-- HTTP handlers: **zawsze** używaj `withCurrentUser()`
-- Background jobs: **zawsze** używaj `forUser(userId, ...)` lub `forWorkspace(workspaceId, ...)`
-- Public API: `$queryRaw` dla token lookup, potem `forWorkspace()` dla queries
-- Migrations/Seeds: użyj `PrismaSystemService` (superuser)
+- HTTP handlers: **always** use `withCurrentUser()`
+- Background jobs: **always** use `forUser(userId, ...)` or `forWorkspace(workspaceId, ...)`
+- Public API: `$queryRaw` for token lookup, then `forWorkspace()` for queries
+- Migrations/Seeds: use `PrismaSystemService` (superuser)
 
 **REMOVED (2025-12-29):**
-- ❌ `withoutRls()` - zastąpione przez SECURITY DEFINER function
+- `withoutRls()` - replaced by SECURITY DEFINER function
 
 ### 2. UserContext (AsyncLocalStorage)
 
-**Lokalizacja**: `apps/api/src/infrastructure/persistence/rls/user.context.ts`
+**Location**: `apps/api/src/infrastructure/persistence/rls/user.context.ts`
 
-**Odpowiedzialność**: Per-request user context isolation
+**Responsibility**: Per-request user context isolation
 
-**Kluczowe metody**:
+**Key methods**:
 
 | Method | Caller | Purpose |
 |--------|--------|---------|
@@ -625,24 +625,24 @@ async search(token: string, query: string) {
 | `getCurrentUserId()` | PrismaService.withCurrentUser() | Retrieve current user |
 | `runWithUser(userId, callback)` | Background jobs | Execute with specific user context |
 
-**Jak działa AsyncLocalStorage**:
+**How AsyncLocalStorage works**:
 ```typescript
 // Request 1 (User A)
 UserContext.setUserId('user-a-id')
   -> storage.enterWith({ userId: 'user-a-id' })
-  -> wszystkie async calls w tym request widzą 'user-a-id'
+  -> all async calls in this request see 'user-a-id'
 
-// Request 2 (User B) - concurrent z Request 1
+// Request 2 (User B) - concurrent with Request 1
 UserContext.setUserId('user-b-id')
   -> storage.enterWith({ userId: 'user-b-id' })
-  -> izolowane od Request 1 - widzi tylko 'user-b-id'
+  -> isolated from Request 1 - sees only 'user-b-id'
 ```
 
 ### 3. RlsMiddleware
 
-**Lokalizacja**: `apps/api/src/infrastructure/persistence/rls/rls.middleware.ts`
+**Location**: `apps/api/src/infrastructure/persistence/rls/rls.middleware.ts`
 
-**Odpowiedzialność**: Extract user from JWT → set in UserContext
+**Responsibility**: Extract user from JWT → set in UserContext
 
 **Lifecycle**:
 ```
@@ -664,9 +664,9 @@ export class AppModule implements NestModule {
 
 ### 4. PrismaSystemService
 
-**Lokalizacja**: `apps/api/src/infrastructure/persistence/prisma/prisma-system.service.ts`
+**Location**: `apps/api/src/infrastructure/persistence/prisma/prisma-system.service.ts`
 
-**Odpowiedzialność**: Superuser client for migrations, seeds, tests
+**Responsibility**: Superuser client for migrations, seeds, tests
 
 **Connection**: `DATABASE_URL_MIGRATE` (postgres superuser)
 
@@ -695,7 +695,7 @@ beforeEach(async () => {
 });
 ```
 
-**CRITICAL**: PrismaSystemService **NIE MOŻE** być używany w production code (tylko migrations/seeds/tests).
+**CRITICAL**: PrismaSystemService **MUST NOT** be used in production code (only migrations/seeds/tests).
 
 ### 5. Database Users
 
@@ -705,7 +705,7 @@ beforeEach(async () => {
 -- Purpose: Migrations, DDL changes, RLS policy creation
 -- Connection: DATABASE_URL_MIGRATE
 -- Characteristics:
---   - Bypasses ALL RLS policies (nawet z FORCE ROW LEVEL SECURITY)
+--   - Bypasses ALL RLS policies (even with FORCE ROW LEVEL SECURITY)
 --   - Full permissions (CREATE, ALTER, DROP)
 --   - Used by: prisma migrate, prisma db push
 
@@ -741,15 +741,15 @@ DATABASE_URL_MIGRATE="postgresql://postgres:postgres@localhost:6201/synjar"
 
 ### Domain Layer
 
-**Lokalizacja**: `apps/api/src/domain/`
+**Location**: `apps/api/src/domain/`
 
-**Zawiera**:
+**Contains**:
 - Entities (business logic, invariants)
 - Value Objects (Email, Token, Embedding)
 - Repository Interfaces (IWorkspaceRepository, IDocumentRepository)
 - Domain Events (WorkspaceMemberAdded, DocumentProcessed)
 
-**Przykład - Entity**:
+**Example - Entity**:
 ```typescript
 // domain/workspace/workspace.entity.ts
 export class Workspace {
@@ -766,7 +766,7 @@ export class Workspace {
 }
 ```
 
-**Przykład - Repository Interface**:
+**Example - Repository Interface**:
 ```typescript
 // domain/workspace/workspace.repository.interface.ts
 export interface IWorkspaceRepository {
@@ -780,15 +780,15 @@ export interface IWorkspaceRepository {
 
 ### Application Layer
 
-**Lokalizacja**: `apps/api/src/application/`
+**Location**: `apps/api/src/application/`
 
-**Zawiera**:
+**Contains**:
 - Use Cases (CreateWorkspaceUseCase)
 - Application Services (WorkspaceService, DocumentService)
 - DTOs (CreateWorkspaceDto)
 - Event Handlers (TenantLookupListener)
 
-**Przykład - Service**:
+**Example - Service**:
 ```typescript
 // application/workspace/workspace.service.ts
 @Injectable()
@@ -820,15 +820,15 @@ export class WorkspaceService {
 
 ### Infrastructure Layer
 
-**Lokalizacja**: `apps/api/src/infrastructure/`
+**Location**: `apps/api/src/infrastructure/`
 
-**Zawiera**:
+**Contains**:
 - Prisma repositories (PrismaWorkspaceRepository implements IWorkspaceRepository)
 - External service adapters (OpenAI, Backblaze B2)
 - Persistence (PrismaService, migrations)
 - RLS components (UserContext, RlsMiddleware)
 
-**Przykład - Repository Implementation**:
+**Example - Repository Implementation**:
 ```typescript
 // infrastructure/persistence/repositories/workspace.repository.impl.ts
 @Injectable()
@@ -852,15 +852,15 @@ export class PrismaWorkspaceRepository implements IWorkspaceRepository {
 
 ### Interface Layer (Controllers)
 
-**Lokalizacja**: `apps/api/src/interfaces/http/`
+**Location**: `apps/api/src/interfaces/http/`
 
-**Zawiera**:
+**Contains**:
 - Controllers (WorkspaceController)
 - DTOs (CreateWorkspaceDto, WorkspaceResponseDto)
 - Guards (JwtAuthGuard)
 - Decorators (@CurrentUser)
 
-**Przykład - Controller**:
+**Example - Controller**:
 ```typescript
 // interfaces/http/workspace/workspace.controller.ts
 @Controller('workspaces')
@@ -884,7 +884,7 @@ export class WorkspaceController {
 
 ## Event Bus
 
-Knowledge Forge używa **EventEmitter2** (in-memory event bus) do komunikacji między bounded contexts.
+Knowledge Forge uses **EventEmitter2** (in-memory event bus) for communication between bounded contexts.
 
 ### Published Events
 
@@ -928,18 +928,18 @@ export class TenantLookupListener {
 ### Current Limitations
 
 **In-memory events** (EventEmitter2):
-- Events są zgubione jeśli listener rzuci exception
-- Brak retry mechanism
-- Brak guaranteed delivery
-- Events nie są persisted
+- Events are lost if listener throws an exception
+- No retry mechanism
+- No guaranteed delivery
+- Events are not persisted
 
-**Recommended for production**: Outbox Pattern lub inline handlers (see SPEC-001 Implementation Notes).
+**Recommended for production**: Outbox Pattern or inline handlers (see SPEC-001 Implementation Notes).
 
 ---
 
 ## Security Best Practices
 
-### 1. ZAWSZE używaj RLS context
+### 1. ALWAYS use RLS context
 
 ```typescript
 // GOOD
@@ -1100,31 +1100,31 @@ describe('Workspace E2E', () => {
 
 ### Problem: "User context not set"
 
-**Przyczyna**: RlsMiddleware nie ustawił UserContext
+**Cause**: RlsMiddleware did not set UserContext
 
-**Rozwiązanie**:
-1. Sprawdź czy middleware jest zarejestrowany w AppModule
-2. Sprawdź czy endpoint jest protected przez JwtAuthGuard
-3. Sprawdź czy JWT token jest valid
+**Solution**:
+1. Check if middleware is registered in AppModule
+2. Check if endpoint is protected by JwtAuthGuard
+3. Check if JWT token is valid
 
-### Problem: Queries zwracają puste wyniki
+### Problem: Queries return empty results
 
-**Przyczyna**: Brak RLS context lub user nie ma dostępu do workspace
+**Cause**: Missing RLS context or user doesn't have access to workspace
 
 **Debug**:
 ```sql
--- Sprawdź current_setting
+-- Check current_setting
 SELECT current_setting('app.current_user_id', true);
 
--- Sprawdź workspace membership
+-- Check workspace membership
 SELECT * FROM "WorkspaceMember" WHERE "userId" = 'current-user-id';
 ```
 
-### Problem: Tests failują z "permission denied"
+### Problem: Tests fail with "permission denied"
 
-**Przyczyna**: Test używa application user zamiast superuser do clean DB
+**Cause**: Test uses application user instead of superuser to clean DB
 
-**Rozwiązanie**:
+**Solution**:
 ```typescript
 // Use PrismaSystemService for test setup
 beforeEach(async () => {
@@ -1141,14 +1141,14 @@ it('should ...', async () => {
 
 ## References
 
-- [SPEC-001: Row Level Security](specifications/SPEC-001-row-level-security.md) - Pełna specyfikacja RLS
-- [SPEC-020: Tenant User Lookup](specifications/SPEC-020-tenant-user-lookup.md) - Email hashing dla workspace discovery
+- [SPEC-001: Row Level Security](specifications/SPEC-001-row-level-security.md) - Full RLS specification
+- [SPEC-020: Tenant User Lookup](specifications/SPEC-020-tenant-user-lookup.md) - Email hashing for workspace discovery
 - [Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html) - Robert C. Martin
 - [PostgreSQL RLS Documentation](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [AsyncLocalStorage](https://nodejs.org/api/async_context.html#class-asynclocalstorage) - Node.js docs
 
 ---
 
-**Ostatnia aktualizacja**: 2025-12-25
-**Wersja**: 1.0
-**Autor**: Synjar Team
+**Last updated**: 2025-12-25
+**Version**: 1.0
+**Author**: Synjar Team

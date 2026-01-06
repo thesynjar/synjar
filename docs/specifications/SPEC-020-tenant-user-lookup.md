@@ -7,22 +7,22 @@
 
 ## Overview
 
-Mechanizm lookup dla multi-tenant authentication przez cloud.synjar.com. Pozwala użytkownikom logującym się przez chmurę na znalezienie workspace'ów, do których mają dostęp.
+Lookup mechanism for multi-tenant authentication via cloud.synjar.com. Allows users logging in through the cloud to find workspaces they have access to.
 
 ## Problem
 
-Gdy user loguje się przez cloud.synjar.com:
-1. Nie znamy hostname (multi-tenant)
-2. User może mieć dostęp do wielu workspace'ów
-3. Potrzebujemy bezpiecznego sposobu mapowania email → workspaces
+When a user logs in via cloud.synjar.com:
+1. We don't know the hostname (multi-tenant)
+2. User may have access to multiple workspaces
+3. We need a secure way to map email -> workspaces
 
 ## Solution
 
 ### Hybrid Resolution Order
 ```
-1. hostname (subdomain.synjar.com) → workspace_id
-2. localStorage (last used workspace) → workspace_id
-3. tenant_user_email_lookup (email hash) → workspace_id[]
+1. hostname (subdomain.synjar.com) -> workspace_id
+2. localStorage (last used workspace) -> workspace_id
+3. tenant_user_email_lookup (email hash) -> workspace_id[]
 ```
 
 ### Database Schema
@@ -52,7 +52,7 @@ CREATE INDEX idx_tenant_lookup_email_hash ON "TenantUserEmailLookup"(email_hash)
 ### Security
 
 1. **Email Hashing**: SHA-256 hash of lowercase email
-   - `sha256(email.toLowerCase())` → hex string
+   - `sha256(email.toLowerCase())` -> hex string
    - Prevents email leak if table is compromised
    - Consistent hashing for lookups
 
@@ -132,9 +132,9 @@ CREATE INDEX idx_tenant_lookup_email_hash ON "TenantUserEmailLookup"(email_hash)
     * WorkspaceMemberRemovedEvent (userId, workspaceId)
     * UserEmailChangedEvent (userId, oldEmail, newEmail)
   - Created TenantLookupListener at /apps/api/src/application/tenant-lookup/tenant-lookup.listener.ts
-    * @OnEvent('workspace.member.added') → addLookupEntry()
-    * @OnEvent('workspace.member.removed') → removeLookupEntry()
-    * @OnEvent('user.email.changed') → syncUserLookups()
+    * @OnEvent('workspace.member.added') -> addLookupEntry()
+    * @OnEvent('workspace.member.removed') -> removeLookupEntry()
+    * @OnEvent('user.email.changed') -> syncUserLookups()
   - Updated WorkspaceService to emit events:
     * Emits workspace.member.added in create() (for owner)
     * Emits workspace.member.added in addMember()

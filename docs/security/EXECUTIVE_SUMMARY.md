@@ -9,17 +9,17 @@
 
 ## The Challenge
 
-Synjar to **open-source aplikacja multi-tenant** z funkcjonalnością RAG (Retrieval Augmented Generation). Stoimy przed unikalnym wyzwaniem:
+Synjar is an **open-source multi-tenant application** with RAG (Retrieval Augmented Generation) functionality. We face a unique challenge:
 
-> **Jak chronić dane klientów, gdy kod źródłowy jest publiczny?**
+> **How do we protect customer data when the source code is public?**
 
-Tradycyjne podejście "security through obscurity" nie działa w open-source. Potrzebujemy **security through architecture**.
+The traditional "security through obscurity" approach doesn't work in open-source. We need **security through architecture**.
 
 ---
 
 ## Our Approach: Defense in Depth
 
-Zamiast polegać na jednej warstwie ochrony, implementujemy **wielowarstwową strategię**:
+Instead of relying on a single layer of protection, we implement a **multi-layered strategy**:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -33,39 +33,39 @@ Zamiast polegać na jednej warstwie ochrony, implementujemy **wielowarstwową st
 └─────────────────────────────────────────────┘
 ```
 
-**Kluczowa zasada:** Nawet jeśli atakujący pokonuje jedną warstwę, pozostałe go zatrzymują.
+**Key principle:** Even if an attacker bypasses one layer, the others will stop them.
 
 ---
 
 ## Core Security Mechanisms
 
-### 1. Row-Level Security (RLS) w PostgreSQL
+### 1. Row-Level Security (RLS) in PostgreSQL
 
-**Co to jest?**
-Database-level isolation - każdy user widzi tylko swoje dane, niezależnie od kodu aplikacji.
+**What is it?**
+Database-level isolation - each user sees only their own data, regardless of application code.
 
-**Jak działa?**
+**How does it work?**
 
 ```sql
--- Policy: User widzi tylko swoje workspace'y
+-- Policy: User sees only their workspaces
 CREATE POLICY workspace_isolation ON "Workspace"
   USING (
     id IN (SELECT workspace_ids WHERE user_id = current_user_id)
   );
 ```
 
-**Dlaczego to ważne?**
-- Nawet przy błędzie w kodzie (SQL injection, logic error), PostgreSQL **nie zwróci** danych z innych workspace'ów
-- Defense in depth: aplikacja + baza danych
+**Why is it important?**
+- Even with a code bug (SQL injection, logic error), PostgreSQL **will not return** data from other workspaces
+- Defense in depth: application + database
 - Compliance-ready (GDPR, SOC2)
 
-**Przykład:**
+**Example:**
 
 ```typescript
-// Nawet jeśli developer zapomni walidacji:
+// Even if a developer forgets validation:
 const documents = await prisma.document.findMany();
 
-// PostgreSQL automatycznie filtruje wyniki:
+// PostgreSQL automatically filters results:
 // SELECT * FROM "Document" WHERE workspaceId IN (user's workspaces)
 ```
 
@@ -73,9 +73,9 @@ const documents = await prisma.document.findMany();
 
 ### 2. Plugin Architecture (Open Core)
 
-**Problem:** Kod admin/billing może ujawnić podatności.
+**Problem:** Admin/billing code can expose vulnerabilities.
 
-**Rozwiązanie:** Separacja open-source core od closed-source enterprise features.
+**Solution:** Separation of open-source core from closed-source enterprise features.
 
 ```
 synjar/
@@ -90,13 +90,13 @@ synjar/
     └── analytics/
 ```
 
-**Zalety:**
-- Community dostaje pełną funkcjonalność RAG
-- Admin features pozostają prywatne
-- Łatwiejsze security audits (mniejsza powierzchnia ataku w open-source)
+**Benefits:**
+- Community gets full RAG functionality
+- Admin features remain private
+- Easier security audits (smaller attack surface in open-source)
 
-**Przykłady z industry:**
-- GitLab: `ee/` folder w prywatnym repo
+**Industry examples:**
+- GitLab: `ee/` folder in private repo
 - Supabase: Cloud-only admin panel
 - Sentry: Plugin-based architecture
 
@@ -104,22 +104,22 @@ synjar/
 
 ### 3. License Validation
 
-**Jak chronić enterprise features w open-source?**
+**How do we protect enterprise features in open-source?**
 
 ```typescript
 @Post('admin/tenants')
-@EnterpriseFeature('TENANT_MANAGEMENT')  // Guard sprawdza license
+@EnterpriseFeature('TENANT_MANAGEMENT')  // Guard checks license
 async createTenant(@Body() dto: CreateTenantDto) {
-  // Code visible w open-source, ale wymagany valid license key
+  // Code visible in open-source, but requires valid license key
 }
 ```
 
 **License server (closed-source):**
-- Waliduje license key
-- Zwraca dostępne features
-- Re-walidacja co 24h (offline grace period)
+- Validates license key
+- Returns available features
+- Re-validation every 24h (offline grace period)
 
-**Efekt:** Kod jest transparentny (community audits), ale bez valid license nie działa.
+**Effect:** Code is transparent (community audits), but doesn't work without a valid license.
 
 ---
 
@@ -127,36 +127,36 @@ async createTenant(@Body() dto: CreateTenantDto) {
 
 ### Tenant Enumeration
 
-**Atak:** Atakujący próbuje zgadnąć ID workspace'ów.
+**Attack:** Attacker tries to guess workspace IDs.
 
-**Mitigacja:**
-1. **Uniform responses** (zawsze 404, nie 403)
-2. **Opaque IDs** (nanoid zamiast UUID)
+**Mitigation:**
+1. **Uniform responses** (always 404, not 403)
+2. **Opaque IDs** (nanoid instead of UUID)
 
 ```typescript
 // ✅ GOOD: Uniform response
 const workspace = await this.findForUser(id, userId);
 if (!workspace) {
-  throw new NotFoundException('Workspace not found');  // Nie ujawnia istnienia
+  throw new NotFoundException('Workspace not found');  // Doesn't reveal existence
 }
 
 // ❌ BAD: Leaks existence
 if (!workspace) throw new NotFoundException();
-if (!member) throw new ForbiddenException();  // Różne kody = leak
+if (!member) throw new ForbiddenException();  // Different codes = leak
 ```
 
 ---
 
 ### SQL Injection
 
-**Atak:** Manipulacja query przez user input.
+**Attack:** Query manipulation through user input.
 
-**Mitigacja:**
-1. **Prisma** (parametryzowane queries)
-2. **RLS** (blokuje cross-tenant access nawet przy injection)
+**Mitigation:**
+1. **Prisma** (parameterized queries)
+2. **RLS** (blocks cross-tenant access even with injection)
 
 ```typescript
-// ✅ GOOD: Prisma escapes automatycznie
+// ✅ GOOD: Prisma escapes automatically
 const docs = await prisma.document.findMany({
   where: { title: { contains: userQuery } }
 });
@@ -167,18 +167,18 @@ const docs = await prisma.$queryRawUnsafe(`
 `);
 ```
 
-**Nawet jeśli atak się powiedzie:**
-RLS ogranicza wyniki do workspace'ów usera → brak cross-tenant leak.
+**Even if the attack succeeds:**
+RLS limits results to the user's workspaces → no cross-tenant leak.
 
 ---
 
 ### Data Leakage Between Tenants
 
-**Atak:** Bug w kodzie pozwala na cross-tenant access.
+**Attack:** Bug in code allows cross-tenant access.
 
-**Mitigacja:**
-1. **Guards** (sprawdzają membership przed operacją)
-2. **RLS** (backup - blokuje na poziomie DB)
+**Mitigation:**
+1. **Guards** (check membership before operation)
+2. **RLS** (backup - blocks at DB level)
 
 ```typescript
 @Get('workspaces/:workspaceId/documents')
@@ -195,12 +195,12 @@ async listDocuments(@Param('workspaceId') id: string) {
 
 ### Phase 1: MVP Security (2 weeks)
 
-**Goal:** Minimum viable security dla public launch.
+**Goal:** Minimum viable security for public launch.
 
 **Deliverables:**
-- ✅ RLS enabled na wszystkich tenant tables
+- ✅ RLS enabled on all tenant tables
 - ✅ Guards enforced (JwtAuthGuard, WorkspaceAccessGuard)
-- ✅ Input validation (DTOs z class-validator)
+- ✅ Input validation (DTOs with class-validator)
 - ✅ Rate limiting (DoS protection)
 - ✅ Security tests (90%+ coverage)
 - ✅ CI/CD scans (npm audit, Snyk, CodeQL)
@@ -230,7 +230,7 @@ async listDocuments(@Param('workspaceId') id: string) {
 **Goal:** SOC2 compliance, 1000+ users.
 
 **Deliverables:**
-- Admin microservice (oddzielny od user API)
+- Admin microservice (separate from user API)
 - Secrets management (HashiCorp Vault)
 - Quarterly penetration tests
 - Bug bounty program (HackerOne)
@@ -291,9 +291,9 @@ async listDocuments(@Param('workspaceId') id: string) {
 
 ## Industry Benchmarks
 
-**Jak inne open-source projekty chronią multi-tenancy?**
+**How do other open-source projects protect multi-tenancy?**
 
-| Projekt | Strategia | Lessons Learned |
+| Project | Strategy | Lessons Learned |
 |---------|-----------|-----------------|
 | **GitLab** | Open Core (`ee/` folder closed) | License-based features work |
 | **Supabase** | Cloud-only admin | Self-hosted = product, Cloud = operations |
@@ -315,7 +315,7 @@ async listDocuments(@Param('workspaceId') id: string) {
 
 ### Benefits
 
-- **Reduced breach risk:** Szacowany koszt data breach: $150K+ (IBM Security Report)
+- **Reduced breach risk:** Estimated cost of data breach: $150K+ (IBM Security Report)
 - **Compliance:** SOC2 readiness = enterprise customers unlocked
 - **Trust:** Open-source + security = community confidence
 - **Competitive advantage:** Few RAG tools have proper multi-tenant isolation
@@ -367,21 +367,21 @@ async listDocuments(@Param('workspaceId') id: string) {
 
 ## Conclusion
 
-**Synjar może być open-source i secure jednocześnie.**
+**Synjar can be open-source and secure at the same time.**
 
-Kluczowe elementy:
-- **RLS** jako fundament izolacji (defense in depth)
-- **Plugin architecture** separuje core od admin features
-- **License validation** chroni enterprise funkcjonalność
-- **Comprehensive testing** zapewnia quality assurance
+Key elements:
+- **RLS** as the foundation of isolation (defense in depth)
+- **Plugin architecture** separates core from admin features
+- **License validation** protects enterprise functionality
+- **Comprehensive testing** ensures quality assurance
 
-**Outcome:** Pierwszy open-source RAG platform z enterprise-grade security, gotowy na SOC2 compliance.
+**Outcome:** The first open-source RAG platform with enterprise-grade security, ready for SOC2 compliance.
 
 ---
 
 ## Next Steps
 
-- [ ] Review tego dokumentu przez engineering team
+- [ ] Review of this document by engineering team
 - [ ] Approve implementation plan
 - [ ] Assign security champion
 - [ ] Start Phase 1 (Sprint 1-2)

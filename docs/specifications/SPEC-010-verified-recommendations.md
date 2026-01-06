@@ -1,59 +1,59 @@
-# SPEC-010: Rekomendacje zweryfikowanych chunków
+# SPEC-010: Verified Chunk Recommendations
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P2 (Premium feature)
-**Zależności:** ENTERPRISE-007 (Plan - recommendations flag) - enterprise repo
+**Priority:** P2 (Premium feature)
+**Dependencies:** ENTERPRISE-007 (Plan - recommendations flag) - enterprise repo
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-System rekomendujący zweryfikowane dokumenty/chunki na podstawie treści niezweryfikowanych. Pomaga w procesie weryfikacji wiedzy i budowania spójnej bazy.
+A system recommending verified documents/chunks based on unverified content. Helps in the knowledge verification process and building a coherent base.
 
-### Wartość MVP
+### MVP Value
 
-- Gdy user dodaje niezweryfikowany dokument, system sugeruje powiązane zweryfikowane źródła
-- Pomaga w procesie fact-checking
-- Identyfikuje luki w zweryfikowanej wiedzy
+- When user adds an unverified document, system suggests related verified sources
+- Helps in fact-checking process
+- Identifies gaps in verified knowledge
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Dostępność
+### 2.1 Availability
 
 | Plan | Recommendations |
 |------|-----------------|
-| FREE | ❌ |
-| STARTER | ❌ |
-| BASIC | ❌ |
-| PRO+ | ✅ |
+| FREE | No |
+| STARTER | No |
+| BASIC | No |
+| PRO+ | Yes |
 
-### 2.2 Use cases
+### 2.2 Use Cases
 
-1. **Sugestie przy dodawaniu dokumentu**
-   - User dodaje niezweryfikowany dokument
-   - System automatycznie sugeruje powiązane zweryfikowane źródła
+1. **Suggestions when adding document**
+   - User adds unverified document
+   - System automatically suggests related verified sources
 
-2. **Wyszukiwanie rekomendacji on-demand**
-   - User pyta: "Jakie zweryfikowane źródła pasują do tego dokumentu?"
-   - System zwraca ranking rekomendacji
+2. **On-demand recommendation search**
+   - User asks: "What verified sources match this document?"
+   - System returns recommendation ranking
 
-3. **Identyfikacja luk**
-   - User ma niezweryfikowany dokument
-   - System informuje: "Brak zweryfikowanych źródeł w tym temacie"
+3. **Gap identification**
+   - User has unverified document
+   - System informs: "No verified sources on this topic"
 
-### 2.3 Algorytm rekomendacji
+### 2.3 Recommendation Algorithm
 
 ```
 1. INPUT
-   - Niezweryfikowany dokument/chunk
+   - Unverified document/chunk
    - Workspace context
 
 2. SEMANTIC SEARCH
-   - Znajdź chunki z verificationStatus=VERIFIED
-   - Podobieństwo semantyczne > 0.7
+   - Find chunks with verificationStatus=VERIFIED
+   - Semantic similarity > 0.7
 
 3. RELEVANCE SCORING
    - Base: cosine similarity
@@ -61,12 +61,12 @@ System rekomendujący zweryfikowane dokumenty/chunki na podstawie treści niezwe
    - Boost: recent documents (+0.05)
 
 4. OUTPUT
-   - Top N rekomendacji z score i explanation
+   - Top N recommendations with score and explanation
 ```
 
 ---
 
-## 3. Implementacja
+## 3. Implementation
 
 ### 3.1 RecommendationService
 
@@ -366,56 +366,56 @@ interface VerificationGapsDto {
 
 ---
 
-## 5. Testy akceptacyjne
+## 5. Acceptance Tests
 
-### 5.1 Test: Rekomendacje dla niezweryfikowanego dokumentu
+### 5.1 Test: Recommendations for unverified document
 
 ```gherkin
-Scenario: System rekomenduje zweryfikowane źródła
-  Given Zweryfikowany dokument A: "Procedura obsługi klienta..."
-  And Niezweryfikowany dokument B: "Email od klienta o obsłudze..."
-  When User pobiera rekomendacje dla dokumentu B
-  Then Response zawiera dokument A jako rekomendację
+Scenario: System recommends verified sources
+  Given Verified document A: "Customer service procedure..."
+  And Unverified document B: "Email from customer about service..."
+  When User fetches recommendations for document B
+  Then Response contains document A as recommendation
   And Score > 0.7
-  And matchReason zawiera "Similar topic"
+  And matchReason contains "Similar topic"
 ```
 
-### 5.2 Test: Brak zweryfikowanych źródeł
+### 5.2 Test: No verified sources
 
 ```gherkin
-Scenario: System informuje o braku źródeł
-  Given Niezweryfikowany dokument o zupełnie nowym temacie
-  And Brak zweryfikowanych dokumentów o tym temacie
-  When User pobiera rekomendacje
+Scenario: System informs about missing sources
+  Given Unverified document about completely new topic
+  And No verified documents about this topic
+  When User fetches recommendations
   Then hasVerifiedGap = true
-  And message zawiera "No verified sources found"
+  And message contains "No verified sources found"
 ```
 
-### 5.3 Test: Tag boost w rankingu
+### 5.3 Test: Tag boost in ranking
 
 ```gherkin
-Scenario: Dokumenty ze wspólnymi tagami są wyżej
-  Given Niezweryfikowany dokument z tagiem "support"
-  And Zweryfikowany dokument A z tagiem "support" (similarity 0.75)
-  And Zweryfikowany dokument B bez wspólnych tagów (similarity 0.80)
-  When User pobiera rekomendacje
-  Then Dokument A jest wyżej niż B (bo tag boost)
+Scenario: Documents with shared tags are ranked higher
+  Given Unverified document with tag "support"
+  And Verified document A with tag "support" (similarity 0.75)
+  And Verified document B without shared tags (similarity 0.80)
+  When User fetches recommendations
+  Then Document A is ranked higher than B (due to tag boost)
 ```
 
 ---
 
-## 6. Integration z workflow
+## 6. Workflow Integration
 
-### 6.1 Auto-sugestie przy tworzeniu dokumentu
+### 6.1 Auto-suggestions when creating document
 
 ```typescript
-// W DocumentController, po utworzeniu niezweryfikowanego dokumentu
+// In DocumentController, after creating unverified document
 
 @Post()
 async createDocument(...) {
   const document = await this.documentService.create(workspaceId, dto, file);
 
-  // Jeśli PREMIUM i niezweryfikowany, dołącz rekomendacje
+  // If PREMIUM and unverified, include recommendations
   if (
     document.verificationStatus === 'UNVERIFIED' &&
     await this.subscriptionService.canUseFeature(userId, 'RECOMMENDATIONS')
@@ -439,27 +439,27 @@ async createDocument(...) {
 
 - [ ] RecommendationService
 - [ ] RecommendationController + endpoints
-- [ ] PremiumFeatureGuard dla RECOMMENDATIONS
-- [ ] Integration w createDocument (auto-sugestie)
-- [ ] Endpoint /gaps
-- [ ] Testy jednostkowe
-- [ ] Testy integracyjne
-- [ ] Dokumentacja API
+- [ ] PremiumFeatureGuard for RECOMMENDATIONS
+- [ ] Integration in createDocument (auto-suggestions)
+- [ ] /gaps endpoint
+- [ ] Unit tests
+- [ ] Integration tests
+- [ ] API documentation
 
 ---
 
-## 8. Estymacja
+## 8. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
 | RecommendationService | M |
 | Controller + API | S |
 | Integration | S |
-| Testy | M |
+| Tests | M |
 | **TOTAL** | **M** |
 
 ---
 
-## 9. Następna specyfikacja
+## 9. Next Specification
 
-Po wdrożeniu: **SPEC-011: Frontend - Auth**
+After implementation: **SPEC-011: Frontend - Auth**

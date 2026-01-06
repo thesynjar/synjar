@@ -8,14 +8,14 @@
 
 ## Executive Summary
 
-Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dla Synjar, podzielony na fazy MVP i Post-MVP. Plan jest zgodny z research report i security guidelines.
+This document defines a concrete implementation plan for security mechanisms in Synjar, divided into MVP and Post-MVP phases. The plan aligns with the research report and security guidelines.
 
 ---
 
-## Phase 1: MVP Security (P0 - Fundament)
+## Phase 1: MVP Security (P0 - Foundation)
 
-**Timeline:** Sprint 1-2 (2 tygodnie)
-**Goal:** Minimum viable security dla public launch
+**Timeline:** Sprint 1-2 (2 weeks)
+**Goal:** Minimum viable security for public launch
 
 ### 1.1 Row-Level Security (RLS)
 
@@ -24,10 +24,10 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 #### Tasks
 
-- [ ] **Migracja SQL z RLS policies** (1 day)
-  - Enable RLS na tabelach: Workspace, WorkspaceMember, Document, Chunk, DocumentTag, PublicLink
-  - FORCE RLS dla app role
-  - Create policies (już w SPEC-001)
+- [ ] **SQL migration with RLS policies** (1 day)
+  - Enable RLS on tables: Workspace, WorkspaceMember, Document, Chunk, DocumentTag, PublicLink
+  - FORCE RLS for app role
+  - Create policies (already in SPEC-001)
   - Helper function `get_user_workspace_ids()`
 
   ```sql
@@ -41,8 +41,8 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 - [ ] **RLS Middleware** (0.5 day)
   - Implement `RlsMiddleware` (SET LOCAL app.current_user_id)
-  - Apply globally w main.ts
-  - Handle public API (bypass dla token-based access)
+  - Apply globally in main.ts
+  - Handle public API (bypass for token-based access)
 
   ```typescript
   // src/infrastructure/persistence/rls/rls.middleware.ts
@@ -51,7 +51,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 - [ ] **Transaction wrapper** (0.5 day)
   - `PrismaService.withRls(userId, fn)` helper
-  - `PrismaService.withBypass(fn)` dla Public API
+  - `PrismaService.withBypass(fn)` for Public API
 
 - [ ] **Tests** (1 day)
   - Cross-tenant isolation tests
@@ -72,7 +72,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 - [ ] **JwtAuthGuard** (0.5 day)
   - Passport JWT strategy
   - Extract user.sub from token
-  - Global guard w main.ts
+  - Global guard in main.ts
 
   ```typescript
   // src/application/auth/guards/jwt-auth.guard.ts
@@ -90,7 +90,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 - [ ] **WorkspaceAccessGuard** (0.5 day)
   - Check workspace membership
-  - Uniform error responses (404, nie 403)
+  - Uniform error responses (404, not 403)
   - Cache membership check (Redis - optional)
 
 - [ ] **Apply guards** (0.5 day)
@@ -253,7 +253,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   - ESLint security rules
   - Secrets detection (git-secrets)
 
-**Deliverable:** Automated security scans w CI/CD
+**Deliverable:** Automated security scans in CI/CD
 
 ---
 
@@ -266,8 +266,8 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 - [ ] **Environment variables** (0.5 day)
   - .env.example with placeholders
-  - ConfigService dla wszystkich secrets
-  - Validation: fail fast jeśli brak required secrets
+  - ConfigService for all secrets
+  - Validation: fail fast if required secrets are missing
 
 - [ ] **Production secrets** (0.5 day)
   - Use cloud provider secrets manager (AWS Secrets Manager / GCP Secret Manager)
@@ -293,8 +293,8 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 **Deliverables:**
 
-- RLS enforced na wszystkich tenant tables
-- Guards na wszystkich endpoints
+- RLS enforced on all tenant tables
+- Guards on all endpoints
 - Input validation via DTOs
 - Rate limiting (DoS protection)
 - Security tests (90%+ coverage)
@@ -305,7 +305,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 ## Phase 2: Post-MVP Security (P1 - Enhancement)
 
-**Timeline:** Sprint 3-5 (3 tygodnie)
+**Timeline:** Sprint 3-5 (3 weeks)
 **Goal:** Enterprise-grade security
 
 ### 2.1 Enterprise Plugin Architecture
@@ -334,7 +334,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 - [ ] **Plugin loading mechanism** (1 day)
   - Dynamic import based on ENABLE_ENTERPRISE env var
-  - Graceful degradation (brak enterprise module = community mode)
+  - Graceful degradation (no enterprise module = community mode)
 
 - [ ] **Enterprise module (closed-source)** (3 days)
   - Private npm package: `@synjar/enterprise`
@@ -355,7 +355,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   export class EnterpriseModule {}
   ```
 
-**Deliverable:** Separacja open-source core od enterprise features
+**Deliverable:** Separation of open-source core from enterprise features
 
 ---
 
@@ -370,7 +370,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   - Standalone service (NestJS)
   - REST API: POST /validate
   - Database: licenses table
-  - JWT response z features list
+  - JWT response with features list
 
   ```typescript
   // license-server/src/license/license.controller.ts
@@ -392,10 +392,10 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   ```
 
 - [ ] **Client-side validation** (1 day)
-  - LicenseService w aplikacji
-  - Walidacja przy starcie (initialize())
+  - LicenseService in application
+  - Validation at startup (initialize())
   - Cache features in memory
-  - Re-validate co 24h
+  - Re-validate every 24h
 
   ```typescript
   @Injectable()
@@ -422,7 +422,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   }
   ```
 
-**Deliverable:** License enforcement dla enterprise features
+**Deliverable:** License enforcement for enterprise features
 
 ---
 
@@ -435,7 +435,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 - [ ] **AuditLog model** (1 day)
   - Prisma schema: userId, action, resource, metadata, timestamp
-  - Separate table (nie workspace-scoped)
+  - Separate table (not workspace-scoped)
 
   ```prisma
   model AuditLog {
@@ -502,7 +502,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   - Cron job: delete logs older than 90 days
   - Configurable per plan (future)
 
-**Deliverable:** Audit trail dla compliance (GDPR, SOC2)
+**Deliverable:** Audit trail for compliance (GDPR, SOC2)
 
 ---
 
@@ -542,8 +542,8 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   ```
 
 - [ ] **Usage tracking** (1 day)
-  - Track API calls per workspace (dla analytics)
-  - Store w UsageMetrics table
+  - Track API calls per workspace (for analytics)
+  - Store in UsageMetrics table
 
 **Deliverable:** Fair usage enforcement per workspace
 
@@ -558,7 +558,7 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 - [ ] **Database encryption (at rest)** (1 day)
   - PostgreSQL TDE (Transparent Data Encryption)
-  - Lub AWS RDS encryption
+  - Or AWS RDS encryption
 
 - [ ] **Column-level encryption** (1 day)
   - Encrypt sensitive fields (API keys, tokens)
@@ -643,8 +643,8 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
   - Security events (auth failures, unauthorized access)
 
 - [ ] **Alerting** (1 day)
-  - Slack webhook dla critical security events
-  - Threshold alerts (e.g., 10+ auth failures w 1 min)
+  - Slack webhook for critical security events
+  - Threshold alerts (e.g., 10+ auth failures in 1 min)
 
   ```typescript
   @Injectable()
@@ -688,9 +688,9 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 **Deliverables:**
 
-- Enterprise features w closed-source plugin
+- Enterprise features in closed-source plugin
 - License enforcement
-- Audit trail dla compliance
+- Audit trail for compliance
 - Per-workspace rate limiting
 - Encryption at rest and in transit
 - Real-time security monitoring
@@ -699,13 +699,13 @@ Ten dokument definiuje konkretny plan wdrożenia mechanizmów bezpieczeństwa dl
 
 ## Phase 3: Scale & Compliance (P2 - Future)
 
-**Timeline:** Q2 2026 (gdy będzie 100+ active users)
+**Timeline:** Q2 2026 (when there are 100+ active users)
 
 ### 3.1 Admin Microservice
 
 **Effort:** 10 days
 
-- [ ] Separate service dla admin operations
+- [ ] Separate service for admin operations
 - [ ] Cross-tenant analytics
 - [ ] Tenant provisioning automation
 - [ ] Database backup/restore per workspace

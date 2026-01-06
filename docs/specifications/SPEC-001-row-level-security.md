@@ -1,12 +1,12 @@
 # SPEC-001: Row Level Security (RLS)
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Done (Refactored)
-**Priorytet:** P0 (Fundament)
-**Zależności:** Brak
+**Priority:** P0 (Foundation)
+**Dependencies:** None
 
-> **Note (2025-12-28):** Mechanizm RLS został zrefaktorowany z user-based na workspace-based context.
-> Szczegóły: [2025-12-28-rls-per-workspace-refactor.md](./2025-12-28-rls-per-workspace-refactor.md)
+> **Note (2025-12-28):** RLS mechanism was refactored from user-based to workspace-based context.
+> Details: [2025-12-28-rls-per-workspace-refactor.md](./2025-12-28-rls-per-workspace-refactor.md)
 
 ### Refactorization Changes (2025-12-28 + 2025-12-29)
 
@@ -38,57 +38,57 @@
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Zapewnienie izolacji danych między workspace'ami na poziomie bazy danych. Nawet w przypadku błędu w kodzie aplikacji, użytkownik nie może uzyskać dostępu do danych innego workspace'a.
+Ensure data isolation between workspaces at the database level. Even in case of an application code bug, a user cannot access data from another workspace.
 
-### Wartość MVP
+### MVP Value
 
-- Bezpieczeństwo danych klientów
+- Customer data security
 - Compliance-ready (GDPR, SOC2)
-- Defense in depth - druga warstwa ochrony po kodzie aplikacyjnym
+- Defense in depth - second layer of protection after application code
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Polityki RLS
+### 2.1 RLS Policies
 
-| Tabela | Polityka | Opis |
-|--------|----------|------|
-| `Workspace` | `workspace_isolation` | User widzi tylko workspace'y, których jest członkiem |
-| `WorkspaceMember` | `member_isolation` | User widzi tylko członkostwa swoich workspace'ów |
-| `Document` | `document_isolation` | User widzi tylko dokumenty z workspace'ów, których jest członkiem |
-| `Chunk` | `chunk_isolation` | User widzi tylko chunki z dokumentów, do których ma dostęp |
-| `DocumentTag` | `tag_isolation` | User widzi tylko tagi dokumentów, do których ma dostęp |
-| `PublicLink` | `public_link_isolation` | User widzi tylko linki swoich workspace'ów |
+| Table | Policy | Description |
+|-------|--------|-------------|
+| `Workspace` | `workspace_isolation` | User sees only workspaces they are a member of |
+| `WorkspaceMember` | `member_isolation` | User sees only memberships of their workspaces |
+| `Document` | `document_isolation` | User sees only documents from workspaces they are a member of |
+| `Chunk` | `chunk_isolation` | User sees only chunks from documents they have access to |
+| `DocumentTag` | `tag_isolation` | User sees only tags of documents they have access to |
+| `PublicLink` | `public_link_isolation` | User sees only links from their workspaces |
 
 ### 2.2 Session context
 
-Aplikacja ustawia `app.current_user_id` na początku każdego requestu:
+Application sets `app.current_user_id` at the beginning of each request:
 
 ```sql
 SET LOCAL app.current_user_id = 'uuid-user-id';
 ```
 
-### 2.3 Wyjątki
+### 2.3 Exceptions
 
-- Tabela `User` - brak RLS (użytkownik może widzieć tylko siebie przez JWT)
-- Tabela `Tag` - globalna (tagi są współdzielone między workspace'ami)
-- Public API - SECURITY DEFINER function dla token lookup, potem RLS via `forWorkspace()`
-  - `lookup_public_link_by_token()` - bezpiecznie omija RLS tylko dla token lookup
-  - Waliduje `isActive=true` i `expiresAt > NOW()` na poziomie bazy
-  - Po walidacji: `forWorkspace(workspaceId)` dla queries z RLS
+- `User` table - no RLS (user can only see themselves via JWT)
+- `Tag` table - global (tags are shared between workspaces)
+- Public API - SECURITY DEFINER function for token lookup, then RLS via `forWorkspace()`
+  - `lookup_public_link_by_token()` - safely bypasses RLS only for token lookup
+  - Validates `isActive=true` and `expiresAt > NOW()` at database level
+  - After validation: `forWorkspace(workspaceId)` for queries with RLS
 
 ---
 
-## 3. Model danych
+## 3. Data Model
 
-### 3.1 Brak zmian w schemacie Prisma
+### 3.1 No changes in Prisma schema
 
-RLS jest implementowany przez raw SQL migrations, nie wymaga zmian w schema.prisma.
+RLS is implemented via raw SQL migrations, does not require changes to schema.prisma.
 
-### 3.2 Migracja SQL
+### 3.2 SQL Migration
 
 ```sql
 -- Enable RLS on tables
@@ -169,7 +169,7 @@ CREATE POLICY public_link_isolation ON "PublicLink"
 
 ---
 
-## 4. Implementacja
+## 4. Implementation
 
 ### 4.1 RLS Middleware (NestJS)
 
@@ -214,7 +214,7 @@ export class PrismaService extends PrismaClient {
 }
 ```
 
-### 4.3 Bypass dla Public API
+### 4.3 Bypass for Public API
 
 ```typescript
 // src/infrastructure/persistence/rls/rls-bypass.service.ts
@@ -223,28 +223,28 @@ export class PrismaService extends PrismaClient {
 export class RlsBypassService {
   constructor(private prisma: PrismaService) {}
 
-  // Używane tylko przez PublicController
+  // Used only by PublicController
   async withBypass<T>(fn: () => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async (tx) => {
       // Reset user context - RLS policies return empty for null user
       await tx.$executeRawUnsafe(
         `SET LOCAL app.current_user_id = ''`
       );
-      // Lub użyj dedykowanego połączenia bez RLS
+      // Or use a dedicated connection without RLS
       return fn();
     });
   }
 }
 ```
 
-### 4.4 Alternatywa: Osobna rola DB dla public API
+### 4.4 Alternative: Separate DB role for public API
 
 ```sql
--- Rola bez RLS restrictions
+-- Role without RLS restrictions
 CREATE ROLE synjar_public;
 GRANT SELECT ON "Document", "Chunk", "PublicLink" TO synjar_public;
 
--- Polityka dla public role (wszystko widoczne)
+-- Policy for public role (everything visible)
 CREATE POLICY public_access ON "Document"
   FOR SELECT
   TO synjar_public
@@ -253,79 +253,79 @@ CREATE POLICY public_access ON "Document"
 
 ---
 
-## 5. Testy akceptacyjne
+## 5. Acceptance Tests
 
-### 5.1 Test: Izolacja workspace'ów
+### 5.1 Test: Workspace isolation
 
 ```gherkin
-Scenario: User nie widzi dokumentów z obcego workspace'a
-  Given User A jest członkiem Workspace A
-  And User B jest członkiem Workspace B
-  And Document X należy do Workspace B
-  When User A wykonuje GET /workspaces/{wsA}/documents
-  Then Response nie zawiera Document X
+Scenario: User does not see documents from another workspace
+  Given User A is a member of Workspace A
+  And User B is a member of Workspace B
+  And Document X belongs to Workspace B
+  When User A executes GET /workspaces/{wsA}/documents
+  Then Response does not contain Document X
 
-Scenario: User nie widzi obcego workspace'a
-  Given User A jest członkiem Workspace A
-  And Workspace B istnieje (User A nie jest członkiem)
-  When User A wykonuje GET /workspaces
-  Then Response nie zawiera Workspace B
+Scenario: User does not see another workspace
+  Given User A is a member of Workspace A
+  And Workspace B exists (User A is not a member)
+  When User A executes GET /workspaces
+  Then Response does not contain Workspace B
 ```
 
-### 5.2 Test: RLS blokuje nawet przy błędzie w kodzie
+### 5.2 Test: RLS blocks even with code bug
 
 ```gherkin
-Scenario: Próba dostępu do dokumentu przez manipulację ID
-  Given User A jest członkiem Workspace A
-  And Document X (id: "doc-x") należy do Workspace B
-  When User A wykonuje GET /workspaces/{wsA}/documents/doc-x
-  Then Response status 404 (dokument niewidoczny przez RLS)
+Scenario: Attempt to access document via ID manipulation
+  Given User A is a member of Workspace A
+  And Document X (id: "doc-x") belongs to Workspace B
+  When User A executes GET /workspaces/{wsA}/documents/doc-x
+  Then Response status 404 (document invisible due to RLS)
 ```
 
-### 5.3 Test: Public API działa mimo RLS
+### 5.3 Test: Public API works despite RLS
 
 ```gherkin
-Scenario: Public API zwraca dokumenty bez user context
-  Given PublicLink z token "abc123" dla Workspace A
-  And Document X należy do Workspace A
-  When External system wykonuje GET /public/abc123/search?query=test
-  Then Response zawiera wyniki z Document X
+Scenario: Public API returns documents without user context
+  Given PublicLink with token "abc123" for Workspace A
+  And Document X belongs to Workspace A
+  When External system executes GET /public/abc123/search?query=test
+  Then Response contains results from Document X
 ```
 
 ---
 
-## 6. Ryzyka i mitigacje
+## 6. Risks and Mitigations
 
-| Ryzyko | Prawdopodobieństwo | Impact | Mitigacja |
-|--------|-------------------|--------|-----------|
-| Wydajność (dodatkowe joiny) | Średnie | Niski | Indeksy na workspaceId, cache get_user_workspace_ids() |
-| Zapomnienie SET LOCAL | Niskie | Wysoki | Middleware + testy integracyjne |
-| Bypass w złym miejscu | Niskie | Wysoki | Code review, dedykowany serwis RlsBypassService |
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Performance (additional joins) | Medium | Low | Indexes on workspaceId, cache get_user_workspace_ids() |
+| Forgetting SET LOCAL | Low | High | Middleware + integration tests |
+| Bypass in wrong place | Low | High | Code review, dedicated RlsBypassService |
 
 ---
 
 ## 7. Definition of Done
 
-- [x] Migracja SQL z politykami RLS
-- [x] RLS Middleware w NestJS
-- [x] Wrapper `forUser()` i `withCurrentUser()` w PrismaService
-- [x] RlsBypassService dla Public API (zaimplementowane jako `withoutRls()` w PrismaService)
-- [x] Testy integracyjne izolacji (**26/26 tests PASSING**)
-- [x] Użytkownik bazodanowy non-superuser (`knowledge_forge_app`)
-- [x] Testy wydajnościowe (benchmark przed/po RLS) - **avg 0.93ms, max 1.40ms**
-- [x] Dokumentacja w README
+- [x] SQL migration with RLS policies
+- [x] RLS Middleware in NestJS
+- [x] `forUser()` and `withCurrentUser()` wrapper in PrismaService
+- [x] RlsBypassService for Public API (implemented as `withoutRls()` in PrismaService)
+- [x] Integration tests for isolation (**26/26 tests PASSING**)
+- [x] Non-superuser database user (`knowledge_forge_app`)
+- [x] Performance tests (benchmark before/after RLS) - **avg 0.93ms, max 1.40ms**
+- [x] Documentation in README
 
 ---
 
-## 8. Estymacja
+## 8. Estimation
 
-| Zadanie | Złożoność |
-|---------|-----------|
-| Migracja SQL | S |
+| Task | Complexity |
+|------|------------|
+| SQL Migration | S |
 | RLS Middleware | S |
 | PrismaService wrapper | S |
 | Public API bypass | S |
-| Testy | M |
+| Tests | M |
 | **TOTAL** | **M** |
 
 ---
@@ -394,6 +394,6 @@ DATABASE_URL_MIGRATE="postgresql://postgres:...@localhost:6201/synjar"
 - **Development mode**: Uses non-superuser (`synjar_app`) - production-like environment
 - **Full API flow**: Register → Login → Create Workspace → List Workspaces - all working with RLS enforced
 
-## 10. Następna specyfikacja
+## 10. Next Specification
 
-Po wdrożeniu RLS: **ENTERPRISE-007: Model Plan i Subscription** (enterprise repo)
+After RLS implementation: **ENTERPRISE-007: Plan and Subscription Model** (enterprise repo)

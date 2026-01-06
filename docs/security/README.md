@@ -8,9 +8,9 @@
 
 ## Overview
 
-Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszystkie dokumenty są mandatory reading dla developers.
+This folder contains comprehensive security documentation for Synjar. All documents are mandatory reading for developers.
 
-**Core Principle:** Defense in Depth - wielowarstwowa ochrona multi-tenant architecture.
+**Core Principle:** Defense in Depth - multi-layered protection for multi-tenant architecture.
 
 ---
 
@@ -20,7 +20,7 @@ Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszyst
 
 **File:** [SECURITY_GUIDELINES.md](./SECURITY_GUIDELINES.md)
 
-**Purpose:** Zasady i best practices dla development.
+**Purpose:** Rules and best practices for development.
 
 **Key Topics:**
 - Multi-tenant isolation (RLS)
@@ -32,7 +32,7 @@ Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszyst
 - Security testing
 - Logging & monitoring
 
-**For:** Wszyscy developers
+**For:** All developers
 
 ---
 
@@ -40,11 +40,11 @@ Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszyst
 
 **File:** [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
 
-**Purpose:** Konkretny roadmap wdrożenia mechanizmów security.
+**Purpose:** Concrete roadmap for implementing security mechanisms.
 
 **Phases:**
-- Phase 1: MVP Security (P0) - 2 tygodnie
-- Phase 2: Post-MVP (P1) - 3 tygodnie
+- Phase 1: MVP Security (P0) - 2 weeks
+- Phase 2: Post-MVP (P1) - 3 weeks
 - Phase 3: Scale & Compliance (P2) - future
 
 **For:** Tech leads, project managers
@@ -55,7 +55,7 @@ Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszyst
 
 **File:** [CODE_REVIEW_SECURITY_CHECKLIST.md](./CODE_REVIEW_SECURITY_CHECKLIST.md)
 
-**Purpose:** Mandatory checklist dla code reviews.
+**Purpose:** Mandatory checklist for code reviews.
 
 **Sections:**
 - Authentication & Authorization
@@ -69,7 +69,7 @@ Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszyst
 - Tests
 - OWASP Top 10 checks
 
-**For:** Code reviewers (wszyscy developers)
+**For:** Code reviewers (all developers)
 
 ---
 
@@ -79,14 +79,14 @@ Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszyst
 
 **File:** [../research/2025-12-25-multi-tenant-security-in-open-source.md](../research/2025-12-25-multi-tenant-security-in-open-source.md)
 
-**Purpose:** Research na temat security w open-source multi-tenant apps.
+**Purpose:** Research on security in open-source multi-tenant apps.
 
 **Key Topics:**
-1. Ochrona kodu admin w open-source (plugin architecture, license validation)
-2. Architektura multi-tenant (RLS, tenant isolation patterns)
-3. Ochrona przed atakami (enumeration, data leakage, SQL injection)
+1. Protecting admin code in open-source (plugin architecture, license validation)
+2. Multi-tenant architecture (RLS, tenant isolation patterns)
+3. Attack protection (enumeration, data leakage, SQL injection)
 4. Industry examples (GitLab, Supabase, Sentry, Metabase)
-5. Minimalizacja ryzyka w open-source
+5. Risk minimization in open-source
 
 **For:** Architects, tech leads, security team
 
@@ -96,19 +96,19 @@ Ten folder zawiera kompleksową dokumentację bezpieczeństwa dla Synjar. Wszyst
 
 ### For New Developers
 
-1. **Przeczytaj:** [SECURITY_GUIDELINES.md](./SECURITY_GUIDELINES.md) (30 min)
-2. **Zapoznaj się:** [CODE_REVIEW_SECURITY_CHECKLIST.md](./CODE_REVIEW_SECURITY_CHECKLIST.md) (15 min)
-3. **Sprawdź:** Research report dla context (optional, 1h)
+1. **Read:** [SECURITY_GUIDELINES.md](./SECURITY_GUIDELINES.md) (30 min)
+2. **Review:** [CODE_REVIEW_SECURITY_CHECKLIST.md](./CODE_REVIEW_SECURITY_CHECKLIST.md) (15 min)
+3. **Check:** Research report for context (optional, 1h)
 
 ### For Code Reviewers
 
-1. **Użyj:** [CODE_REVIEW_SECURITY_CHECKLIST.md](./CODE_REVIEW_SECURITY_CHECKLIST.md) dla każdego PR
-2. **W razie wątpliwości:** Tag `@security-champion` w PR comments
+1. **Use:** [CODE_REVIEW_SECURITY_CHECKLIST.md](./CODE_REVIEW_SECURITY_CHECKLIST.md) for every PR
+2. **When in doubt:** Tag `@security-champion` in PR comments
 
 ### For Tech Leads
 
-1. **Przeczytaj:** Wszystkie dokumenty (2h total)
-2. **Sprawdź:** [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) - tracking progress
+1. **Read:** All documents (2h total)
+2. **Check:** [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) - tracking progress
 3. **Review:** Monthly security metrics
 
 ---
@@ -159,7 +159,7 @@ graph TD
 
 ### 1. Defense in Depth
 
-Wielowarstwowa ochrona:
+Multi-layered protection:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -175,20 +175,20 @@ Wielowarstwowa ochrona:
 
 ### 2. Zero Trust
 
-- Nigdy nie ufaj user input
-- Waliduj wszystko (auth, authz, input)
+- Never trust user input
+- Validate everything (auth, authz, input)
 - Assume breach (monitoring, logging)
 
 ### 3. Principle of Least Privilege
 
-- User widzi tylko swoje workspace'y (RLS)
-- Guards sprawdzają membership
+- User sees only their workspaces (RLS)
+- Guards check membership
 - RBAC (OWNER vs MEMBER)
 
 ### 4. Secure by Default
 
-- RLS enabled dla wszystkich tenant tables
-- Guards required na protected endpoints
+- RLS enabled for all tenant tables
+- Guards required on protected endpoints
 - Input validation via DTOs
 - Rate limiting configured
 
@@ -283,15 +283,15 @@ Wielowarstwowa ochrona:
 
 ### Role Responsibilities
 
-1. **Review PRs** z security perspective
-2. **Mentoring** developers na security best practices
-3. **Monthly audits** kodu i dependencies
+1. **Review PRs** from security perspective
+2. **Mentoring** developers on security best practices
+3. **Monthly audits** of code and dependencies
 4. **Incident response** coordination
-5. **Security training** dla team
+5. **Security training** for team
 
 ### Current Champions
 
-- **Primary:** TBD (assign po launch MVP)
+- **Primary:** TBD (assign after MVP launch)
 - **Backup:** TBD
 
 ---
@@ -338,7 +338,7 @@ Wielowarstwowa ochrona:
 
 ### Hands-on
 
-- **OWASP WebGoat:** Vulnerable app dla learning
+- **OWASP WebGoat:** Vulnerable app for learning
 - **HackTheBox:** Security challenges
 - **PentesterLab:** Web security exercises
 
@@ -346,9 +346,9 @@ Wielowarstwowa ochrona:
 
 ## FAQ
 
-### Q: Czy mogę użyć `$queryRawUnsafe`?
+### Q: Can I use `$queryRawUnsafe`?
 
-**A:** Tylko z parameteryzacją. Nigdy z user input bez escapowania.
+**A:** Only with parameterization. Never with user input without escaping.
 
 ```typescript
 // ✅ OK
@@ -364,27 +364,27 @@ const result = await prisma.$queryRawUnsafe(`
 
 ---
 
-### Q: Czy muszę pisać testy security dla każdej funkcjonalności?
+### Q: Do I need to write security tests for every feature?
 
-**A:** Tak, przynajmniej basic isolation test. Dla critical features (auth, payments) - comprehensive tests.
-
----
-
-### Q: Co jeśli znalazłem lukę w production?
-
-**A:** Natychmiast zgłoś na `#security` Slack lub security@synjar.com. Nie naprawiaj sam bez konsultacji.
+**A:** Yes, at least a basic isolation test. For critical features (auth, payments) - comprehensive tests.
 
 ---
 
-### Q: Czy mogę zrobić bypass RLS dla performance?
+### Q: What if I find a vulnerability in production?
 
-**A:** Tylko w wyjątkowych przypadkach i po review z security champion. Zawsze dokumentuj uzasadnienie.
+**A:** Report immediately on `#security` Slack or security@synjar.com. Don't fix it yourself without consultation.
 
 ---
 
-### Q: Jak często review dependencies?
+### Q: Can I bypass RLS for performance?
 
-**A:** Automated (Snyk): codziennie w CI/CD. Manual review: monthly. Critical vulns: fix immediately.
+**A:** Only in exceptional cases and after review with security champion. Always document the justification.
+
+---
+
+### Q: How often should dependencies be reviewed?
+
+**A:** Automated (Snyk): daily in CI/CD. Manual review: monthly. Critical vulns: fix immediately.
 
 ---
 

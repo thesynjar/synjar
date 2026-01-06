@@ -6,46 +6,46 @@
 
 ## Context
 
-### Incydent
+### Incident
 
-Po wdrożeniu specyfikacji `2025-12-28-rls-per-workspace-refactor.md` (commit `9b3776f`), aplikacja przestała działać z błędem:
+After deploying specification `2025-12-28-rls-per-workspace-refactor.md` (commit `9b3776f`), the application stopped working with error:
 
 ```
 WORKSPACE_CONTEXT_INVALID_UUID
 workspaceId: "dev-general-workspace"
 ```
 
-### Przyczyna
+### Root Cause
 
-1. **Nowa walidacja UUID** została dodana w `PrismaService.forWorkspace()`:
+1. **New UUID validation** was added in `PrismaService.forWorkspace()`:
    ```typescript
    if (!isUUID(workspaceId)) {
      throw new BadRequestException('Invalid workspace ID format');
    }
    ```
 
-2. **Seed script nie został zaktualizowany** - nadal tworzył workspace z `id: 'dev-general-workspace'` (string slug zamiast UUID)
+2. **Seed script was not updated** - it still created workspace with `id: 'dev-general-workspace'` (string slug instead of UUID)
 
-3. **Seed używa bezpośrednio `PrismaClient`**, nie `PrismaService`, więc omija walidację aplikacyjną
+3. **Seed uses `PrismaClient` directly**, not `PrismaService`, so it bypasses application validation
 
-### Dlaczego nie wykryto wcześniej?
+### Why wasn't this detected earlier?
 
-- Brak testu integracyjnego sprawdzającego seed + API workflow
-- Manual testing nie obejmował pełnego `db:reset` + sprawdzenia UI
-- Specyfikacja nie zawierała checklisty "update seed if needed"
+- No integration test checking seed + API workflow
+- Manual testing didn't include full `db:reset` + UI verification
+- Specification didn't contain checklist "update seed if needed"
 
 ## Decision
 
-### 1. Seed script musi używać UUID
+### 1. Seed script must use UUID
 
 ```typescript
-// PRZED (błędne)
+// BEFORE (incorrect)
 const workspace = await prisma.workspace.upsert({
   where: { id: 'dev-general-workspace' },
   create: { id: 'dev-general-workspace', ... }
 });
 
-// PO (poprawne)
+// AFTER (correct)
 const DEV_WORKSPACE_ID = '00000000-0000-4000-8000-000000000001';
 const workspace = await prisma.workspace.upsert({
   where: { id: DEV_WORKSPACE_ID },
@@ -53,44 +53,44 @@ const workspace = await prisma.workspace.upsert({
 });
 ```
 
-### 2. Stałe UUID dla dev environment
+### 2. Fixed UUIDs for dev environment
 
-Używamy deterministycznych UUID dla reproducibility:
+We use deterministic UUIDs for reproducibility:
 - `00000000-0000-4000-8000-000000000001` - Dev workspace
 
-### 3. Checklist dla specyfikacji zmieniających walidację
+### 3. Checklist for specifications changing validation
 
-Każda specyfikacja dodająca/zmieniająca walidację MUSI zawierać sekcję:
+Every specification adding/changing validation MUST contain section:
 
 ```markdown
 ## Seed & Test Data Impact
 
-- [ ] Sprawdź czy seed.ts wymaga aktualizacji
-- [ ] Sprawdź czy fixtures wymagają aktualizacji
-- [ ] Uruchom `db:reset` + manual test po zmianach
+- [ ] Check if seed.ts requires update
+- [ ] Check if fixtures require update
+- [ ] Run `db:reset` + manual test after changes
 ```
 
 ## Consequences
 
 ### Positive
 
-- Seed script jest teraz zgodny z walidacją UUID
-- Deterministyczne UUID ułatwiają debugging
-- Lessons learned udokumentowane dla przyszłych zmian
+- Seed script is now compliant with UUID validation
+- Deterministic UUIDs make debugging easier
+- Lessons learned documented for future changes
 
 ### Negative
 
-- Jednorazowa migracja danych deweloperskich (db:reset)
+- One-time migration of developer data (db:reset)
 
 ### Risks
 
-- Inne miejsca w kodzie mogą zakładać format slug (sprawdzone - brak)
+- Other places in code might assume slug format (checked - none found)
 
 ## Implementation
 
-- [x] Zaktualizować `prisma/seed.ts` - użyć UUID
-- [x] Uruchomić `db:reset` na środowisku deweloperskim
-- [ ] Dodać do template specyfikacji sekcję "Seed & Test Data Impact"
+- [x] Update `prisma/seed.ts` - use UUID
+- [x] Run `db:reset` on development environment
+- [ ] Add "Seed & Test Data Impact" section to specification template
 
 ## Related
 

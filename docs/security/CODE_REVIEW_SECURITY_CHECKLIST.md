@@ -1,6 +1,6 @@
 # Security Code Review Checklist
 
-**Purpose:** Mandatory security review dla wszystkich pull requests
+**Purpose:** Mandatory security review for all pull requests
 **Owner:** Engineering team
 **Updated:** 2025-12-25
 
@@ -8,10 +8,10 @@
 
 ## How to Use
 
-1. Przed merge do `main`, reviewer wykonuje ten checklist
-2. Wszystkie punkty MUSZĄ być zaznaczone (checked)
-3. Jeśli jakiś punkt nie ma zastosowania, napisz "N/A" + uzasadnienie
-4. W razie wątpliwości, oznacz `security` label i zapytaj security champion
+1. Before merging to `main`, the reviewer must complete this checklist
+2. All items MUST be checked
+3. If any item doesn't apply, write "N/A" + justification
+4. When in doubt, add the `security` label and ask the security champion
 
 ---
 
@@ -19,31 +19,31 @@
 
 ### 1.1 Authentication
 
-- [ ] **Wszystkie protected endpoints używają `@UseGuards(JwtAuthGuard)`**
-  - Check: Czy każdy controller ma guard?
+- [ ] **All protected endpoints use `@UseGuards(JwtAuthGuard)`**
+  - Check: Does every controller have a guard?
   - Exception: Public endpoints (explicitly documented)
 
-- [ ] **JWT token jest poprawnie walidowany**
-  - Check: Passport strategy weryfikuje signature
-  - Check: Token expiration jest sprawdzany
-  - Check: Refresh token flow jest secure (if implemented)
+- [ ] **JWT token is properly validated**
+  - Check: Passport strategy verifies signature
+  - Check: Token expiration is checked
+  - Check: Refresh token flow is secure (if implemented)
 
-- [ ] **Sensitive operations wymagają re-authentication** (if applicable)
-  - Example: Zmiana passwordu, usunięcie workspace'a
-  - Check: User musi potwierdzić password
+- [ ] **Sensitive operations require re-authentication** (if applicable)
+  - Example: Password change, workspace deletion
+  - Check: User must confirm password
 
 ### 1.2 Authorization
 
-- [ ] **Workspace-scoped endpoints używają `WorkspaceAccessGuard`**
-  - Check: Controller sprawdza membership
+- [ ] **Workspace-scoped endpoints use `WorkspaceAccessGuard`**
+  - Check: Controller checks membership
   - Pattern: `/workspaces/:workspaceId/*` → guard required
 
-- [ ] **Role-based access control (RBAC) jest enforced** (if applicable)
+- [ ] **Role-based access control (RBAC) is enforced** (if applicable)
   - Check: OWNER vs MEMBER permissions
-  - Example: Tylko OWNER może delete workspace
+  - Example: Only OWNER can delete workspace
 
-- [ ] **Uniform error responses (nie leakują resource existence)**
-  - BAD: 403 Forbidden (ujawnia że workspace istnieje)
+- [ ] **Uniform error responses (don't leak resource existence)**
+  - BAD: 403 Forbidden (reveals that workspace exists)
   - GOOD: 404 Not Found (uniform response)
 
 **Example pass:**
@@ -80,14 +80,14 @@ export class WorkspaceController {
 
 ### 2.1 RLS Policies
 
-- [ ] **Nowe tenant-scoped tables mają RLS enabled**
+- [ ] **New tenant-scoped tables have RLS enabled**
   - Check: `ALTER TABLE "X" ENABLE ROW LEVEL SECURITY`
   - Check: `ALTER TABLE "X" FORCE ROW LEVEL SECURITY`
   - Check: Policy created with `get_user_workspace_ids()`
 
-- [ ] **Migracja SQL jest reviewed**
-  - Check: Policy logic poprawna (nie za szeroka, nie za wąska)
-  - Check: Performance: indeksy na `workspaceId`, `userId`
+- [ ] **SQL migration is reviewed**
+  - Check: Policy logic is correct (not too broad, not too narrow)
+  - Check: Performance: indexes on `workspaceId`, `userId`
 
 **Example:**
 
@@ -99,15 +99,15 @@ CREATE POLICY document_isolation ON "Document"
     "workspaceId" IN (SELECT get_user_workspace_ids())
   );
 
--- ❌ BAD (brak RLS)
+-- ❌ BAD (no RLS)
 -- No policy = anyone can see all documents!
 ```
 
 ### 2.2 RLS Testing
 
-- [ ] **Integration test dla cross-tenant isolation**
-  - Test: User A nie widzi resources User B
-  - Test: RLS blokuje nawet przy SQL injection
+- [ ] **Integration test for cross-tenant isolation**
+  - Test: User A cannot see User B's resources
+  - Test: RLS blocks even with SQL injection
 
 **Example test:**
 
@@ -134,9 +134,9 @@ it('prevents cross-tenant access', async () => {
 
 ### 3.1 DTOs
 
-- [ ] **Wszystkie request body/query używają DTOs z `class-validator`**
+- [ ] **All request body/query use DTOs with `class-validator`**
   - Check: `@IsString()`, `@IsInt()`, `@MaxLength()`, etc.
-  - Check: `whitelist: true` w ValidationPipe (strip unknown props)
+  - Check: `whitelist: true` in ValidationPipe (strip unknown props)
 
 **Example pass:**
 
@@ -160,7 +160,7 @@ export class CreateDocumentDto {
 **Example fail:**
 
 ```typescript
-// ❌ BAD (brak validation)
+// ❌ BAD (no validation)
 export class CreateDocumentDto {
   title: string;  // Any string, unlimited length!
   content: string;
@@ -169,7 +169,7 @@ export class CreateDocumentDto {
 
 ### 3.2 Special Characters
 
-- [ ] **Search queries są sanityzowane**
+- [ ] **Search queries are sanitized**
   - Check: Whitelist allowed characters: `[a-zA-Z0-9\s\-_\.]`
   - Check: Reject SQL/XSS payloads
 
@@ -189,11 +189,11 @@ async search(@Query('q') query: string) {
 
 - [ ] **MIME type whitelist enforced**
   - Check: `allowedMimeTypes` array
-  - Check: Magic bytes verification (nie tylko extension)
+  - Check: Magic bytes verification (not just extension)
 
 - [ ] **File size limit enforced**
   - Check: Per-plan limit (FREE: 50MB, PRO: 200MB)
-  - Check: Validation przed upload do B2
+  - Check: Validation before upload to B2
 
 **Example:**
 
@@ -220,11 +220,11 @@ async upload(@UploadedFile() file: Express.Multer.File) {
 
 ### 4.1 Prisma Usage
 
-- [ ] **Wszystkie queries używają Prisma query builder** (nie raw SQL)
+- [ ] **All queries use Prisma query builder** (not raw SQL)
   - Preferred: `prisma.document.findMany({ where: { ... } })`
-  - Avoid: `$queryRawUnsafe` z user input
+  - Avoid: `$queryRawUnsafe` with user input
 
-- [ ] **Jeśli raw SQL, to TYLKO z parametryzacją**
+- [ ] **If raw SQL, use ONLY parameterization**
   - Check: Tagged template literals `$queryRaw\`...\``
   - Never: String interpolation `$queryRawUnsafe(\`... ${userInput} ...\`)`
 
@@ -254,8 +254,8 @@ async search(query: string) {
 
 ### 4.2 Dynamic Queries
 
-- [ ] **Dynamic `where` conditions są bezpieczne**
-  - Check: Nie concatenate strings
+- [ ] **Dynamic `where` conditions are safe**
+  - Check: Don't concatenate strings
   - Use: Prisma conditional builders
 
 **Example:**
@@ -279,13 +279,13 @@ return this.prisma.document.findMany({ where });
 
 ### 5.1 Hardcoded Secrets
 
-- [ ] **Zero hardcoded secrets w kodzie**
-  - Check: Grep przez kod: `password`, `secret`, `api_key`, `token`
+- [ ] **Zero hardcoded secrets in code**
+  - Check: Grep through code: `password`, `secret`, `api_key`, `token`
   - Example: `const apiKey = "sk-xxx"` ❌
 
-- [ ] **Wszystkie secrets z `ConfigService` / env vars**
+- [ ] **All secrets from `ConfigService` / env vars**
   - Check: `this.configService.get('OPENAI_API_KEY')`
-  - Check: Brak defaultów dla production secrets
+  - Check: No defaults for production secrets
 
 **Example pass:**
 
@@ -313,8 +313,8 @@ const OPENAI_API_KEY = 'sk-proj-abc123...';  // Hardcoded!
 
 ### 5.2 Env Files
 
-- [ ] **`.env` jest w `.gitignore`**
-- [ ] **`.env.example` jest up-to-date** (placeholder values tylko)
+- [ ] **`.env` is in `.gitignore`**
+- [ ] **`.env.example` is up-to-date** (placeholder values only)
 
 ---
 
@@ -322,7 +322,7 @@ const OPENAI_API_KEY = 'sk-proj-abc123...';  // Hardcoded!
 
 ### 6.1 Error Messages
 
-- [ ] **Error messages nie leakają internal details**
+- [ ] **Error messages don't leak internal details**
   - BAD: `Database connection failed: host 10.0.1.5 unreachable`
   - GOOD: `An error occurred. Please try again.`
 
@@ -343,11 +343,11 @@ catch (error) {
 
 ### 6.2 Logging
 
-- [ ] **PII nie jest logowane**
+- [ ] **PII is not logged**
   - Never log: passwords, tokens, credit cards, SSN
   - OK to log: userId, workspaceId, timestamp
 
-- [ ] **Security events są logowane**
+- [ ] **Security events are logged**
   - Example: Auth failures, unauthorized access, rate limit hits
 
 **Example:**
@@ -366,7 +366,7 @@ this.logger.log(`User ${email} logged in with password ${password}`);
 
 ### 7.1 Rate Limiting
 
-- [ ] **Expensive operations mają rate limiting**
+- [ ] **Expensive operations have rate limiting**
   - Example: Search, file upload, AI processing
   - Check: `@Throttle(limit, ttl)` decorator
 
@@ -382,9 +382,9 @@ async search(@Query('q') query: string) {
 
 ### 7.2 Request Size Limits
 
-- [ ] **Request body size jest ograniczony**
+- [ ] **Request body size is limited**
   - Check: NestJS `body-parser` limit config
-  - Default: 1MB dla JSON, configurable dla file uploads
+  - Default: 1MB for JSON, configurable for file uploads
 
 ---
 
@@ -392,18 +392,18 @@ async search(@Query('q') query: string) {
 
 ### 8.1 New Dependencies
 
-- [ ] **Nowe dependencies są reviewed**
+- [ ] **New dependencies are reviewed**
   - Check: npm downloads, GitHub stars, last update
   - Check: Known vulnerabilities (npm audit, Snyk)
 
-- [ ] **License jest compatible** (MIT, Apache 2.0, BSD)
+- [ ] **License is compatible** (MIT, Apache 2.0, BSD)
   - Avoid: GPL, AGPL (viral licenses)
 
 ### 8.2 Audit
 
-- [ ] **`pnpm audit` nie pokazuje HIGH/CRITICAL**
-  - Check: Przed merge, run `pnpm audit --audit-level=high`
-  - Fix: Update lub find alternative
+- [ ] **`pnpm audit` shows no HIGH/CRITICAL**
+  - Check: Before merge, run `pnpm audit --audit-level=high`
+  - Fix: Update or find alternative
 
 ---
 
@@ -411,19 +411,19 @@ async search(@Query('q') query: string) {
 
 ### 9.1 Security Tests
 
-- [ ] **Integration tests dla isolation**
+- [ ] **Integration tests for isolation**
   - Test: Cross-tenant access prevention
   - Test: RLS enforcement
 
-- [ ] **Unit tests dla guards**
+- [ ] **Unit tests for guards**
   - Test: JwtAuthGuard rejects invalid token
   - Test: WorkspaceAccessGuard rejects non-member
 
-- [ ] **E2E tests dla critical flows**
+- [ ] **E2E tests for critical flows**
   - Test: Auth flow (register, login, refresh)
   - Test: Workspace creation (limit enforcement)
 
-**Minimum coverage:** 80% overall, 100% dla security-critical code (guards, RLS, auth).
+**Minimum coverage:** 80% overall, 100% for security-critical code (guards, RLS, auth).
 
 ---
 
@@ -446,7 +446,7 @@ async search(@Query('q') query: string) {
   - Command injection: Avoid `exec()` with user input
 
 - [ ] **A04: Insecure Design**
-  - RLS jako Defense in Depth
+  - RLS as Defense in Depth
   - Principle of least privilege
 
 - [ ] **A05: Security Misconfiguration**
@@ -481,13 +481,13 @@ async search(@Query('q') query: string) {
 
 ### 11.1 XSS Prevention
 
-- [ ] **User input jest sanityzowany przed render**
-  - Use: React (auto-escapes), DOMPurify (dla raw HTML)
-  - Never: `dangerouslySetInnerHTML` z user input
+- [ ] **User input is sanitized before render**
+  - Use: React (auto-escapes), DOMPurify (for raw HTML)
+  - Never: `dangerouslySetInnerHTML` with user input
 
 ### 11.2 CSRF Protection
 
-- [ ] **State-changing requests mają CSRF token**
+- [ ] **State-changing requests have CSRF token**
   - Check: NestJS CSRF middleware (if applicable)
   - Check: SameSite cookies
 
@@ -495,32 +495,32 @@ async search(@Query('q') query: string) {
 
 ## PR Checklist Summary
 
-Przed approve PR, upewnij się że:
+Before approving the PR, make sure that:
 
-- [ ] Wszystkie security checks są ✅
-- [ ] Testy security przechodzą (isolation, guards, input validation)
-- [ ] `pnpm audit` nie pokazuje HIGH/CRITICAL
-- [ ] Code review notes są addressed
-- [ ] Dokumentacja security jest updated (jeśli nowa funkcjonalność)
+- [ ] All security checks are ✅
+- [ ] Security tests pass (isolation, guards, input validation)
+- [ ] `pnpm audit` shows no HIGH/CRITICAL
+- [ ] Code review notes are addressed
+- [ ] Security documentation is updated (if new functionality)
 
 ---
 
 ## Red Flags (Automatic REJECT)
 
-Jeśli którykolwiek z tych występuje, **natychmiastowy REJECT**:
+If any of these occur, **immediate REJECT**:
 
-1. **Hardcoded secrets** w kodzie
-2. **`$queryRawUnsafe` z user input** bez parameterization
-3. **Brak guards** na protected endpoints
-4. **RLS disabled** na tenant table (bez uzasadnienia)
-5. **Credentials w git history** (trzeba rewrite history)
-6. **CRITICAL vulnerabilities** w `pnpm audit`
+1. **Hardcoded secrets** in code
+2. **`$queryRawUnsafe` with user input** without parameterization
+3. **Missing guards** on protected endpoints
+4. **RLS disabled** on tenant table (without justification)
+5. **Credentials in git history** (requires history rewrite)
+6. **CRITICAL vulnerabilities** in `pnpm audit`
 
 ---
 
 ## Examples of Past Vulnerabilities (Lessons Learned)
 
-### Example 1: IDOR w Document Access
+### Example 1: IDOR in Document Access
 
 **Vulnerable code:**
 
@@ -531,7 +531,7 @@ async getDocument(@Param('id') id: string) {
 }
 ```
 
-**Issue:** Brak workspace membership check.
+**Issue:** No workspace membership check.
 
 **Fix:**
 
@@ -550,7 +550,7 @@ async getDocument(
 
 ---
 
-### Example 2: SQL Injection w Search
+### Example 2: SQL Injection in Search
 
 **Vulnerable code:**
 
@@ -592,7 +592,7 @@ if (!member) {
 }
 ```
 
-**Issue:** Różne error codes ujawniają czy workspace istnieje.
+**Issue:** Different error codes reveal whether workspace exists.
 
 **Fix:**
 
@@ -607,7 +607,7 @@ if (!workspace) {
 
 ## Contact
 
-**Questions?** Tag `@security-champion` w PR comments.
+**Questions?** Tag `@security-champion` in PR comments.
 
 **Report vulnerability:** security@synjar.com (confidential).
 

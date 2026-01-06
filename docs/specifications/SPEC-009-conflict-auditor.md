@@ -1,75 +1,75 @@
 # SPEC-009: Conflict Auditor (PREMIUM)
 
-**Data:** 2025-12-24
+**Date:** 2025-12-24
 **Status:** Draft
-**Priorytet:** P2 (Premium feature)
-**Zależności:** ENTERPRISE-007 (Plan - conflictDetection flag) - enterprise repo
+**Priority:** P2 (Premium feature)
+**Dependencies:** ENTERPRISE-007 (Plan - conflictDetection flag) - enterprise repo
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-System wykrywający sprzeczności między dokumentami w bazie wiedzy. Pomaga utrzymać spójność wiedzy i identyfikować nieaktualne informacje.
+A system that detects contradictions between documents in the knowledge base. Helps maintain knowledge consistency and identify outdated information.
 
-### Wartość MVP
+### MVP Value
 
-- Wykrywanie konfliktów między dokumentami
-- Raport sprzeczności z opisem problemu
-- Workflow do rozwiązywania konfliktów
+- Detecting conflicts between documents
+- Conflict report with problem description
+- Workflow for conflict resolution
 
 ---
 
-## 2. Wymagania funkcjonalne
+## 2. Functional Requirements
 
-### 2.1 Dostępność
+### 2.1 Availability
 
 | Plan | Conflict Detection |
 |------|-------------------|
-| FREE | ❌ |
-| STARTER | ❌ |
-| BASIC+ | ✅ |
+| FREE | No |
+| STARTER | No |
+| BASIC+ | Yes |
 
-### 2.2 Triggery audytu
+### 2.2 Audit Triggers
 
-1. **On-demand** - użytkownik ręcznie uruchamia audyt
-2. **Po dodaniu dokumentu** - automatyczne sprawdzenie nowego dokumentu
-3. **Scheduled** (v2) - periodyczne sprawdzanie całej bazy
+1. **On-demand** - user manually runs audit
+2. **After adding document** - automatic check of new document
+3. **Scheduled** (v2) - periodic check of entire base
 
-### 2.3 Algorytm wykrywania
+### 2.3 Detection Algorithm
 
 ```
 1. CANDIDATE SELECTION
-   - Znajdź dokumenty o podobnej tematyce (semantic similarity > 0.75)
-   - Ogranicz do dokumentów z tymi samymi tagami
+   - Find documents with similar topics (semantic similarity > 0.75)
+   - Limit to documents with the same tags
 
 2. PAIRWISE COMPARISON
-   - Dla każdej pary kandydatów wyślij do LLM
-   - Prompt: "Czy te fragmenty są sprzeczne?"
+   - For each candidate pair send to LLM
+   - Prompt: "Are these fragments contradictory?"
 
 3. CONFLICT CLASSIFICATION
-   - CONTRADICTION: Bezpośrednia sprzeczność faktów
-   - OUTDATED: Jeden dokument jest prawdopodobnie nieaktualny
-   - AMBIGUOUS: Niejasność/dwuznaczność
-   - NO_CONFLICT: Brak konfliktu
+   - CONTRADICTION: Direct factual contradiction
+   - OUTDATED: One document is probably outdated
+   - AMBIGUOUS: Unclear/ambiguous information
+   - NO_CONFLICT: No conflict
 
 4. REPORT GENERATION
-   - Zapisz wykryte konflikty
-   - Wygeneruj opis dla użytkownika
+   - Save detected conflicts
+   - Generate description for user
 ```
 
-### 2.4 Status konfliktu
+### 2.4 Conflict Status
 
-| Status | Opis |
+| Status | Description |
 |--------|------|
-| PENDING | Wykryty, czeka na review |
-| REVIEWED | Przejrzany przez usera |
-| RESOLVED | Rozwiązany (jeden z dokumentów zmieniony) |
-| IGNORED | Świadomie zignorowany |
-| FALSE_POSITIVE | Błędnie wykryty |
+| PENDING | Detected, awaiting review |
+| REVIEWED | Reviewed by user |
+| RESOLVED | Resolved (one of the documents changed) |
+| IGNORED | Deliberately ignored |
+| FALSE_POSITIVE | Incorrectly detected |
 
 ---
 
-## 3. Model danych
+## 3. Data Model
 
 ### 3.1 Prisma Schema
 
@@ -146,7 +146,7 @@ model Document {
 
 ---
 
-## 4. Implementacja
+## 4. Implementation
 
 ### 4.1 ConflictAuditorService
 
@@ -425,77 +425,77 @@ interface UpdateConflictDto {
 
 ---
 
-## 6. Testy akceptacyjne
+## 6. Acceptance Tests
 
-### 6.1 Test: Wykrycie sprzeczności
+### 6.1 Test: Contradiction detection
 
 ```gherkin
-Scenario: System wykrywa sprzeczność między dokumentami
-  Given Dokument A: "Termin zwrotu to 14 dni"
-  And Dokument B: "Termin zwrotu to 30 dni"
-  When Uruchamiam audyt dokumentu B
-  Then System wykrywa konflikt typu CONTRADICTION
+Scenario: System detects contradiction between documents
+  Given Document A: "Return period is 14 days"
+  And Document B: "Return period is 30 days"
+  When I run audit on document B
+  Then System detects conflict of type CONTRADICTION
   And Severity = HIGH
 ```
 
-### 6.2 Test: Brak konfliktu
+### 6.2 Test: No conflict
 
 ```gherkin
-Scenario: System nie zgłasza fałszywych konfliktów
-  Given Dokument A: "Procedura A dotyczy klientów indywidualnych"
-  And Dokument B: "Procedura B dotyczy klientów biznesowych"
-  When Uruchamiam audyt
-  Then System nie wykrywa konfliktu
+Scenario: System does not report false conflicts
+  Given Document A: "Procedure A is for individual customers"
+  And Document B: "Procedure B is for business customers"
+  When I run audit
+  Then System does not detect conflict
 ```
 
-### 6.3 Test: FREE user nie ma dostępu
+### 6.3 Test: FREE user has no access
 
 ```gherkin
-Scenario: FREE user nie może używać conflict detection
-  Given User z planem FREE
-  When User wykonuje POST /conflicts/audit
+Scenario: FREE user cannot use conflict detection
+  Given User with FREE plan
+  When User executes POST /conflicts/audit
   Then Response status 403
   And Error = "FEATURE_NOT_AVAILABLE"
 ```
 
 ---
 
-## 7. Koszty
+## 7. Costs
 
-| Operacja | Koszt LLM |
+| Operation | LLM Cost |
 |----------|-----------|
-| Porównanie pary chunków | ~$0.001 |
-| Audyt dokumentu (10 chunków, 5 kandydatów each) | ~$0.05 |
-| Audyt workspace (100 dokumentów) | ~$5 |
+| Chunk pair comparison | ~$0.001 |
+| Document audit (10 chunks, 5 candidates each) | ~$0.05 |
+| Workspace audit (100 documents) | ~$5 |
 
-Rekomendacja: Limit audytów per miesiąc w planach.
+Recommendation: Limit audits per month in plans.
 
 ---
 
 ## 8. Definition of Done
 
-- [ ] ConflictReport model + migracja
+- [ ] ConflictReport model + migration
 - [ ] ConflictAuditorService
 - [ ] ConflictController + endpoints
 - [ ] PremiumFeatureGuard
-- [ ] Testy jednostkowe
-- [ ] Testy integracyjne z LLM (mocked)
-- [ ] Dokumentacja API
+- [ ] Unit tests
+- [ ] Integration tests with LLM (mocked)
+- [ ] API documentation
 
 ---
 
-## 9. Estymacja
+## 9. Estimation
 
-| Zadanie | Złożoność |
+| Task | Complexity |
 |---------|-----------|
-| Model danych | S |
+| Data model | S |
 | ConflictAuditorService | L |
 | Controller + API | M |
-| Testy | M |
+| Tests | M |
 | **TOTAL** | **L** |
 
 ---
 
-## 10. Następna specyfikacja
+## 10. Next Specification
 
-Po wdrożeniu: **SPEC-010: Rekomendacje zweryfikowanych chunków**
+After implementation: **SPEC-010: Verified chunk recommendations**

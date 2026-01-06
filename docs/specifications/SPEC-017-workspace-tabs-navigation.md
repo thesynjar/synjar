@@ -1,60 +1,60 @@
 # SPEC-017: Workspace Tabs Navigation
 
-**Data:** 2025-12-28
-**Status:** Draft → Reviewed
-**Priorytet:** P1 (UX Enhancement)
-**Zależności:** SPEC-012 (Frontend Dashboard), SPEC-016 (Frontend Public Links)
+**Date:** 2025-12-28
+**Status:** Draft -> Reviewed
+**Priority:** P1 (UX Enhancement)
+**Dependencies:** SPEC-012 (Frontend Dashboard), SPEC-016 (Frontend Public Links)
 
 ---
 
-## 1. Cel biznesowy
+## 1. Business Goal
 
-Wprowadzenie nawigacji zakładkowej w widoku workspace, aby:
-1. Zwiększyć odkrywalność funkcji Public Links (kluczowa przewaga konkurencyjna)
-2. Zapewnić skalowalną strukturę dla przyszłych funkcji (Settings, Members, Activity)
-3. Poprawić user experience zgodnie z branżowymi standardami (GitHub, Linear, Notion)
+Introduction of tab navigation in the workspace view to:
+1. Increase discoverability of Public Links feature (key competitive advantage)
+2. Provide a scalable structure for future features (Settings, Members, Activity)
+3. Improve user experience according to industry standards (GitHub, Linear, Notion)
 
-### 1.1 Wartość MVP
+### 1.1 MVP Value
 
-- Zakładki: Documents, Public Links
-- Głębokie linkowanie (deep linking) do zakładek
-- Spójny wzorzec nawigacji w workspace
+- Tabs: Documents, Public Links
+- Deep linking to tabs
+- Consistent navigation pattern in workspace
 
 ### 1.2 Bounded Context
 
-**Context:** Workspace (zgodnie z [ecosystem.md](../ecosystem.md))
+**Context:** Workspace (according to [ecosystem.md](../ecosystem.md))
 
-Ta specyfikacja dotyczy **wyłącznie warstwy UI (Interfaces Layer)**:
-- Brak zmian w Domain Layer
-- Brak zmian w Application Layer
-- Brak nowych agregatów/encji
-- Frontend konsumuje istniejący Workspace aggregate przez API
+This specification covers **only the UI layer (Interfaces Layer)**:
+- No changes in Domain Layer
+- No changes in Application Layer
+- No new aggregates/entities
+- Frontend consumes existing Workspace aggregate through API
 
 ```
-┌─────────────────────────────────────────┐
-│ Interfaces Layer (ta specyfikacja)      │
-│ - WorkspacePage, WorkspaceTabs          │
-│ - React Router navigation               │
-└─────────────────┬───────────────────────┘
-                  │ HTTP API
-                  ▼
-┌─────────────────────────────────────────┐
-│ Application Layer (bez zmian)           │
-│ - WorkspaceService                      │
-└─────────────────────────────────────────┘
++------------------------------------------+
+| Interfaces Layer (this specification)    |
+| - WorkspacePage, WorkspaceTabs           |
+| - React Router navigation                |
++------------------+-----------------------+
+                   | HTTP API
+                   v
++------------------------------------------+
+| Application Layer (no changes)           |
+| - WorkspaceService                       |
++------------------------------------------+
 ```
 
-### 1.3 Dlaczego to ważne?
+### 1.3 Why is this important?
 
-Public Links to **jedyna funkcja, której konkurencja nie oferuje** (Dify, Quivr, Mem.ai, Notion AI).
-Ukrycie jej w Settings lub za przyciskiem zmniejszy adopcję. Zakładka na równi z Documents
-podkreśla jej wagę w propozycji wartości "Memory for AI".
+Public Links is **the only feature competitors don't offer** (Dify, Quivr, Mem.ai, Notion AI).
+Hiding it in Settings or behind a button will reduce adoption. A tab on par with Documents
+emphasizes its importance in the "Memory for AI" value proposition.
 
 ---
 
 ## 2. User Stories
 
-### US-1: Nawigacja między sekcjami workspace
+### US-1: Navigation between workspace sections
 **As a** workspace member
 **I want to** navigate between Documents and Public Links using tabs
 **So that** I can easily access different workspace features
@@ -66,7 +66,7 @@ podkreśla jej wagę w propozycji wartości "Memory for AI".
 - And Public Links tab becomes active
 - And Public Links content is displayed
 
-### US-2: Deep linking do zakładki
+### US-2: Deep linking to tab
 **As a** user sharing workspace link
 **I want to** share direct link to Public Links tab
 **So that** recipient lands on correct section
@@ -90,51 +90,51 @@ podkreśla jej wagę w propozycji wartości "Memory for AI".
 
 ---
 
-## 3. Wymagania funkcjonalne
+## 3. Functional Requirements
 
-### 3.1 Struktura URL
+### 3.1 URL Structure
 
-| URL | Zakładka | Opis |
-|-----|----------|------|
-| `/workspaces/:id` | - | Redirect do `/workspaces/:id/documents` |
-| `/workspaces/:id/documents` | Documents | Lista dokumentów (obecna funkcjonalność) |
-| `/workspaces/:id/public-links` | Public Links | Zarządzanie linkami publicznymi |
-| `/workspaces/:id/settings` | Settings | (przyszłość) Ustawienia workspace |
+| URL | Tab | Description |
+|-----|-----|-------------|
+| `/workspaces/:id` | - | Redirect to `/workspaces/:id/documents` |
+| `/workspaces/:id/documents` | Documents | Documents list (current functionality) |
+| `/workspaces/:id/public-links` | Public Links | Public links management |
+| `/workspaces/:id/settings` | Settings | (future) Workspace settings |
 
-### 3.2 Komponenty
+### 3.2 Components
 
 1. **WorkspaceTabs**
-   - Poziome zakładki pod nagłówkiem workspace
-   - Aktywna zakładka wyróżniona wizualnie
-   - Nawigacja przez React Router (nie stan lokalny)
-   - Dostępność: ARIA tabs pattern, nawigacja klawiaturą (Tab, Enter, Arrow keys)
-   - **Visibility:** Wszystkie zakładki widoczne dla wszystkich członków workspace
+   - Horizontal tabs below workspace header
+   - Active tab visually highlighted
+   - Navigation through React Router (not local state)
+   - Accessibility: ARIA tabs pattern, keyboard navigation (Tab, Enter, Arrow keys)
+   - **Visibility:** All tabs visible to all workspace members
 
 2. **WorkspaceLayout**
-   - Wrapper dla wszystkich stron workspace
-   - Zawiera: nagłówek workspace + zakładki + outlet
+   - Wrapper for all workspace pages
+   - Contains: workspace header + tabs + outlet
 
 3. **DocumentsTab**
-   - Refaktoryzacja obecnego WorkspaceDetail.tsx
-   - Upload, lista dokumentów, akcje
+   - Refactoring of current WorkspaceDetail.tsx
+   - Upload, documents list, actions
 
 4. **PublicLinksTab**
-   - Implementacja wg SPEC-016
-   - Lista linków, tworzenie, szczegóły
+   - Implementation per SPEC-016
+   - Links list, creation, details
 
-### 3.3 Zachowanie
+### 3.3 Behavior
 
-1. **Domyślna zakładka**: Documents (redirect z `/workspaces/:id`)
-2. **Persystencja URL**: Każda zakładka ma własny URL (bookmarkable)
-3. **Nawigacja**: Kliknięcie zakładki = nawigacja React Router
-4. **Stan**: Każda zakładka zachowuje swój stan (scroll, filtry) w ramach sesji
-5. **Tab order**: Stały (Documents → Public Links → Settings)
+1. **Default tab**: Documents (redirect from `/workspaces/:id`)
+2. **URL persistence**: Each tab has its own URL (bookmarkable)
+3. **Navigation**: Tab click = React Router navigation
+4. **State**: Each tab maintains its state (scroll, filters) within session
+5. **Tab order**: Fixed (Documents -> Public Links -> Settings)
 
 ### 3.4 API Contracts
 
 #### GET /workspaces/:id
 
-Endpoint używany przez `useWorkspace` hook.
+Endpoint used by `useWorkspace` hook.
 
 **Request:**
 ```http
@@ -174,26 +174,26 @@ X-Workspace-Id: 123
 
 ---
 
-## 4. Implementacja
+## 4. Implementation
 
-### 4.1 Struktura plików
+### 4.1 File Structure
 
 ```
 apps/web/src/features/workspaces/
 ├── pages/
-│   └── WorkspacePage.tsx          # Layout z zakładkami
+│   └── WorkspacePage.tsx          # Layout with tabs
 ├── components/
-│   ├── WorkspaceHeader.tsx        # Nagłówek (nazwa, opis, back link)
-│   ├── WorkspaceTabs.tsx          # Nawigacja zakładkowa
+│   ├── WorkspaceHeader.tsx        # Header (name, description, back link)
+│   ├── WorkspaceTabs.tsx          # Tab navigation
 │   ├── WorkspacePageSkeleton.tsx  # Loading skeleton
 │   ├── WorkspaceNotFound.tsx      # 404 error state
 │   ├── WorkspaceAccessDenied.tsx  # 403 error state
 │   └── WorkspaceError.tsx         # Generic error state
 ├── tabs/
-│   ├── DocumentsTab.tsx           # Zawartość zakładki Documents
-│   └── PublicLinksTab.tsx         # Zawartość zakładki Public Links
+│   ├── DocumentsTab.tsx           # Documents tab content
+│   └── PublicLinksTab.tsx         # Public Links tab content
 └── hooks/
-    └── useWorkspace.ts            # Hook do pobierania workspace
+    └── useWorkspace.ts            # Hook for fetching workspace
 ```
 
 ### 4.2 Router Configuration
@@ -259,7 +259,7 @@ export function WorkspacePage() {
 }
 ```
 
-### 4.4 WorkspaceTabs (z design tokens i keyboard navigation)
+### 4.4 WorkspaceTabs (with design tokens and keyboard navigation)
 
 ```typescript
 // src/features/workspaces/components/WorkspaceTabs.tsx
@@ -555,14 +555,14 @@ export function useWorkspace(workspaceId: string) {
 }
 ```
 
-### 4.9 DocumentsTab (refaktoryzacja WorkspaceDetail)
+### 4.9 DocumentsTab (WorkspaceDetail refactoring)
 
 ```typescript
 // src/features/workspaces/tabs/DocumentsTab.tsx
 
 import { useOutletContext } from 'react-router-dom';
 import { useState, useRef } from 'react';
-// ... reszta importów
+// ... other imports
 
 interface WorkspaceContext {
   workspace: Workspace;
@@ -572,7 +572,7 @@ interface WorkspaceContext {
 export function DocumentsTab() {
   const { workspaceId } = useOutletContext<WorkspaceContext>();
   const [documents, setDocuments] = useState<Document[]>([]);
-  // ... reszta logiki z WorkspaceDetail (upload, documents list, modal)
+  // ... rest of logic from WorkspaceDetail (upload, documents list, modal)
 
   return (
     <div>
@@ -606,56 +606,56 @@ export function DocumentsTab() {
 
 ## 5. UI/UX
 
-### 5.1 Mockup - Workspace z zakładkami
+### 5.1 Mockup - Workspace with tabs
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  📚 Synjar                             user@email.com [▼]   │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ← Back to workspaces                                       │
-│  My Knowledge Base                                          │
-│  Company documentation and procedures                       │
-│                                                             │
-│  ┌─────────────┬─────────────┬─────────────┐                │
-│  │ Documents   │ Public Links│             │                │
-│  │ ═══════════ │             │             │ ← Active tab   │
-│  └─────────────┴─────────────┴─────────────┘                │
-│  ─────────────────────────────────────────────────────────  │
-│                                                             │
-│  [Tab content here - Documents or Public Links]             │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|  Synjar                                  user@email.com [v]  |
++-------------------------------------------------------------+
+|                                                              |
+|  <- Back to workspaces                                       |
+|  My Knowledge Base                                           |
+|  Company documentation and procedures                        |
+|                                                              |
+|  +-------------+-------------+-------------+                 |
+|  | Documents   | Public Links|             |                 |
+|  | =========== |             |             | <- Active tab   |
+|  +-------------+-------------+-------------+                 |
+|  -----------------------------------------------------------  |
+|                                                              |
+|  [Tab content here - Documents or Public Links]              |
+|                                                              |
++-------------------------------------------------------------+
 ```
 
-### 5.2 Stany zakładek
+### 5.2 Tab States
 
-| Stan | Styl | CSS Classes |
-|------|------|-------------|
-| Aktywna | Biały tekst, niebieska linia | `text-white border-blue-500` |
-| Nieaktywna | Szary tekst, brak linii | `text-slate-400 border-transparent` |
-| Hover | Jaśniejszy tekst, szara linia | `hover:text-slate-200 hover:border-slate-600` |
-| Focus | Ring dla dostępności | `focus-visible:ring-2 focus-visible:ring-blue-500` |
+| State | Style | CSS Classes |
+|-------|-------|-------------|
+| Active | White text, blue line | `text-white border-blue-500` |
+| Inactive | Gray text, no line | `text-slate-400 border-transparent` |
+| Hover | Lighter text, gray line | `hover:text-slate-200 hover:border-slate-600` |
+| Focus | Ring for accessibility | `focus-visible:ring-2 focus-visible:ring-blue-500` |
 
 ### 5.3 Error States UI
 
-| Stan | Ikona | Tytuł | Akcja |
-|------|-------|-------|-------|
+| State | Icon | Title | Action |
+|-------|------|-------|--------|
 | 404 Not Found | 🔍 | "Workspace not found" | "Back to workspaces" |
 | 403 Access Denied | 🔒 | "Access denied" | "Back to workspaces" |
 | Network Error | ⚠️ | "Something went wrong" | "Try again" |
 | Loading | Skeleton | - | - |
 
-### 5.4 Responsywność
+### 5.4 Responsiveness
 
-#### Desktop (≥640px)
-- Zakładki w jednej linii
-- Pełne teksty na zakładkach
+#### Desktop (>=640px)
+- Tabs in single line
+- Full text on tabs
 
 #### Mobile (<640px)
-- Zakładki scrollowalne poziomo
-- `overflow-x-auto` na kontenerze
-- Scroll indicators (gradient fade) na krawędziach
+- Horizontally scrollable tabs
+- `overflow-x-auto` on container
+- Scroll indicators (gradient fade) on edges
 - Touch-friendly tap targets (min 44x44px)
 
 ```typescript
@@ -668,36 +668,36 @@ export function DocumentsTab() {
 ```
 
 #### Tablet (640px - 1024px)
-- Zachowanie jak desktop
-- Większe tap targets dla touch
+- Desktop-like behavior
+- Larger tap targets for touch
 
 ### 5.5 Sequence Diagram - User Navigation
 
 ```
-┌─────────┐     ┌─────────────┐     ┌──────────┐     ┌─────────┐
-│  User   │     │ React Router│     │useWorkspace│   │ Backend │
-└────┬────┘     └──────┬──────┘     └─────┬─────┘    └────┬────┘
-     │                 │                   │               │
-     │ Click tab       │                   │               │
-     │────────────────>│                   │               │
-     │                 │                   │               │
-     │                 │ Update URL        │               │
-     │                 │──────────────────>│               │
-     │                 │                   │               │
-     │                 │                   │ GET /workspace│
-     │                 │                   │──────────────>│
-     │                 │                   │               │
-     │                 │                   │<──────────────│
-     │                 │                   │  workspace    │
-     │                 │                   │               │
-     │<────────────────────────────────────│               │
-     │     Render new tab content          │               │
-     │                 │                   │               │
++---------+     +-------------+     +------------+     +---------+
+|  User   |     | React Router|     |useWorkspace|     | Backend |
++----+----+     +------+------+     +-----+------+     +----+----+
+     |                 |                   |               |
+     | Click tab       |                   |               |
+     |---------------->|                   |               |
+     |                 |                   |               |
+     |                 | Update URL        |               |
+     |                 |------------------>|               |
+     |                 |                   |               |
+     |                 |                   | GET /workspace|
+     |                 |                   |-------------->|
+     |                 |                   |               |
+     |                 |                   |<--------------|
+     |                 |                   |  workspace    |
+     |                 |                   |               |
+     |<-----------------------------------------|          |
+     |     Render new tab content          |               |
+     |                 |                   |               |
 ```
 
 ---
 
-## 6. Dostępność (Accessibility)
+## 6. Accessibility
 
 ### 6.1 ARIA Pattern
 
@@ -718,23 +718,23 @@ export function DocumentsTab() {
 </nav>
 ```
 
-### 6.2 Nawigacja klawiaturą (REQUIRED)
+### 6.2 Keyboard Navigation (REQUIRED)
 
-| Klawisz | Akcja |
-|---------|-------|
-| Tab | Przejście do/z grupy zakładek |
-| Enter/Space | Aktywacja zakładki |
-| Arrow Left | Poprzednia zakładka (z wrap-around) |
-| Arrow Right | Następna zakładka (z wrap-around) |
-| Home | Pierwsza zakładka |
-| End | Ostatnia zakładka |
+| Key | Action |
+|-----|--------|
+| Tab | Navigate to/from tab group |
+| Enter/Space | Activate tab |
+| Arrow Left | Previous tab (with wrap-around) |
+| Arrow Right | Next tab (with wrap-around) |
+| Home | First tab |
+| End | Last tab |
 
 ### 6.3 Screen Reader
 
-- `aria-label="Workspace sections"` na kontenerze
-- `aria-selected` dla aktywnej zakładki
-- `role="tab"` dla każdej zakładki
-- Error states mają `role="alert"`
+- `aria-label="Workspace sections"` on container
+- `aria-selected` for active tab
+- `role="tab"` for each tab
+- Error states have `role="alert"`
 
 ---
 
@@ -791,24 +791,24 @@ const PublicLinksTab = lazy(() => import('./features/workspaces/tabs/PublicLinks
 
 ---
 
-## 8. Migracja
+## 8. Migration
 
-### 8.1 Kroki migracji
+### 8.1 Migration Steps
 
-1. **Faza 1**: Utworzenie WorkspacePage, WorkspaceTabs, WorkspaceHeader
-2. **Faza 2**: Refaktoryzacja WorkspaceDetail → DocumentsTab
-3. **Faza 3**: Aktualizacja routera (nested routes)
-4. **Faza 4**: Implementacja PublicLinksTab (wg SPEC-016)
-5. **Faza 5**: Testy E2E
+1. **Phase 1**: Create WorkspacePage, WorkspaceTabs, WorkspaceHeader
+2. **Phase 2**: Refactoring WorkspaceDetail -> DocumentsTab
+3. **Phase 3**: Router update (nested routes)
+4. **Phase 4**: Implement PublicLinksTab (per SPEC-016)
+5. **Phase 5**: E2E tests
 
 ### 8.2 Breaking changes
 
-- URL `/workspaces/:id` teraz redirectuje do `/workspaces/:id/documents`
-- Dotychczasowe linki nadal działają (redirect)
+- URL `/workspaces/:id` now redirects to `/workspaces/:id/documents`
+- Existing links still work (redirect)
 
 ---
 
-## 9. Testy
+## 9. Tests
 
 ### 9.1 Test Fixtures
 
@@ -1096,11 +1096,11 @@ Feature: Workspace Tabs Navigation
 - [ ] WorkspaceNotFound (404 error state)
 - [ ] WorkspaceAccessDenied (403 error state)
 - [ ] WorkspaceError (generic error state)
-- [ ] DocumentsTab (refaktoryzacja WorkspaceDetail)
+- [ ] DocumentsTab (WorkspaceDetail refactoring)
 
 ### Infrastructure
 - [ ] Router configuration (nested routes)
-- [ ] Redirect z `/workspaces/:id` → `/workspaces/:id/documents`
+- [ ] Redirect from `/workspaces/:id` -> `/workspaces/:id/documents`
 - [ ] useWorkspace hook with error handling
 
 ### Accessibility
@@ -1112,35 +1112,35 @@ Feature: Workspace Tabs Navigation
 ### Testing
 - [ ] Unit tests for WorkspaceTabs (including keyboard nav)
 - [ ] Unit tests for error states
-- [ ] E2E test nawigacji między zakładkami
+- [ ] E2E test navigation between tabs
 - [ ] E2E test error states
 
 ### Future (SPEC-016)
-- [ ] PublicLinksTab (implementacja wg SPEC-016)
+- [ ] PublicLinksTab (implementation per SPEC-016)
 
 ---
 
-## 11. Estymacja
+## 11. Estimation
 
-| Zadanie | Złożoność |
-|---------|-----------|
+| Task | Complexity |
+|------|------------|
 | WorkspacePage layout | S |
 | WorkspaceTabs with keyboard nav | M |
 | WorkspaceHeader | S |
 | Error states (404, 403, generic) | S |
 | Loading skeleton | S |
-| DocumentsTab refaktoryzacja | M |
+| DocumentsTab refactoring | M |
 | Router configuration | S |
 | useWorkspace hook | S |
 | Accessibility | M |
 | Unit tests | M |
 | E2E tests | M |
-| PublicLinksTab | M (osobna spec) |
+| PublicLinksTab | M (separate spec) |
 | **TOTAL** | **L** |
 
 ---
 
-## 12. Powiązane dokumenty
+## 12. Related Documents
 
 - [SPEC-016: Frontend Public Links](./SPEC-016-frontend-public-links.md)
 - [ADR-2025-12-25: Signed URLs](../adr/ADR-2025-12-25-signed-urls-for-public-files.md)
@@ -1149,38 +1149,38 @@ Feature: Workspace Tabs Navigation
 
 ---
 
-## 13. Decyzje projektowe
+## 13. Design Decisions
 
-### 13.1 Dlaczego zakładki zamiast sidebaru?
+### 13.1 Why tabs instead of sidebar?
 
-- Obecna aplikacja używa top-nav, nie sidebaru
-- Zakładki są lżejsze i nie wymagają zmiany całego layoutu
-- Standard branżowy dla workspace-level navigation
+- Current application uses top-nav, not sidebar
+- Tabs are lighter and don't require changing the entire layout
+- Industry standard for workspace-level navigation
 
-### 13.2 Dlaczego React Router zamiast lokalnego stanu?
+### 13.2 Why React Router instead of local state?
 
-- Deep linking (bookmarki, sharing)
-- Back/forward navigation działa naturalnie
-- SEO-friendly (jeśli SSR w przyszłości)
-- Łatwiejsze testowanie
+- Deep linking (bookmarks, sharing)
+- Back/forward navigation works naturally
+- SEO-friendly (if SSR in future)
+- Easier testing
 
-### 13.3 Dlaczego Documents jako domyślna zakładka?
+### 13.3 Why Documents as default tab?
 
-- To główna funkcja workspace (upload, manage docs)
-- User flow: upload docs → create public link
-- Public Links jest secondary action (po załadowaniu treści)
+- It's the main workspace feature (upload, manage docs)
+- User flow: upload docs -> create public link
+- Public Links is secondary action (after loading content)
 
-### 13.4 Dlaczego wszystkie zakładki widoczne dla wszystkich?
+### 13.4 Why all tabs visible to everyone?
 
-- Obecnie brak systemu ról w workspace (wszyscy są równi)
-- Prostota implementacji
-- Role-based visibility można dodać w przyszłości gdy pojawią się role
+- Currently no role system in workspace (everyone is equal)
+- Implementation simplicity
+- Role-based visibility can be added in future when roles appear
 
-### 13.5 Dlaczego stała kolejność zakładek?
+### 13.5 Why fixed tab order?
 
-- Przewidywalność UX
-- Documents jako główna funkcja zawsze pierwsza
-- Brak potrzeby user-configurable order w MVP
+- UX predictability
+- Documents as main feature always first
+- No need for user-configurable order in MVP
 
 ---
 
@@ -1189,7 +1189,7 @@ Feature: Workspace Tabs Navigation
 ### 2025-12-28 - Pre-Implementation Review
 
 - **Reviewed by:** Claude (architecture, security, documentation, test, ux)
-- **Status:** ✅ Approved with changes implemented
+- **Status:** Approved with changes implemented
 - **Findings:**
   - [architecture-reviewer report](../../docs/agents/architecture-reviewer/reports/2025-12-28-16-15-spec-review.md)
   - [security-reviewer report](../../docs/agents/security-reviewer/reports/2025-12-28-16-15-spec-review.md)
