@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
+import { json } from 'express';
+import { Request, Response } from 'express';
 import { AppModule } from '../../../app.module';
 import { PublicLinkService } from '../../../application/public-link/public-link.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -63,7 +65,18 @@ describe('MCP Streamable HTTP (initialize, tools/list, GET 405)', () => {
 
     app = moduleFixture.createNestApplication();
 
-    // Apply same middleware as production
+    // Apply same middleware as production (main.ts)
+    // Security: Limit MCP request body size to prevent DoS attacks (10KB)
+    app.use('/mcp', json({ limit: '10kb' }));
+
+    // Increase body size limits for document uploads (excludes /mcp routes)
+    app.use((req: Request, res: Response, next: () => void) => {
+      if (req.path.startsWith('/mcp')) {
+        return next();
+      }
+      return json({ limit: '10mb' })(req, res, next);
+    });
+
     app.use(cookieParser());
     app.useGlobalPipes(
       new ValidationPipe({

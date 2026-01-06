@@ -14,11 +14,17 @@ async function bootstrap() {
   // Security: HTTP security headers (X-Content-Type-Options, X-Frame-Options, etc.)
   app.use(helmet());
 
-  // Security: Limit MCP request body size to prevent DoS attacks
+  // Security: Limit MCP request body size to prevent DoS attacks (10KB)
+  // Must exclude MCP from the general 10MB limit below
   app.use('/mcp', json({ limit: '10kb' }));
 
-  // Increase body size limits for document uploads
-  app.use(json({ limit: '10mb' }));
+  // Increase body size limits for document uploads (excludes /mcp routes)
+  app.use((req: Request, res: Response, next: () => void) => {
+    if (req.path.startsWith('/mcp')) {
+      return next();
+    }
+    return json({ limit: '10mb' })(req, res, next);
+  });
   app.use(urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser());
 
