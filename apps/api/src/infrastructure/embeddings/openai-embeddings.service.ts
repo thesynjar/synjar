@@ -19,6 +19,10 @@ export class OpenAIEmbeddingsService implements IEmbeddingsService {
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
+    if (!text || !text.trim()) {
+      throw new Error('Cannot generate embedding for empty text');
+    }
+
     const response = await this.client.embeddings.create({
       model: this.model,
       input: text,
@@ -31,6 +35,20 @@ export class OpenAIEmbeddingsService implements IEmbeddingsService {
   }
 
   async generateEmbeddings(texts: string[]): Promise<EmbeddingResult[]> {
+    if (texts.length === 0) {
+      throw new Error('Cannot generate embeddings for empty texts array');
+    }
+
+    // Validate all texts are non-empty
+    const emptyIndices = texts
+      .map((t, i) => (!t || !t.trim() ? i : -1))
+      .filter((i) => i !== -1);
+    if (emptyIndices.length > 0) {
+      throw new Error(
+        `Cannot generate embeddings for empty texts at indices: ${emptyIndices.join(', ')}`,
+      );
+    }
+
     const response = await this.client.embeddings.create({
       model: this.model,
       input: texts,

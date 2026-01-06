@@ -461,7 +461,24 @@ export class DocumentService {
       if (!doc) return;
 
       // Chunk the document
-      const chunks = await this.chunkingService.chunk(doc.content);
+      const allChunks = await this.chunkingService.chunk(doc.content);
+
+      // Filter out empty/whitespace-only chunks
+      const chunks = allChunks.filter((c) => c.content && c.content.trim());
+
+      if (chunks.length === 0) {
+        // No valid content to process - mark as completed but log warning
+        this.logger.warn(
+          `Document ${documentId} has no valid content for RAG indexing`,
+        );
+        await this.prisma.forWorkspace(workspaceId, async (tx) => {
+          await tx.document.update({
+            where: { id: documentId },
+            data: { processingStatus: ProcessingStatus.COMPLETED },
+          });
+        });
+        return;
+      }
 
       // Generate embeddings
       const embeddings = await this.embeddingsService.generateEmbeddings(
