@@ -125,11 +125,9 @@ For detailed setup and testing instructions, see [QUICKSTART.md](QUICKSTART.md).
 
 ---
 
-## Deployment Modes
+## Deployment
 
-Synjar supports two deployment modes optimized for different use cases:
-
-### Self-Hosted Mode (Default)
+Synjar Community is designed for **self-hosted deployments**.
 
 **Best for:** Single-tenant deployments, internal tools, maximum control
 
@@ -143,7 +141,7 @@ Synjar supports two deployment modes optimized for different use cases:
 **Configuration:**
 ```bash
 # .env
-DEPLOYMENT_MODE=self-hosted  # Optional: auto-detected if no STRIPE_SECRET_KEY
+DEPLOYMENT_MODE=self-hosted
 
 # Optional: Set admin email for blocked registration messages
 ADMIN_EMAIL=admin@yourcompany.com
@@ -155,55 +153,7 @@ ADMIN_EMAIL=admin@yourcompany.com
 3. Create account - you're instantly admin (no email verification)
 4. Invite team members via invitation system
 
-### Cloud Mode (SaaS)
-
-**Best for:** Multi-tenant SaaS, public offerings, managed deployments
-
-**Features:**
-- Public registration enabled for all users
-- Email verification required (15-minute grace period for exploration)
-- Auto-login after registration (immediate access)
-- Stripe integration for billing (if STRIPE_SECRET_KEY is set)
-
-**Configuration:**
-```bash
-# .env
-DEPLOYMENT_MODE=cloud  # Or auto-detected from STRIPE_SECRET_KEY
-
-# Email required
-SMTP_HOST=smtp.sendgrid.net
-SMTP_PORT=587
-SMTP_USER=apikey
-SMTP_PASSWORD=SG.xxxxx
-
-# Billing (optional)
-STRIPE_SECRET_KEY=sk_live_xxxxx
-```
-
-### Auto-Detection
-
-If `DEPLOYMENT_MODE` is not set, Synjar auto-detects:
-- **Cloud mode:** If `STRIPE_SECRET_KEY` is present
-- **Self-hosted mode:** Otherwise (default)
-
-### Switching Modes
-
-**⚠️ Warning:** Changing deployment modes on existing instances may affect user access patterns. Test thoroughly before production changes.
-
-```bash
-# From self-hosted to cloud
-# 1. Add SMTP configuration
-# 2. Set DEPLOYMENT_MODE=cloud
-# 3. Restart application
-# 4. Public registration becomes available
-
-# From cloud to self-hosted
-# 1. Set DEPLOYMENT_MODE=self-hosted
-# 2. Restart application
-# 3. Public registration becomes disabled (existing users keep access)
-```
-
-For architecture details, see [docs/ecosystem.md](../docs/ecosystem.md).
+> **Looking for SaaS/Cloud features?** See [Synjar Enterprise](https://synjar.com) for multi-tenant, billing, and managed deployments.
 
 ---
 
@@ -212,32 +162,39 @@ For architecture details, see [docs/ecosystem.md](../docs/ecosystem.md).
 ### Create Workspace
 
 ```bash
-curl -X POST http://localhost:6200/api/workspaces \
+curl -X POST http://localhost:6200/workspaces \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"name": "My Project"}'
 ```
 
 ### Upload Document
 
 ```bash
-curl -X POST http://localhost:6200/api/documents \
-  -F "file=@./docs/architecture.md" \
-  -F "workspaceId=ws_123"
+curl -X POST http://localhost:6200/workspaces/<workspaceId>/documents \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@./docs/architecture.md"
 ```
 
 ### Semantic Search
 
 ```bash
-curl "http://localhost:6200/api/search?q=how%20to%20deploy&workspaceId=ws_123"
+curl -X POST http://localhost:6200/workspaces/<workspaceId>/search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"query": "how to deploy"}'
 ```
 
 ### Create Public Link
 
 ```bash
-curl -X POST http://localhost:6200/api/public-links \
+curl -X POST http://localhost:6200/workspaces/<workspaceId>/public-links \
   -H "Content-Type: application/json" \
-  -d '{"workspaceId": "ws_123", "expiresAt": "2025-12-31"}'
+  -H "Authorization: Bearer <token>" \
+  -d '{"expiresAt": "2025-12-31"}'
 ```
+
+> **Full API documentation:** http://localhost:6200/api/docs (Swagger UI)
 
 ---
 
